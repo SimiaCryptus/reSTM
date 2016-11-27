@@ -1,0 +1,30 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+GET     /                           controllers.HomeController.index
+
+GET     /peer                       controllers.RestmController.listPeers()
+POST    /peer/*id                   controllers.RestmController.addPeer(id: String)
+DELETE  /peer/*id                   controllers.RestmController.delPeer(id: String)
+
+PUT     /ptr                        controllers.RestmController.newItem(version: String)
+GET     /ptr/*id                    controllers.RestmController.getItem(id: String, version: Option[String], ifModifiedSince: Option[String])
+POST    /ptr/*id                    controllers.RestmController.lockItem(id: String, version: String)
+PUT     /ptr/*id                    controllers.RestmController.writeItem(id: String, version: String)
+
+GET     /txn                        controllers.RestmController.newTxn(priority: Int = 0)
+GET     /txn/*id                    controllers.RestmController.getTxn(id:String)
+POST    /txn/*id                    controllers.RestmController.commit(id:String)
+DELETE  /txn/*id                    controllers.RestmController.reset(id:String)
+
+PUT     /_ptr/init/*id              controllers.RestmController._init(id:String, version:String)
+GET     /_ptr/get/*id               controllers.RestmController._getPtr(id: String, version: Option[String], ifModifiedSince: Option[String])
+POST    /_ptr/lock/*id              controllers.RestmController._lock(id:String, version:String)
+POST    /_ptr/reset/*id             controllers.RestmController._resetPtr(id:String, version:String)
+POST    /_ptr/commit/*id            controllers.RestmController._commitPtr(id:String, version:String)
+
+POST    /_txn/addLock/*version      controllers.RestmController._addLock(id:String, version:String)
+POST    /_txn/reset/*id             controllers.RestmController._reset(id:String)
+POST    /_txn/commit/*id            controllers.RestmController._commit(id:String)
+
