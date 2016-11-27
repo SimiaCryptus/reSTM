@@ -12,11 +12,10 @@ object RestmImpl {
   var failChainedCalls = false
 }
 
-abstract class RestmImpl extends Restm with RestmInternal {
-  implicit val executionContext = ExecutionContext.fromExecutor(new ThreadPoolExecutor(16, 16, 10, TimeUnit.SECONDS, new LinkedBlockingQueue[Runnable]()))
+class RestmImpl(val internal : RestmInternal)(implicit executionContext : ExecutionContext) extends Restm {
 
-  override def getPtr(id: PointerType): Future[Option[ValueType]] = _getValue(id).recoverWith({
-    case e: LockedException if (e.conflitingTxn.age > 5.seconds) =>
+  override def getPtr(id: PointerType): Future[Option[ValueType]] = internal._getValue(id).recoverWith({
+    case e: LockedException if e.conflitingTxn.age > 5.seconds =>
       cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
     case e: LockedException =>
       Future.failed(e)
@@ -25,8 +24,8 @@ abstract class RestmImpl extends Restm with RestmInternal {
   })
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
-    _getValue(id, time, ifModifiedSince).recoverWith({
-      case e: LockedException if (e.conflitingTxn.age > 5.seconds) =>
+    internal._getValue(id, time, ifModifiedSince).recoverWith({
+      case e: LockedException if e.conflitingTxn.age > 5.seconds =>
         cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
       case e: LockedException =>
         Future.failed(e)
@@ -37,9 +36,10 @@ abstract class RestmImpl extends Restm with RestmInternal {
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = {
     def newPtrAttempt: Future[Option[PointerType]] = {
       val id: PointerType = new PointerType()
-      _initValue(time, value, id).map(ok => Option(id).filter(_ => ok))
+      internal._initValue(time, value, id).map(ok => Option(id).filter(_ => ok))
     }
-    def recursiveNewPtr: Future[PointerType] = newPtrAttempt.flatMap(_.map(Future.successful(_)).getOrElse(recursiveNewPtr))
+    def recursiveNewPtr: Future[PointerType] = newPtrAttempt.flatMap(attempt=>attempt.map(ptr=>Future.successful(ptr))
+      .getOrElse(recursiveNewPtr))
     recursiveNewPtr
   }
 
@@ -48,15 +48,15 @@ abstract class RestmImpl extends Restm with RestmInternal {
   }
 
   override def lock(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] = {
-    _lockValue(id, time).flatMap(result => {
+    internal._lockValue(id, time).flatMap(result => {
       if (result.isEmpty) {
-        _addLock(id, time).map(_ match {
+        internal._addLock(id, time).map({
           case "OPEN" => result
-          case "RESET" => _resetValue(id, time); result
+          case "RESET" => internal._resetValue(id, time); result
           case "COMMIT" =>
             System.err.println(s"Transaction committed before lock returned: ptr=$id, txn=$time")
             util.ActorLog.log(s"Transaction committed before lock returned: ptr=$id, txn=$time")
-            _commitValue(id, time)
+            internal._commitValue(id, time)
             result
         })
       } else {
@@ -71,19 +71,23 @@ abstract class RestmImpl extends Restm with RestmInternal {
 
 
   def cleanup(time: TimeStamp): Future[Unit] = {
-    val state: Future[String] = _txnState(time)
-    state.map(_ match {
+    val state: Future[String] = internal._txnState(time)
+    state.map({
       case "COMMIT" => commit(time)
       case _ => reset(time)
     }).map(_ => Unit)
   }
 
   override def reset(time: TimeStamp): Future[Unit] = {
-    _resetTxn(time).map(locks => if (!RestmImpl.failChainedCalls) Future.sequence(locks.map(_resetValue(_, time).recover({ case _ => Unit }))))
+    internal._resetTxn(time).map(locks => if (!RestmImpl.failChainedCalls)
+      Future.sequence(locks.map(internal._resetValue(_, time).recover({ case _ => Unit }))))
   }
 
   override def commit(time: TimeStamp): Future[Unit] = {
-    _commitTxn(time).map(locks => if (!RestmImpl.failChainedCalls) Future.sequence(locks.map(_commitValue(_, time))))
+    internal._commitTxn(time).map(locks => if (!RestmImpl.failChainedCalls)
+      Future.sequence(locks.map(internal._commitValue(_, time))))
   }
 
+  override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
+    internal.queueValue(id, time, value)
 }

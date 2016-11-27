@@ -17,5 +17,5 @@ class Accumulator {
 
   def stddev = Math.sqrt((moments(2) / moments(0)) - mean * mean)
 
-  override def toString = s"${mean} +/- ${stddev}"
+  override def toString = s"$mean +/- $stddev"
 }

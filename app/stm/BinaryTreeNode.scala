@@ -15,14 +15,14 @@ case class BinaryTreeNode
         leftPtr <<= (leftPtr.get += newValue)
         BinaryTreeNode.this
       }).getOrElse({
-        this.copy(left = Option(STMPtr.dynamicSync(new BinaryTreeNode(newValue))))
+        this.copy(left = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
       })
     } else {
       right.map(rightPtr => {
         rightPtr <<= (rightPtr.get += newValue)
         BinaryTreeNode.this
       }).getOrElse({
-        this.copy(right = Option(STMPtr.dynamicSync(new BinaryTreeNode(newValue))))
+        this.copy(right = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
       })
     }
   }
@@ -31,9 +31,9 @@ case class BinaryTreeNode
     if (value.compareTo(newValue) == 0) {
       true
     } else if (value.compareTo(newValue) < 0) {
-      left.map(_.get.contains(newValue)).getOrElse(false)
+      left.exists(_.get.contains(newValue))
     } else {
-      right.map(_.get.contains(newValue)).getOrElse(false)
+      right.exists(_.get.contains(newValue))
     }
   }
 

@@ -1,6 +1,6 @@
 package storage
 
-import java.util.concurrent.{LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 
 import storage.Restm._
 import storage.actors._
@@ -8,9 +8,8 @@ import storage.actors._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-trait RestmActors extends RestmInternal {
+class RestmActors(implicit executionContext: ExecutionContext) extends RestmInternal {
   implicit val self = this
-  private[this] implicit val executionContext = ExecutionContext.fromExecutor(new ThreadPoolExecutor(16, 16, 10, TimeUnit.SECONDS, new LinkedBlockingQueue[Runnable]()))
 
   protected val txns: TrieMap[TimeStamp, TxnActor] = new scala.collection.concurrent.TrieMap[TimeStamp, TxnActor]()
 

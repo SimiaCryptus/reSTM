@@ -15,7 +15,7 @@ object ActorLog extends ActorQueue {
   private lazy val writer: PrintWriter = new PrintWriter(new FileOutputStream(file))
 
   override def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = withActor {
-    writer.println(str);
+    writer.println(str)
     writer.flush()
   }
 }

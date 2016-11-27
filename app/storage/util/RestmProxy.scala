@@ -10,14 +10,13 @@ import storage.Restm._
 import scala.concurrent.{ExecutionContext, Future}
 
 
-class RestmProxy(val baseUrl: String) extends Restm {
-  implicit val executionContext = ExecutionContext.fromExecutor(new ThreadPoolExecutor(4, 4, 10, TimeUnit.SECONDS, new LinkedBlockingQueue[Runnable]()))
+class RestmProxy(val baseUrl: String)(implicit executionContext: ExecutionContext) extends Restm {
 
   val utf8: Charset = Charset.forName("UTF-8")
 
   override def newTxn(priority: Int): Future[TimeStamp] = {
-    Http((url(baseUrl) / "txn").addQueryParameter("priority", priority.toString) OK as.String)(executionContext)
-      .map(new TimeStamp(_))(executionContext)
+    Http((url(baseUrl) / "txn").addQueryParameter("priority", priority.toString) OK as.String)
+      .map(new TimeStamp(_))
   }
 
   override def lock(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] = {
@@ -27,16 +26,16 @@ class RestmProxy(val baseUrl: String) extends Restm {
         case 409 => Option(new TimeStamp(response.getResponseBody))
       }
     }
-    })(executionContext)
+    })
   }
 
   override def reset(id: TimeStamp): Future[Unit] = {
-    Http((url(baseUrl) / "txn" / id.toString).DELETE OK as.String)(executionContext)
-      .map(_ => {})(executionContext)
+    Http((url(baseUrl) / "txn" / id.toString).DELETE OK as.String)
+      .map(_ => {})
   }
 
   override def commit(id: TimeStamp): Future[Unit] = {
-    Http((url(baseUrl) / "txn" / id.toString).POST OK as.String)(executionContext).map(_ => {})(executionContext)
+    Http((url(baseUrl) / "txn" / id.toString).POST OK as.String).map(_ => {})
   }
 
   override def getPtr(id: PointerType): Future[Option[ValueType]] = {
@@ -46,7 +45,7 @@ class RestmProxy(val baseUrl: String) extends Restm {
         case 404 => None
       }
     }
-    })(executionContext)
+    })
   }
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = {
@@ -59,17 +58,17 @@ class RestmProxy(val baseUrl: String) extends Restm {
         case 404 => None
       }
     }
-    })(executionContext)
+    })
   }
 
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = {
-    Http((url(baseUrl) / "mem").addQueryParameter("time", time.toString).PUT << value.toString OK as.String)(executionContext)
-      .map(new PointerType(_))(executionContext)
+    Http((url(baseUrl) / "mem").addQueryParameter("time", time.toString).PUT << value.toString OK as.String)
+      .map(new PointerType(_))
   }
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] = {
-    Http((url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString).PUT << value.toString OK as.String)(executionContext)
-      .map(_ => {})(executionContext)
+    Http((url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString).PUT << value.toString OK as.String)
+      .map(_ => {})
   }
 
 }

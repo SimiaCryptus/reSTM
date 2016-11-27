@@ -9,7 +9,7 @@ import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 object JacksonValue {
   val utf8: Charset = java.nio.charset.Charset.forName("UTF-8")
-  val mapper = new ObjectMapper().registerModule(DefaultScalaModule);
+  val mapper = new ObjectMapper().registerModule(DefaultScalaModule)
 
 }
 

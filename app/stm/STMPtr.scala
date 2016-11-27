@@ -24,7 +24,7 @@ class STMPtr[T <: AnyRef](val id: PointerType, val typeName: String) {
     require(null != typeName)
     getClass.getClassLoader.loadClass(typeName).asInstanceOf[Class[T]]
   } catch {
-    case e => throw new RuntimeException("No class: " + typeName, e)
+    case e : Throwable => throw new RuntimeException("No class: " + typeName, e)
   }
 
   def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = ctx.lock(id)

@@ -1,7 +1,12 @@
 package storage.util
 
-import storage.{RestmActors, RestmImpl}
+import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 
-object LocalRestmDb extends RestmImpl with RestmActors {
+import storage.{RestmActors, RestmImpl, RestmInternal}
 
-}
+import scala.concurrent.ExecutionContext
+
+
+object LocalRestmDb extends RestmImpl(
+  new RestmActors()(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))

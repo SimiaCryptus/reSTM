@@ -2,13 +2,13 @@ package storage.actors
 
 import storage.LockedException
 import storage.Restm._
-import util.OperationMetrics._
 import util.ActorQueue
+import util.OperationMetrics._
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
 
-class MemActor(name: PointerType) extends ActorQueue {
+class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
   private[this] val history = new scala.collection.mutable.ArrayBuffer[(TimeStamp, ValueType)]
   private[this] var lastRead: Option[TimeStamp] = None
@@ -23,11 +23,11 @@ class MemActor(name: PointerType) extends ActorQueue {
     msg
   }
 
-  private[this] def logMsg(msg: String)(implicit exeCtx: ExecutionContext) = {
+  private[this] def logMsg(msg: String) = {
     log(s"ptr@$name#$nextMsg $msg")
   }
 
-  def getCurrentValue()(implicit exeCtx: ExecutionContext): Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
+  def getCurrentValue(): Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
     withActor {
       msg += 1
       Option(history).filterNot(_.isEmpty).map(_.maxBy(_._1))
@@ -38,7 +38,7 @@ class MemActor(name: PointerType) extends ActorQueue {
     })
   }
 
-  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp])(implicit exeCtx: ExecutionContext): Future[Option[ValueType]] = qos("ptr") {
+  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = qos("ptr") {
     withActor {
       writeLock.foreach(writeLock => if (writeLock < time) throw new LockedException(writeLock))
       lastRead = lastRead.filter(_ > time).orElse(Option(time))
@@ -50,9 +50,9 @@ class MemActor(name: PointerType) extends ActorQueue {
     })
   }
 
-  def init(time: TimeStamp, value: ValueType)(implicit exeCtx: ExecutionContext) = qos("ptr") {
+  def init(time: TimeStamp, value: ValueType) = qos("ptr") {
     withActor {
-      if (!history.isEmpty) {
+      if (history.nonEmpty) {
         false
       } else {
         history += time -> value
@@ -65,7 +65,7 @@ class MemActor(name: PointerType) extends ActorQueue {
     }
   }
 
-  def writeLock(time: TimeStamp)(implicit exeCtx: ExecutionContext): Future[Option[TimeStamp]] = qos("ptr") {
+  def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = qos("ptr") {
     withActor {
       if (writeLock.isDefined) {
         if (writeLock.get == time) {
@@ -77,7 +77,7 @@ class MemActor(name: PointerType) extends ActorQueue {
           logMsg(s"writeLock($time) failed - write locked @ $writeLock")
           Option(writeLock.get)
         }
-      } else if (lastRead.filter(_ > time).isDefined) {
+      } else if (lastRead.exists(_ > time)) {
         // Read-locked
         logMsg(s"writeLock($time) failed - read locked @ $lastRead")
         Option(lastRead.get)
@@ -89,10 +89,10 @@ class MemActor(name: PointerType) extends ActorQueue {
     }
   }
 
-  def writeBlob(time: TimeStamp, value: ValueType)(implicit exeCtx: ExecutionContext): Future[Unit] = qos("ptr") {
+  def writeBlob(time: TimeStamp, value: ValueType): Future[Unit] = qos("ptr") {
     withActor {
-      require(writeLock.filter(time == _).isDefined, "Lock mismatch")
-      require(!queuedValue.isDefined, "Value already queued")
+      require(writeLock.exists(time == _), s"Lock mismatch: $writeLock != $time")
+      require(queuedValue.isEmpty, "Value already queued")
       if (committed) {
         history += writeLock.get -> value
         writeLock = None
@@ -114,9 +114,9 @@ class MemActor(name: PointerType) extends ActorQueue {
     }).map(_ => Unit)
   }
 
-  def writeCommit(time: TimeStamp)(implicit exeCtx: ExecutionContext): Future[Unit] = qos("ptr") {
+  def writeCommit(time: TimeStamp): Future[Unit] = qos("ptr") {
     withActor {
-      require(writeLock.filter(time == _).isDefined, "Lock mismatch")
+      require(writeLock.exists(time == _), "Lock mismatch")
       if (queuedValue.isDefined) {
         history += writeLock.get -> queuedValue.get
         writeLock = None
@@ -138,9 +138,9 @@ class MemActor(name: PointerType) extends ActorQueue {
     }).map(_ => Unit)
   }
 
-  def writeReset(time: TimeStamp = writeLock.get)(implicit exeCtx: ExecutionContext): Future[Unit] = qos("ptr") {
+  def writeReset(time: TimeStamp = writeLock.get): Future[Unit] = qos("ptr") {
     withActor {
-      require(writeLock.filter(time == _).isDefined, "Lock mismatch")
+      require(writeLock.exists(time == _), "Lock mismatch")
       writeLock = None
       queuedValue = None
       committed = false

@@ -37,7 +37,7 @@ object TxnTime {
 
 }
 
-import storage.data.TxnTime._;
+import storage.data.TxnTime._
 
 case class TxnTime(epochMs: Long = TxnTime.now) extends Ordered[TxnTime] with Comparable[TxnTime] {
   def age = Duration(now - epochMs, TimeUnit.MILLISECONDS)

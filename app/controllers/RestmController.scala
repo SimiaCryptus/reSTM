@@ -1,13 +1,14 @@
 package controllers
 
 import java.net.InetAddress
+import java.util.concurrent.Executors
 import javax.inject._
 
 import akka.actor.ActorSystem
 import play.api.mvc._
 import storage.Restm._
 import storage._
-import storage.util.{InternalRestmProxyTrait, RestmInternalHashRouter}
+import storage.util.{InternalRestmProxy, RestmInternalHashRouter}
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
@@ -20,20 +21,17 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   val peerPort = 898
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
-  val storageService = new RestmImpl with RestmInternalHashRouter {
-    val local: RestmActors with Object = new RestmActors {}
+  val storageService = new RestmImpl(new RestmInternalHashRouter {
+    val local: RestmActors = new RestmActors()(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 
     override def shards: List[RestmInternal] = {
       peerList.map(name => {
         if (name == localName) local
-        else new InternalRestmProxyTrait {
-          override def baseUrl: String = s"http://$name:$peerPort"
-
-          override def executionContext: ExecutionContext = exec
-        }
+        else new InternalRestmProxy(s"http://$name:$peerPort")
       })
     }
-  }
+
+  })
 
   def listPeers() = Action { request => {
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
@@ -87,7 +85,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   }
 
   def getTxn(time: String) = Action.async {
-    storageService._txnState(new TimeStamp(time)).map(x => Ok(x.toString))
+    storageService.internal._txnState(new TimeStamp(time)).map(x => Ok(x.toString))
   }
 
   def commit(time: String) = Action.async {
@@ -99,44 +97,44 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   }
 
   def _resetValue(id: String, time: String) = Action.async {
-    storageService._resetValue(new PointerType(id), new TimeStamp(time)).map(_ => Ok(""))
+    storageService.internal._resetValue(new PointerType(id), new TimeStamp(time)).map(_ => Ok(""))
   }
 
   def _lock(id: String, time: String) = Action.async {
-    storageService._lockValue(new PointerType(id), new TimeStamp(time)).map(x => x.map(_.toString).map(Ok(_)).getOrElse(Ok("")))
+    storageService.internal._lockValue(new PointerType(id), new TimeStamp(time)).map(x => x.map(_.toString).map(Ok(_)).getOrElse(Ok("")))
   }
 
   def _commitValue(id: String, time: String) = Action.async {
-    storageService._commitValue(new PointerType(id), new TimeStamp(time)).map(_ => Ok(""))
+    storageService.internal._commitValue(new PointerType(id), new TimeStamp(time)).map(_ => Ok(""))
   }
 
   def _init(id: String, time: String) = Action.async { request => {
-    storageService._initValue(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get, new PointerType(id))
+    storageService.internal._initValue(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get, new PointerType(id))
       .map(ok => if (ok) Ok("") else Conflict(""))
   }
   }
 
   def _getValue(id: String, time: Option[String], ifModifiedSince: Option[String]) = Action.async {
     if (time.isDefined) {
-      storageService._getValue(new PointerType(id), new TimeStamp(time.get), ifModifiedSince.map(new TimeStamp(_)))
+      storageService.internal._getValue(new PointerType(id), new TimeStamp(time.get), ifModifiedSince.map(new TimeStamp(_)))
         .map(x => Ok(x.map(_.toString).getOrElse(""))).recover({
         case e: LockedException => Conflict(e.conflitingTxn.toString)
         case e: Throwable => throw e
       })
     } else {
-      storageService._getValue(new PointerType(id)).map(x => Ok(x.map(_.toString).getOrElse("")))
+      storageService.internal._getValue(new PointerType(id)).map(x => Ok(x.map(_.toString).getOrElse("")))
     }
   }
 
   def _addLock(id: String, time: String) = Action.async {
-    storageService._addLock(new PointerType(id), new TimeStamp(time)).map(Ok(_))
+    storageService.internal._addLock(new PointerType(id), new TimeStamp(time)).map(Ok(_))
   }
 
   def _reset(time: String) = Action.async {
-    storageService._resetTxn(new TimeStamp(time)).map(x => x.map(_.toString).reduceOption(_ + "\n" + _).map(Ok(_)).getOrElse(Ok("")))
+    storageService.internal._resetTxn(new TimeStamp(time)).map(x => x.map(_.toString).reduceOption(_ + "\n" + _).map(Ok(_)).getOrElse(Ok("")))
   }
 
   def _commit(time: String) = Action.async {
-    storageService._commitTxn(new TimeStamp(time)).map(x => x.map(_.toString).reduceOption(_ + "\n" + _).map(Ok(_)).getOrElse(Ok("")))
+    storageService.internal._commitTxn(new TimeStamp(time)).map(x => x.map(_.toString).reduceOption(_ + "\n" + _).map(Ok(_)).getOrElse(Ok("")))
   }
 }

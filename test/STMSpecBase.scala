@@ -1,4 +1,5 @@
 import java.util.UUID
+import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 
 import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
@@ -10,14 +11,14 @@ import storage.{RestmActors, _}
 
 import scala.collection.parallel.immutable.ParSeq
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.Success
 
 
 abstract class STMSpecBase extends WordSpec with MustMatchers {
   def cluster: Restm
 
-  import ExecutionContext.Implicits.global
+  val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   "STM System" should {
 
@@ -29,19 +30,19 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
-      }.txnRun(cluster), 30.seconds) mustBe None
+      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
 
       Await.result(new STMTxn[Unit] {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.write("true")
         }
-      }.txnRun(cluster), 30.seconds)
+      }.txnRun(cluster)(executionContext), 30.seconds)
 
       Await.result(new STMTxn[String] {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.read()
         }
-      }.txnRun(cluster), 30.seconds) mustBe "true"
+      }.txnRun(cluster)(executionContext), 30.seconds) mustBe "true"
 
     }
 
@@ -54,7 +55,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
-      }.txnRun(cluster), 30.seconds) mustBe None
+      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
 
       val items: List[String] = Stream.continually(UUID.randomUUID().toString.take(6)).take(20).toList
 
@@ -67,7 +68,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
           override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
             ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
           }
-        }.txnRun(cluster), 30.seconds) mustBe true
+        }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
       }
     }
 
@@ -78,13 +79,14 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
-      }.txnRun(cluster), 30.seconds) mustBe None
+      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
 
       // Bootstrap collection to reduce contention at root nodes via serial inserts
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
         insertAndVerify(ptr, item)
       }
 
+      implicit val exectx = executionContext
       val uuids = Stream.continually(UUID.randomUUID().toString.take(6)).take(100).par
       val checkNonexist: ParSeq[Future[String]] = verifyMissing(ptr, uuids)
       //checkNonexist.foreach(Await.result(_, 1.minute))
@@ -104,7 +106,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
-      }.txnRun(cluster), 30.seconds) mustBe None
+      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
 
       // Bootstrap collection to reduce contention at root nodes via serial inserts
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
@@ -117,9 +119,9 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
           override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
             ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
           }
-        }.testAbandoned().txnRun(cluster).recover({
+        }.testAbandoned().txnRun(cluster)(executionContext).recover({
           case e => //e.printStackTrace(System.out)
-        }), 30.seconds)
+        })(executionContext), 30.seconds)
       }
       Thread.sleep(5000)
 
@@ -138,7 +140,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
-      }.txnRun(cluster), 30.seconds) mustBe None
+      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
 
       // Bootstrap collection to reduce contention at root nodes via serial inserts
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
@@ -152,9 +154,9 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
           override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
             ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
           }
-        }.txnRun(cluster).recover({
-          case e => e.printStackTrace(System.out)
-        }), 30.seconds)
+        }.txnRun(cluster)(executionContext).recover({
+          case e => //e.printStackTrace(System.out)
+        })(executionContext), 30.seconds)
       }
       RestmImpl.failChainedCalls = false
       Thread.sleep(5000)
@@ -173,17 +175,17 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
       }
-    }.txnRun(cluster), 30.seconds) mustBe false
+    }.txnRun(cluster)(executionContext), 30.seconds) mustBe false
     Await.result(new STMTxn[Unit] {
       override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
       }
-    }.txnRun(cluster), 30.seconds)
+    }.txnRun(cluster)(executionContext), 30.seconds)
     Await.result(new STMTxn[Boolean] {
       override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
       }
-    }.txnRun(cluster), 30.seconds) mustBe true
+    }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
   }
 
   def verifyMissing(ptr: STMPtr[BinaryTreeNode], uuids: ParSeq[String]): ParSeq[Future[String]] = {
@@ -192,10 +194,10 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
         }
-      }.txnRun(cluster).map(result => {
+      }.txnRun(cluster)(executionContext).map(result => {
         result mustBe false;
         result
-      }).map(_ => item)
+      })(executionContext).map(_ => item)(executionContext)
     })
   }
 
@@ -205,8 +207,8 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
         }
-      }.txnRun(cluster).map(_ => item)
-    }))
+      }.txnRun(cluster)(executionContext).map(_ => item)(executionContext)
+    })(executionContext))
   }
 
   def verifyContains(ptr: STMPtr[BinaryTreeNode], insert: ParSeq[Future[String]]): ParSeq[Future[String]] = {
@@ -221,38 +223,40 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
           future
         }
       }
-      txn.txnRun(cluster, priority = 1000).map(result => {
+      txn.txnRun(cluster, priority = 1000)(executionContext).map(result => {
         result mustBe true;
         item
-      })
-    }))
+      })(executionContext)
+    })(executionContext))
   }
 }
 
 class LocalSTMSpec extends STMSpecBase with BeforeAndAfterEach {
   override def beforeEach() {
-    cluster.clear()
+    cluster.internal.asInstanceOf[RestmActors].clear()
   }
 
   val cluster = LocalRestmDb
 }
 
 class LocalClusterSTMSpec extends STMSpecBase with BeforeAndAfterEach {
-  val shards = (0 until 8).map(_ => new RestmActors() {}).toList
+  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())
   }
 
-  val cluster = new RestmCluster(shards)
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
 class IntegrationSTMSpec extends STMSpecBase with OneServerPerTest {
-  val cluster = new RestmProxy(s"http://localhost:$port")
+  val cluster = new RestmProxy(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
 class IntegrationInteralSTMSpec extends STMSpecBase with OneServerPerTest {
-  val cluster = new InternalRestmProxy(s"http://localhost:$port")
+  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  val cluster = new RestmImpl(new InternalRestmProxy(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 
 
