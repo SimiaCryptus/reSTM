@@ -1,6 +1,6 @@
 import java.util.UUID
 
-import _root_.util.AOP
+import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.{BinaryTreeNode, STMPtr, STMTxn, STMTxnCtx}
@@ -15,7 +15,8 @@ import scala.util.Success
 
 
 abstract class STMSpecBase extends WordSpec with MustMatchers {
-  def cluster : Restm
+  def cluster: Restm
+
   import ExecutionContext.Implicits.global
 
   "STM System" should {
@@ -92,8 +93,8 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       val verify: ParSeq[Future[String]] = verifyContains(ptr, inserted)
       Await.result(Future.sequence(verify.toList), 1.minute)
 
-      AOP.metrics.map(e=>e._1 + ": " + e._2.toString).foreach(System.out.println)
-      AOP.metrics.clear()
+      OperationMetrics.metrics.map(e => e._1 + ": " + e._2.toString).foreach(System.out.println)
+      OperationMetrics.metrics.clear()
     }
 
     "recover orphaned trasactions" in {
@@ -126,8 +127,8 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         insertAndVerify(ptr, item)
       }
 
-      AOP.metrics.map(e=>e._1 + ": " + e._2.toString).foreach(System.out.println)
-      AOP.metrics.clear()
+      OperationMetrics.metrics.map(e => e._1 + ": " + e._2.toString).foreach(System.out.println)
+      OperationMetrics.metrics.clear()
     }
 
     "recover orphaned pointers" in {
@@ -162,12 +163,12 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         insertAndVerify(ptr, item)
       }
 
-      AOP.metrics.map(e=>e._1 + ": " + e._2.toString).foreach(System.out.println)
-      AOP.metrics.clear()
+      OperationMetrics.metrics.map(e => e._1 + ": " + e._2.toString).foreach(System.out.println)
+      OperationMetrics.metrics.clear()
     }
   }
 
-  def insertAndVerify(ptr : STMPtr[BinaryTreeNode], item: String): Unit = {
+  def insertAndVerify(ptr: STMPtr[BinaryTreeNode], item: String): Unit = {
     Await.result(new STMTxn[Boolean] {
       override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
@@ -185,7 +186,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
     }.txnRun(cluster), 30.seconds) mustBe true
   }
 
-  def verifyMissing(ptr : STMPtr[BinaryTreeNode], uuids: ParSeq[String]): ParSeq[Future[String]] = {
+  def verifyMissing(ptr: STMPtr[BinaryTreeNode], uuids: ParSeq[String]): ParSeq[Future[String]] = {
     uuids.map(item => {
       new STMTxn[Boolean] {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
@@ -198,7 +199,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
     })
   }
 
-  def insert(ptr : STMPtr[BinaryTreeNode], checkNonexist: ParSeq[Future[String]]): ParSeq[Future[String]] = {
+  def insert(ptr: STMPtr[BinaryTreeNode], checkNonexist: ParSeq[Future[String]]): ParSeq[Future[String]] = {
     checkNonexist.map(_.flatMap(item => {
       new STMTxn[Unit] {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
@@ -208,7 +209,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
     }))
   }
 
-  def verifyContains(ptr : STMPtr[BinaryTreeNode], insert: ParSeq[Future[String]]): ParSeq[Future[String]] = {
+  def verifyContains(ptr: STMPtr[BinaryTreeNode], insert: ParSeq[Future[String]]): ParSeq[Future[String]] = {
     insert.map(_.flatMap(item => {
       val txn: STMTxn[Boolean] = new STMTxn[Boolean] {
         override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
@@ -232,14 +233,17 @@ class LocalSTMSpec extends STMSpecBase with BeforeAndAfterEach {
   override def beforeEach() {
     cluster.clear()
   }
+
   val cluster = LocalRestmDb
 }
 
 class LocalClusterSTMSpec extends STMSpecBase with BeforeAndAfterEach {
-  val shards = (0 until 8).map(_=>new RestmActors(){}).toList
+  val shards = (0 until 8).map(_ => new RestmActors() {}).toList
+
   override def beforeEach() {
     shards.foreach(_.clear())
   }
+
   val cluster = new RestmCluster(shards)
 }
 

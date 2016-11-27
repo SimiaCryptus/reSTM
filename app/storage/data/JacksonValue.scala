@@ -18,7 +18,7 @@ import storage.data.JacksonValue._
 class JacksonValue(val data: String) {
 
   def this(value: AnyRef) = this({
-    if(value.isInstanceOf[String]) {
+    if (value.isInstanceOf[String]) {
       value.toString
     } else {
       val writer: StringWriter = new StringWriter()
@@ -36,7 +36,7 @@ class JacksonValue(val data: String) {
   override def hashCode(): Int = data.hashCode()
 
   override def equals(obj: scala.Any): Boolean = obj match {
-    case x : JacksonValue => data == x.data
+    case x: JacksonValue => data == x.data
     case _ => false
   }
 

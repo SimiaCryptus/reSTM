@@ -6,39 +6,39 @@ import storage.RestmInternal
 import scala.concurrent.Future
 
 trait RestmInternalPtr extends RestmInternal {
-  def inner : RestmInternal
+  def inner: RestmInternal
 
-  override def _resetPtr(id: PointerType, time: TimeStamp): Future[Unit] =
-    inner._resetPtr(id, time)
+  override def _resetValue(id: PointerType, time: TimeStamp): Future[Unit] =
+    inner._resetValue(id, time)
 
-  override def _lock(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] =
-    inner._lock(id, time)
+  override def _lockValue(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] =
+    inner._lockValue(id, time)
 
-  override def _commitPtr(id: PointerType, time: TimeStamp): Future[Unit] =
-    inner._commitPtr(id, time)
+  override def _commitValue(id: PointerType, time: TimeStamp): Future[Unit] =
+    inner._commitValue(id, time)
 
-  override def _getPtr(id: PointerType): Future[Option[ValueType]] =
-    inner._getPtr(id)
+  override def _getValue(id: PointerType): Future[Option[ValueType]] =
+    inner._getValue(id)
 
-  override def _init(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean] =
-    inner._init(time, value, id)
+  override def _initValue(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean] =
+    inner._initValue(time, value, id)
 
-  override def _getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
-    inner._getPtr(id, time, ifModifiedSince)
+  override def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
+    inner._getValue(id, time, ifModifiedSince)
 
   override def _addLock(id: PointerType, time: TimeStamp): Future[String] =
     inner._addLock(id, time)
 
-  override def _reset(time: TimeStamp): Future[Set[PointerType]] =
-    inner._reset(time)
+  override def _resetTxn(time: TimeStamp): Future[Set[PointerType]] =
+    inner._resetTxn(time)
 
-  override def _commit(time: TimeStamp): Future[Set[PointerType]] =
-    inner._commit(time)
+  override def _commitTxn(time: TimeStamp): Future[Set[PointerType]] =
+    inner._commitTxn(time)
 
   override def _txnState(time: TimeStamp): Future[String] =
     inner._txnState(time)
 
-  override def queue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
-    inner.queue(id, time, value)
+  override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
+    inner.queueValue(id, time, value)
 
 }

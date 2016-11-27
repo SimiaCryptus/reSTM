@@ -8,12 +8,15 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try
 
 trait ActorQueue {
-  private[this] val queue = new java.util.concurrent.ConcurrentLinkedQueue[()=>Unit]()
+  private[this] val queue = new java.util.concurrent.ConcurrentLinkedQueue[() => Unit]()
   private[this] val guard = new AtomicBoolean(false)
-  def withActor[T](f: =>T)(implicit exeCtx: ExecutionContext) : Future[T] = {
+
+  def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = {
     val promise = Promise[T]()
-    queue.add(()=>{
-      val result: Try[T] = Try { f }.recover(errorHandler)
+    queue.add(() => {
+      val result: Try[T] = Try {
+        f
+      }.recover(errorHandler)
       promise.complete(result)
     })
     queueBatch
@@ -26,9 +29,9 @@ trait ActorQueue {
       throw e
   }
 
-  def withFuture[T](f: =>Future[T])(implicit exeCtx: ExecutionContext) : Future[T] = {
+  def withFuture[T](f: => Future[T])(implicit exeCtx: ExecutionContext): Future[T] = {
     val promise = Promise[T]()
-    queue.add(()=>{
+    queue.add(() => {
       promise.completeWith(f.recover(errorHandler))
     })
     queueBatch
@@ -37,9 +40,9 @@ trait ActorQueue {
 
   private[this] def queueBatch[T](implicit exeCtx: ExecutionContext): Future[Unit] = {
     Future {
-      if(!queue.isEmpty && !guard.getAndSet(true)) {
+      if (!queue.isEmpty && !guard.getAndSet(true)) {
         try {
-          for(task <- Stream.continually(queue.poll()).takeWhile(null != _).take(100)) {
+          for (task <- Stream.continually(queue.poll()).takeWhile(null != _).take(100)) {
             task()
           }
         } finally {
@@ -50,7 +53,7 @@ trait ActorQueue {
     }
   }
 
-  def log(str: String)(implicit exeCtx: ExecutionContext) : Future[Unit] = ActorLog.log(str)
+  def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = ActorLog.log(str)
 
 }
 

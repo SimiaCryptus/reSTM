@@ -7,10 +7,10 @@ import scala.concurrent.Future
 
 trait RestmPtr extends Restm {
 
-  def inner : Restm
+  def inner: Restm
 
-  override def newPtr(version: TimeStamp, value: ValueType): Future[PointerType] =
-    inner.newPtr(version,value)
+  override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] =
+    inner.newPtr(time, value)
 
   @throws[LockedException]
   override def getPtr(id: PointerType): Future[Option[ValueType]] =
@@ -32,6 +32,6 @@ trait RestmPtr extends Restm {
   override def reset(time: TimeStamp): Future[Unit] =
     inner.reset(time)
 
-  override def queue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
-    inner.queue(id, time, value)
+  override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
+    inner.queueValue(id, time, value)
 }
