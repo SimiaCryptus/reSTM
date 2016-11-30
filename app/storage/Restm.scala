@@ -4,6 +4,7 @@ import storage.Restm._
 import storage.data.{JacksonValue, TxnTime, UUIDPtr}
 
 import scala.concurrent.Future
+import scala.concurrent.duration._
 
 object Restm {
   type TimeStamp = TxnTime
@@ -20,7 +21,7 @@ trait Restm {
 
   @throws[LockedException] def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp] = None): Future[Option[ValueType]]
 
-  def newTxn(priority: Int = 0): Future[TimeStamp]
+  def newTxn(priority: Duration = 0.seconds): Future[TimeStamp]
 
   def lock(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]]
 

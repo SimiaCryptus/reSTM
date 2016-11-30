@@ -7,6 +7,7 @@ import storage.Restm
 import storage.util.ActorLog
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 
 trait STMTxn[+R] {
   protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[R]
@@ -20,10 +21,10 @@ trait STMTxn[+R] {
   }
 
 
-  final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Int = 0)(implicit executionContext: ExecutionContext): Future[R] = {
+  final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = {
     val opId = UUID.randomUUID().toString
     def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = {
-      val ctx: STMTxnCtx = new STMTxnCtx(cluster, retryNumber + priority, prior)
+      val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
       txnLogic()(ctx, executionContext)
         .flatMap(result => {
           if (allowCompletion) {

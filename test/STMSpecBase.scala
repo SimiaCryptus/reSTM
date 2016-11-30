@@ -64,11 +64,17 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       }
 
       for (item <- items) {
-        Await.result(new STMTxn[Boolean] {
-          override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-            ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
-          }
-        }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
+        try {
+          Await.result(new STMTxn[Boolean] {
+            override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+              ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
+            }
+          }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
+        } catch {
+          case e =>
+            Thread.sleep(1000)
+            throw new RuntimeException(s"Error verifying $item",e)
+        }
       }
     }
 
@@ -170,7 +176,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
     }
   }
 
-  def insertAndVerify(ptr: STMPtr[BinaryTreeNode], item: String): Unit = {
+  def insertAndVerify(ptr: STMPtr[BinaryTreeNode], item: String): Unit = try {
     Await.result(new STMTxn[Boolean] {
       override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
@@ -186,6 +192,8 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
       }
     }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
+  } catch {
+    case e => throw new RuntimeException(s"Error processing $item",e)
   }
 
   def verifyMissing(ptr: STMPtr[BinaryTreeNode], uuids: ParSeq[String]): ParSeq[Future[String]] = {
@@ -223,7 +231,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
           future
         }
       }
-      txn.txnRun(cluster, priority = 1000)(executionContext).map(result => {
+      txn.txnRun(cluster, priority = 1.seconds)(executionContext).map(result => {
         result mustBe true;
         item
       })(executionContext)

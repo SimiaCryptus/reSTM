@@ -19,7 +19,7 @@ class ApplicationSpec extends PlaySpec with OneAppPerTest {
 
     "write values on commit" in {
       val txnA: String = contentAsString(route(app, FakeRequest(GET, "/txn")).get)
-      require(java.lang.Long.parseLong(txnA) > 0)
+      require(!txnA.isEmpty)
 
       val valId: String = UUID.randomUUID().toString
       route(app, FakeRequest(GET, s"/mem/$valId?time=$txnA")).map(status(_)) mustBe Some(404)
@@ -34,7 +34,7 @@ class ApplicationSpec extends PlaySpec with OneAppPerTest {
 
     "discard values on rollback" in {
       val txnA: String = contentAsString(route(app, FakeRequest(GET, "/txn")).get)
-      require(java.lang.Long.parseLong(txnA) > 0)
+      require(!txnA.isEmpty)
 
       val valId: String = UUID.randomUUID().toString
       route(app, FakeRequest(GET, s"/mem/$valId?time=$txnA")).map(status(_)) mustBe Some(404)

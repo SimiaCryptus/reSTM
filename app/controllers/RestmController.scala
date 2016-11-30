@@ -12,6 +12,7 @@ import storage.util.{InternalRestmProxy, RestmInternalHashRouter}
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 
 @Singleton
 class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
@@ -81,7 +82,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   }
 
   def newTxn(priority: Int) = Action.async {
-    storageService.newTxn(priority).map(x => Ok(x.toString))
+    storageService.newTxn(priority.milliseconds).map(x => Ok(x.toString))
   }
 
   def getTxn(time: String) = Action.async {

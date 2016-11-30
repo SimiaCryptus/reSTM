@@ -24,13 +24,13 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   }
 
   private[this] def logMsg(msg: String) = {
-    log(s"ptr@$name#$nextMsg $msg")
+    log(s"$this $msg")
   }
 
   def getCurrentValue(): Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
     withActor {
       msg += 1
-      Option(history).filterNot(_.isEmpty).map(_.maxBy(_._1))
+      Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_._1))
     }.andThen({
       case Success(result) =>
         logMsg(s"getCurrentValue")
@@ -42,10 +42,12 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     withActor {
       writeLock.foreach(writeLock => if (writeLock < time) throw new LockedException(writeLock))
       lastRead = lastRead.filter(_ > time).orElse(Option(time))
-      Option(history.filter(_._1 <= time).filter(_._1 >= ifModifiedSince.getOrElse(new TimeStamp(0l)))).filterNot(_.isEmpty).map(_.maxBy(_._1)._2)
+      Option(history.toArray.filter(_._1 <= time)
+        .filter(_._1 >= ifModifiedSince.getOrElse(new TimeStamp(0l))))
+        .filterNot(_.isEmpty).map(_.maxBy(_._1)._2)
     }.andThen({
       case Success(result) =>
-        logMsg(s"getValue($time) $result")
+        logMsg(s"getValue($time, $ifModifiedSince) $result")
       case _ =>
     })
   }
@@ -152,5 +154,5 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   }
 
 
-  override def toString = s"ptr@$name#$nextMsg"
+  override def toString = s"ptr@$name#${history.size}#$nextMsg"
 }

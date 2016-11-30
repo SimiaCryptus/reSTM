@@ -9,7 +9,6 @@ import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
 class RestmActors(implicit executionContext: ExecutionContext) extends RestmInternal {
-  implicit val self = this
 
   protected val txns: TrieMap[TimeStamp, TxnActor] = new scala.collection.concurrent.TrieMap[TimeStamp, TxnActor]()
 

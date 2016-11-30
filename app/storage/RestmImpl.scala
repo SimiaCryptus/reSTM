@@ -43,7 +43,7 @@ class RestmImpl(val internal : RestmInternal)(implicit executionContext : Execut
     recursiveNewPtr
   }
 
-  override def newTxn(priority: Int): Future[TimeStamp] = Future {
+  override def newTxn(priority: Duration): Future[TimeStamp] = Future {
     TxnTime.next(priority)
   }
 

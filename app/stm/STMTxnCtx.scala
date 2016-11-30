@@ -8,7 +8,7 @@ import scala.collection.mutable
 import scala.concurrent.duration.{Duration, _}
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-class STMTxnCtx(cluster: Restm, priority: Int, prior: Option[STMTxnCtx]) {
+class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
   private[stm] val defaultTimeout: Duration = 5.seconds
 
   def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] = txnId.flatMap(cluster.newPtr(_, new ValueType(value)))
@@ -45,16 +45,16 @@ class STMTxnCtx(cluster: Restm, priority: Int, prior: Option[STMTxnCtx]) {
   private[stm] def readOpt[T <: AnyRef](id: PointerType, clazz: Class[T])(implicit executionContext: ExecutionContext): Future[Option[T]] = {
     readCache.getOrElseUpdate((id, clazz),
       txnId.flatMap(txnId => {
-        val previousValue: Option[T] = prior.flatMap(_.readCache.get((id, clazz))
+        def previousValue: Option[T] = prior.flatMap(_.readCache.get((id, clazz))
           .filter(_.isCompleted)
           .map(_.recover({ case _ => None }))
-          .flatMap(Await.result(_, 1.millisecond))
+          .flatMap(Await.result(_, 0.millisecond))
           .map(_.asInstanceOf[T]))
-        val previousTime: Option[TimeStamp] = Option(prior.get.txnId)
-          .map(_.map(Option(_)))
+        val previousTime: Option[TimeStamp] = prior.map(_.txnId)
           .map(_.recover({ case _ => None }))
           .filter(_.isCompleted)
-          .flatMap(Await.result(_, 1.millisecond))
+          .map(Await.result(_, 0.millisecond))
+          .map(_.asInstanceOf[TimeStamp])
         cluster.getPtr(id, txnId, previousTime).map(_.flatMap(json => json.deserialize[T](clazz)).orElse(previousValue))
       })
     ).map(_.map(_.asInstanceOf[T]))

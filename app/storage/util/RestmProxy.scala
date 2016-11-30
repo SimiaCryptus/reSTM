@@ -7,6 +7,7 @@ import dispatch.{as, url, _}
 import storage.Restm
 import storage.Restm._
 
+import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
 
 
@@ -14,8 +15,8 @@ class RestmProxy(val baseUrl: String)(implicit executionContext: ExecutionContex
 
   val utf8: Charset = Charset.forName("UTF-8")
 
-  override def newTxn(priority: Int): Future[TimeStamp] = {
-    Http((url(baseUrl) / "txn").addQueryParameter("priority", priority.toString) OK as.String)
+  override def newTxn(priority: Duration): Future[TimeStamp] = {
+    Http((url(baseUrl) / "txn").addQueryParameter("priority", priority.toMillis.toString) OK as.String)
       .map(new TimeStamp(_))
   }
 

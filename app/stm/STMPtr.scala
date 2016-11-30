@@ -42,8 +42,11 @@ class STMPtr[T <: AnyRef](val id: PointerType, val typeName: String) {
   def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = ctx.write(id, value, clazz)
     .recover({ case e => throw new RuntimeException(s"failed write to $id", e) })
 
+  def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    STMPtr.this.write(value)
+  }
   def <<=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    Await.result(STMPtr.this.write(value), ctx.defaultTimeout)
+    Await.result(this <= value, ctx.defaultTimeout)
   }
 
   implicit def get(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
