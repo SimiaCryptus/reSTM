@@ -1,49 +1,45 @@
-This is your new Play application
-=================================
+I am excited to announce reSTM, a database layer based on software transactional memory, allowing client-side business logic to operate generically against a database with transactional guarantees. Additionally, the memory access protocol is designed as a JSON REST service, encouraging transparency and interoperability. I believe this approach can fill an under-addressed need in modern software technologies, with its scalable NoSQL approach to transactional data. Basically, the vision is to build Hibernate for NoSQL.
 
-This file will be packaged with your application when using `activator dist`.
+First, let us briefly review background concepts. Software Transactional Memory (or STM) is a concept that has often been explored (e.g. AtomizeJS, Multiverse, and JVSTM) but is rarely is seen in production. These implementations are often customizations to the language, virtual machine, or other underlying layer to achieve a "magic" way to solve concurrency issues within a single machine. By contrast, the focus of this project is to enable transactional data storage over a network, and as such is implemented as a standard networking layer. In order to achieve this goal, we have implemented a 2-phase commit protocol over a JSON/REST interface. This is in contrast to other NoSQL databases which loosen criteria such as ACID compliance to achieve other desired properties such as availability. This trade off is known as the CAP theorem. Often times a side-effect of the NoSQL movement has been that the software design of the middle tier must accommodate the database's nuances. Although the end product of a scalable solution is achieved, the business logic is mixed with details of how the data is stored. Previous approaches using ORM frameworks such as Hibernate combined with a standardized SQL interface to adapt business logic to a universal storage layer may have had scalability problems, but still provide some properties that are often hard to achieve in the NoSQL world, such as this storage layer agnosticism. Another important technology to be aware of is the actor pattern, as the implementation of these services are based on actors.
 
-There are several demonstration files available in this template.
+As previously mentioned, this project is intended to fill the gap left by ORM+RDBMS solutions such as Hibernate. It achieves this using a layered structure, which currently contains the following: The Storage Actor Layer implements transaction and memory actors, state full entities which enable data storage and resolution of race conditions. The Storage Protocol Layer is stateless and translates between the 2PL api and the actor api, often facilitating inter-actor communication. The Client STM Layer uses the storage layer to implement a durable STM system based on transaction processing logic and a pointer api. The project itself is a simple Scala Play application, exposing a stateful web service which can be configured to operate as a cluster for a distributed database. In general this project is not intended to be the fastest solution for a data service, and it is also not designed for partition tolerance. It is intrinsically slower than many competitors because of the transactional strictness, and the number of requests required for a single operation due to the fine-grained nature of the protocol. Instead, the goal is a platform the provides strict ACID compliance to nearly arbitrary business logic at scale. This product also provides opportunities for other features, such as cheap database snapshots and a detailed transaction log.
 
-Controllers
-===========
+This project as been designed with a few key principles: First, it needs to be scalable; each component can be replicated and horizontally partitioned easily. It also should be as fast as possible, avoiding blocking operations. It encourages interoperability and transparency by using JSON and REST standards. It is as simple as possible, weighing in at under 1.5k lines of code. It is well tested, with more than 85% test coverage. Strictness is never compromised to avoid data corruption. In general, the project uses physical spacetime as a conceptual model to emulate: Memory is a position whose state (value) changes over time. Transactions are instantaneous memory change events that intersect with several positions while having a well-defined temporal position that determines the commit order. We model changes over time more as a script we are writing - we accumulate the full over-time picture rather than storing the transient state of our application directly.
 
-- HomeController.scala:
+Without further ado, let's look at some code!
 
-  Shows how to handle simple HTTP requests.
+The first thing to cover is the fundamental actors used for state management. The actors are MemActor and TxnActor, which handle memory and transaction metadata, respectively. They are actors in the sense that 1) they are unique and addressable via a name or id, and 2) each actor has private state and processes messages sequentially, eliminating multi threading concerns. This basic actor functionality is provided by ActorQueue.
 
-- AsyncController.scala:
+The macro layer builds upon the agent layer to provide a concise and integrated 2PL data access layer. The internal, or actor, api can be viewed in RestmInternal. The implementation of the mapping is in RestmImpl.scala.
 
-  Shows how to do asynchronous programming when handling a request.
+RestmController provides network access to the external interface and inter-node communications, mapped to by the defined routes. These routes are then accessed by RestmProxy and InternalRestmProxy, which provide client and inter-node communications, respectively.
 
-- CountController.scala:
+To build on a single service node, we use a very basic protocol to maintain a list of nodes in the cluster on each server. The code to setup a cluster is not provided, but would involve deploying the service to a number of servers, and then telling each node about each other node. The cluster can then distribute data across the cluster according to the hash codes of of id values when servicing the internal (agent) layer. The current implementation does not replicate data, and it does not provide for fail-over or elasticity.
 
-  Shows how to inject a component into a controller and use the component when
-  handling requests.
+Finally, we build upon that storage service layer with an STM implementation. The basic idea is to use "pointers", placeholders that identify a memory location by id value and provide mechanisms to read, lock, and write values, including serialization and deserialization. Transactions can often fail due to lock conflicts, and so are retried as needed. A basic implementation for append-only sorted lists is provided in BinaryTreeNode, used by the STM unit test family. Both synchronous and asynchronous pointer operations have been provided.
 
-Components
-==========
+This is the project thus far - though young and minimal, I think it is a good "core" from which many independent research and development projects could take off from. Some ideas:
 
-- Module.scala:
+* Overall performance should be monitored and optimized. Standard benchmarks should be established. 
+ 
+* Transaction ids are currently determined by the millisecond system clock without coordination with peer servers in a cluster. This presents a risk of duplicate transaction ids. This could be improved by a number of alternate implementations for TimeStamp, e.g. Vector Clocks 
 
-  Shows how to use Guice to bind all the components needed by your application.
+* This system could easily produce and recover with transaction logs. The idea is that whenever a transaction is committed, a record will be written to an external source (durable disk storage, and external event queue, etc) representing all details of the transaction. This record can then be used to recover data, replicate data, or examine as an audit trail, among other uses. 
 
-- Counter.scala:
+* Actors, when modified, could enter a queue and be written to a more persistent storage layer. This storage layer could then be used to resurrect "frozen" actors and optimize machine memory usage. Suitable storage layers might be a berkeley db or a dynamo table. 
 
-  An example of a component that contains state, in this case a simple counter.
+* A protocol could be established to obtain system-wide dedicated "snapshot" time stamps, time-stamps for which no issued transaction id is simultaneous with. These time-stamps can then be used for high-volume read operations, preventing read-lock activity from conflicting with write transactions. 
 
-- ApplicationTimer.scala:
+* Currently a memory value is represented by a single actor, and the routing table is based on a static configuration. A system could be setup to manage actor replication and fail-over as well as elastic partitioning, re-balancing, and similar tasks. 
 
-  An example of a component that starts when the application starts and stops
-  when the application stops.
+* This system tracks data changes over time, but does not account for how the database will manage capacity or reclaim space. As specified, it is an append-only database. A delete operation could be added, or a policy where overwritten or unaccessed data older than a specific age is reclaimed. Specific processes could be introduced to "crawl" data and make sure the entire data set is alive, effectively implementing mark-and-sweep garbage collection. 
 
-Filters
-=======
+* An auxiliary data storage layer could be implemented to store static data which is not updatable. The api would be similar to a tiny url service, providing short static aliases that can be expanded to larger blobs of data. This layer could lighten the load on the dynamic memory layer, though it complicates the api and other concerns such as data reclamation. 
 
-- Filters.scala:
+* Since this data layer is based on an idea of appending to a history and not deleting data, we could also implement a protocol for making "copy-on-write" forks of the entire database.
 
-  Creates the list of HTTP filters used by your application.
+* Especially when considering values stored over time, many stored blobs are similar and this can be exploited using shared dictionary compression to optimize storage of serialized values.
 
-- ExampleFilter.scala
+* Last, but certainly not least: Client libraries that make use of the STM system to provide useful components, such as a standard library of functional collection classes. 
 
-  A simple filter that adds a header to every response.
+* Anyway, I hope you find this project interesting, and if you'd like to build upon it please let me know!
