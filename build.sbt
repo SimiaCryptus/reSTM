@@ -12,7 +12,9 @@ libraryDependencies ++= Seq(
   ws,
   "org.scalatestplus.play" %% "scalatestplus-play" % "1.5.1" % Test,
   "net.databinder.dispatch" %% "dispatch-core" % "0.11.2",
-  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.8.4"
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.8.4",
+  "com.twitter" %% "chill" % "0.8.1"
+
 )
 
 
