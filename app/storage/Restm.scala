@@ -1,7 +1,7 @@
 package storage
 
 import storage.Restm._
-import storage.data.{JacksonValue, TxnTime, UUIDPtr}
+import storage.data._
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -9,7 +9,7 @@ import scala.concurrent.duration._
 object Restm {
   type TimeStamp = TxnTime
   type ValueType = JacksonValue
-  type PointerType = UUIDPtr
+  type PointerType = StringPtr
 }
 
 class LockedException(val conflitingTxn: TimeStamp) extends Exception("Already locked by " + conflitingTxn)
