@@ -1,7 +1,9 @@
 package stm
 
+import storage.Restm
 import storage.Restm.PointerType
 
+import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.reflect.ClassTag
 
@@ -15,7 +17,19 @@ object STMPtr {
     Await.result(dynamic(value), ctx.defaultTimeout)
   }
 
-  def static[T <: AnyRef](id: PointerType)(implicit tag: ClassTag[T]): STMPtr[T] = new STMPtr(id, tag.runtimeClass.getCanonicalName)
+  def static[T <: AnyRef](id: PointerType)(implicit tag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id, tag.runtimeClass.getCanonicalName)
+
+  def static[T <: AnyRef](id: PointerType, default: => T)(implicit tag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id, tag.runtimeClass.getCanonicalName) {
+    override def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = super.readOpt().map(_.orElse(Option(default)))
+  }
+
+  def static[T <: AnyRef](id: PointerType, default: STMTxn[T])(implicit tag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id, tag.runtimeClass.getCanonicalName) {
+    override def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
+      super.readOpt().flatMap(_.map(Future.successful).getOrElse(default.txnLogic())).map(Option(_))
+    }
+  }
+
+
 
 }
 
@@ -26,6 +40,31 @@ class STMPtr[T <: AnyRef](val id: PointerType, val typeName: String) {
   } catch {
     case e : Throwable => throw new RuntimeException("No class: " + typeName, e)
   }
+
+  def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+    optValue.map(_=>Future.successful(this)).getOrElse(write(default).map(_=>this))
+  })
+
+  def initOrUpdate(default: => T, upadater: T=>T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+    val x = optValue.map(upadater).getOrElse(default)
+    write(x).map(_=>this)
+  })
+
+  def update(upadater: T=>T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+    write(upadater(optValue.get)).map(_=>this)
+  })
+
+  def initOrUpdate(cluster: Restm, default: => T, upadater: T=>T)(implicit executionContext: ExecutionContext): Future[STMPtr[T]] = new STMTxn[STMPtr[T]] {
+    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      initOrUpdate(default, upadater)
+    }
+  }.txnRun(cluster)(executionContext)
+
+  def init(cluster: Restm, default: => T)(implicit executionContext: ExecutionContext): Future[STMPtr[T]] = new STMTxn[STMPtr[T]] {
+    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      init(default)
+    }
+  }.txnRun(cluster)(executionContext)
 
   def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = ctx.lock(id)
     .recover({ case e => throw new RuntimeException(s"failed lock to $id", e) })
@@ -45,13 +84,18 @@ class STMPtr[T <: AnyRef](val id: PointerType, val typeName: String) {
   def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     STMPtr.this.write(value)
   }
-  def <<=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    Await.result(this <= value, ctx.defaultTimeout)
-  }
 
-  implicit def get(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    Await.result(STMPtr.this.read(), ctx.defaultTimeout)
+  class SyncApi(defaultTimeout: Duration) {
+    def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      Await.result(STMPtr.this <= value, defaultTimeout)
+    }
+
+    implicit def get(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
+      Await.result(STMPtr.this.read(), defaultTimeout)
+    }
   }
+  def sync(defaultTimeout: Duration) = new SyncApi(defaultTimeout)
+  def sync(implicit ctx: STMTxnCtx) = new SyncApi(ctx.defaultTimeout)
 
   private def equalityFields = List(id, typeName)
 

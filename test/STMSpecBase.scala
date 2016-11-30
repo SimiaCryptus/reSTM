@@ -27,19 +27,19 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       val ptr = STMPtr.static[String](new PointerType)
 
       Await.result(new STMTxn[Option[String]] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
 
       Await.result(new STMTxn[Unit] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.write("true")
         }
       }.txnRun(cluster)(executionContext), 30.seconds)
 
       Await.result(new STMTxn[String] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.read()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe "true"
@@ -52,7 +52,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       val ptr = STMPtr.static[BinaryTreeNode](new PointerType)
 
       Await.result(new STMTxn[Option[_]] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
@@ -66,7 +66,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       for (item <- items) {
         try {
           Await.result(new STMTxn[Boolean] {
-            override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+            override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
               ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
             }
           }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
@@ -82,7 +82,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
 
       val ptr = STMPtr.static[BinaryTreeNode](new PointerType)
       Await.result(new STMTxn[Option[_]] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
@@ -109,7 +109,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
 
       val ptr = STMPtr.static[BinaryTreeNode](new PointerType)
       Await.result(new STMTxn[Option[_]] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
@@ -122,7 +122,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       // Insert collection and expire transactions (never commit nor rollback)
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
         Await.result(new STMTxn[Unit] {
-          override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
             ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
           }
         }.testAbandoned().txnRun(cluster)(executionContext).recover({
@@ -143,7 +143,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
 
       val ptr = STMPtr.static[BinaryTreeNode](new PointerType)
       Await.result(new STMTxn[Option[_]] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
@@ -157,7 +157,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
       RestmImpl.failChainedCalls = true
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(5).toList) {
         Await.result(new STMTxn[Unit] {
-          override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
             ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
           }
         }.txnRun(cluster)(executionContext).recover({
@@ -178,17 +178,17 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
 
   def insertAndVerify(ptr: STMPtr[BinaryTreeNode], item: String): Unit = try {
     Await.result(new STMTxn[Boolean] {
-      override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
       }
     }.txnRun(cluster)(executionContext), 30.seconds) mustBe false
     Await.result(new STMTxn[Unit] {
-      override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
       }
     }.txnRun(cluster)(executionContext), 30.seconds)
     Await.result(new STMTxn[Boolean] {
-      override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
       }
     }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
@@ -199,7 +199,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
   def verifyMissing(ptr: STMPtr[BinaryTreeNode], uuids: ParSeq[String]): ParSeq[Future[String]] = {
     uuids.map(item => {
       new STMTxn[Boolean] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
         }
       }.txnRun(cluster)(executionContext).map(result => {
@@ -212,7 +212,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
   def insert(ptr: STMPtr[BinaryTreeNode], checkNonexist: ParSeq[Future[String]]): ParSeq[Future[String]] = {
     checkNonexist.map(_.flatMap(item => {
       new STMTxn[Unit] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt().map(_.map(_ += item).getOrElse(new BinaryTreeNode(item))).flatMap(ptr.write)
         }
       }.txnRun(cluster)(executionContext).map(_ => item)(executionContext)
@@ -222,7 +222,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
   def verifyContains(ptr: STMPtr[BinaryTreeNode], insert: ParSeq[Future[String]]): ParSeq[Future[String]] = {
     insert.map(_.flatMap(item => {
       val txn: STMTxn[Boolean] = new STMTxn[Boolean] {
-        override protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           val future: Future[Boolean] = ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
           future.onComplete({
             case Success(false) => System.err.println(s"Does not contain $item")

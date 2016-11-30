@@ -10,7 +10,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
 trait STMTxn[+R] {
-  protected def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[R]
+  def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[R]
 
   private[this] var allowCompletion = true
 
@@ -38,15 +38,15 @@ trait STMTxn[+R] {
         .recoverWith({
           case e: Throwable if retryNumber < maxRetry =>
             //e.printStackTrace(System.out)
-            ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry")
+            ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to $e")
             ctx.revert()
             _txnRun(retryNumber + 1, Option(ctx))
           case e: Throwable =>
             if (allowCompletion) {
-              ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry")
+              ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to $e")
               ctx.revert()
             } else {
-              ActorLog.log(s"Prevent revert $ctx for operation $opId retry $retryNumber/$maxRetry")
+              ActorLog.log(s"Prevent revert $ctx for operation $opId retry $retryNumber/$maxRetry due to $e")
             }
             Future.failed(new RuntimeException(s"Failed operation $opId after $retryNumber attempts", e))
         })
