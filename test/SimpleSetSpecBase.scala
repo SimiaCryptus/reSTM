@@ -15,33 +15,22 @@ abstract class SimpleSetSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
 
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  val randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(6))
 
   "STM System" should {
 
     "simple binary tree" in {
-
-      val collection = SimpleSet.static(new PointerType)
-
-      val items: List[String] = Stream.continually(UUID.randomUUID().toString.take(6)).take(20).toList
+      val collection = SimpleSet.static[String](new PointerType("test/SimpleTest"))
+      val items: List[String] = randomUUIDs.take(20).toList
 
       for (item <- items) {
-        try {
-          collection.atomic.sync.contains(item) mustBe false
-          collection.atomic.sync.add(item)
-          collection.atomic.sync.contains(item) mustBe true
-        } catch {
-          case e => throw new RuntimeException(s"Error processing $item",e)
-        }
+        collection.atomic.sync.contains(item) mustBe false
+        collection.atomic.sync.add(item)
+        collection.atomic.sync.contains(item) mustBe true
       }
 
       for (item <- items) {
-        try {
-          collection.atomic.sync.contains(item) mustBe true
-        } catch {
-          case e =>
-            Thread.sleep(1000)
-            throw new RuntimeException(s"Error verifying $item",e)
-        }
+        collection.atomic.sync.contains(item) mustBe true
       }
     }
 
