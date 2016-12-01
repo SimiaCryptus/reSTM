@@ -10,7 +10,6 @@ import storage.{RestmActors, _}
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 
-
 abstract class SimpleSetSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
 
