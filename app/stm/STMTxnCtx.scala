@@ -7,6 +7,7 @@ import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.concurrent.duration.{Duration, _}
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.reflect.ClassTag
 
 class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
   private[stm] val defaultTimeout: Duration = 5.seconds
@@ -25,8 +26,8 @@ class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
   private[this] val writeLocks = new mutable.HashSet[PointerType]()
 
 
-  private[stm] def write[T <: AnyRef](id: PointerType, value: T, clazz: Class[T])(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
-    readOpt(id, clazz).flatMap(prior => {
+  private[stm] def write[T <: AnyRef: ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
+    readOpt(id).flatMap(prior => {
       if (value != prior.orNull) {
         val lockF = if (writeLocks.contains(id)) {
           Future.successful(Unit)
@@ -40,12 +41,12 @@ class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
     })
   })
 
-  val readCache: TrieMap[(PointerType, Class[_]), Future[Option[_]]] = new TrieMap[(PointerType, Class[_]), Future[Option[_]]]()
+  val readCache: TrieMap[PointerType, Future[Option[_]]] = new TrieMap()
 
-  private[stm] def readOpt[T <: AnyRef](id: PointerType, clazz: Class[T])(implicit executionContext: ExecutionContext): Future[Option[T]] = {
-    readCache.getOrElseUpdate((id, clazz),
+  private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)(implicit executionContext: ExecutionContext): Future[Option[T]] = {
+    readCache.getOrElseUpdate(id,
       txnId.flatMap(txnId => {
-        def previousValue: Option[T] = prior.flatMap(_.readCache.get((id, clazz))
+        def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)
           .filter(_.isCompleted)
           .map(_.recover({ case _ => None }))
           .flatMap(Await.result(_, 0.millisecond))
@@ -55,7 +56,7 @@ class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
           .filter(_.isCompleted)
           .map(Await.result(_, 0.millisecond))
           .map(_.asInstanceOf[TimeStamp])
-        cluster.getPtr(id, txnId, previousTime).map(_.flatMap(json => json.deserialize[T](clazz)).orElse(previousValue))
+        cluster.getPtr(id, txnId, previousTime).map(_.flatMap(_.deserialize[T]()).orElse(previousValue))
       })
     ).map(_.map(_.asInstanceOf[T]))
   }

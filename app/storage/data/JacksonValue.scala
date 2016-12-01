@@ -4,20 +4,21 @@ import java.io.StringWriter
 import java.nio.charset.Charset
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
+import scala.reflect._
 
 object JacksonValue {
   val utf8: Charset = java.nio.charset.Charset.forName("UTF-8")
-  val mapper = new ObjectMapper().registerModule(DefaultScalaModule)
-
+  val mapper = new ObjectMapper().registerModule(DefaultScalaModule).enableDefaultTyping(DefaultTyping.NON_FINAL)
 }
 
 import storage.data.JacksonValue._
 
 class JacksonValue(val data: String) {
 
-  def this(value: AnyRef) = this({
+  def this(value: Any) = this({
     if (value.isInstanceOf[String]) {
       value.toString
     } else {
@@ -27,8 +28,12 @@ class JacksonValue(val data: String) {
     }
   })
 
-  def deserialize[T](clazz: Class[T]): Option[T] = {
-    Option(this.toString).filterNot(_.isEmpty).flatMap(json => Option(mapper.readValue(json, clazz)))
+  def deserialize[T<:AnyRef:ClassTag](): Option[T] = {
+    Option(this.toString).filterNot(_.isEmpty).map[T](json => {
+      //def prototype = new TypeReference[T]() {}
+      def prototype = classTag[T].runtimeClass.asInstanceOf[Class[T]]
+      mapper.readValue[T](json, prototype)
+    })
   }
 
   override def toString: String = data

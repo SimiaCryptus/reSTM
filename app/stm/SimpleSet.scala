@@ -9,14 +9,14 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 
 object SimpleSet {
   def empty = new STMTxn[SimpleSet] {
-    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[SimpleSet] = {
-      STMPtr.dynamic[Option[BinaryTreeNode]](None).map(new SimpleSet(_))
-    }
+    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[SimpleSet] = create
   }
-  def static(id:PointerType) = new SimpleSet(STMPtr.static(id, None))
+  def create(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[BinaryTreeNode]](None).map(new SimpleSet(_))
+
+  def static(id:PointerType) = new SimpleSet(STMPtr.static[Option[BinaryTreeNode]](id, None))
 }
 
-class SimpleSet(val rootPtr : STMPtr[Option[BinaryTreeNode]]) {
+class SimpleSet(rootPtr : STMPtr[Option[BinaryTreeNode]]) {
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) {
 
     class SyncApi(duration:Duration) {
@@ -50,7 +50,7 @@ class SimpleSet(val rootPtr : STMPtr[Option[BinaryTreeNode]]) {
   }
 }
 
-case class BinaryTreeNode
+private case class BinaryTreeNode
 (
   value: String,
   left: Option[STMPtr[BinaryTreeNode]] = None,

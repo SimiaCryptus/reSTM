@@ -1,10 +1,10 @@
 import java.util.UUID
-import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import java.util.concurrent.Executors
 
 import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
-import stm.{BinaryTreeNode, STMPtr, STMTxn, STMTxnCtx}
+import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
 import storage.util._
 import storage.{RestmActors, _}
@@ -189,7 +189,11 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
     }.txnRun(cluster)(executionContext), 30.seconds)
     Await.result(new STMTxn[Boolean] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-        ptr.readOpt().map(_.map(_.contains(item)).getOrElse(false))
+        val eventualMaybeBinaryTreeNode: Future[Option[BinaryTreeNode]] = ptr.readOpt()
+        eventualMaybeBinaryTreeNode.map(v=>{
+          val option: Option[Boolean] = v.map(_.contains(item))
+          option.getOrElse(false)
+        })
       }
     }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
   } catch {
@@ -267,5 +271,48 @@ class IntegrationInteralSTMSpec extends STMSpecBase with OneServerPerTest {
   val cluster = new RestmImpl(new InternalRestmProxy(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 
+private case class BinaryTreeNode
+(
+  value: String,
+  left: Option[STMPtr[BinaryTreeNode]] = None,
+  right: Option[STMPtr[BinaryTreeNode]] = None
+) {
 
+  def +=(newValue: String)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeNode = {
+    if (value.compareTo(newValue) < 0) {
+      left.map(leftPtr => {
+        leftPtr.sync <= (leftPtr.sync.get += newValue)
+        BinaryTreeNode.this
+      }).getOrElse({
+        this.copy(left = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
+      })
+    } else {
+      right.map(rightPtr => {
+        rightPtr.sync <= (rightPtr.sync.get += newValue)
+        BinaryTreeNode.this
+      }).getOrElse({
+        this.copy(right = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
+      })
+    }
+  }
+
+  def contains(newValue: String)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = {
+    if (value.compareTo(newValue) == 0) {
+      true
+    } else if (value.compareTo(newValue) < 0) {
+      left.exists(_.sync.get.contains(newValue))
+    } else {
+      right.exists(_.sync.get.contains(newValue))
+    }
+  }
+
+  private def equalityFields = List(value, left, right)
+
+  override def hashCode(): Int = equalityFields.hashCode()
+
+  override def equals(obj: scala.Any): Boolean = obj match {
+    case x: BinaryTreeNode => x.equalityFields == equalityFields
+    case _ => false
+  }
+}
 

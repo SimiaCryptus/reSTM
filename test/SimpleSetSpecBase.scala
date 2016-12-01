@@ -1,7 +1,6 @@
 import java.util.UUID
 import java.util.concurrent.Executors
 
-import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm._
@@ -9,10 +8,7 @@ import storage.Restm._
 import storage.util._
 import storage.{RestmActors, _}
 
-import scala.collection.parallel.immutable.ParSeq
-import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
-import scala.util.Success
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 
 
 abstract class SimpleSetSpecBase extends WordSpec with MustMatchers {

@@ -4,12 +4,14 @@ import java.io.ByteArrayOutputStream
 import java.util.Base64
 
 import com.esotericsoftware.kryo.io.Input
-import com.twitter.chill.{KryoInstantiator, KryoPool, Output, ScalaKryoInstantiator}
+import com.twitter.chill.{Output, ScalaKryoInstantiator}
+
+import scala.reflect._
 
 object KryoValue {
   private def kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
 }
-import KryoValue._
+import storage.data.KryoValue._
 
 class KryoValue(val data: String) {
 
@@ -19,12 +21,12 @@ class KryoValue(val data: String) {
     Base64.getEncoder.encodeToString(output.toBytes)
   })
 
-  def deserialize[T](clazz: Class[T]): Option[T] = {
+  def deserialize[T<:AnyRef:ClassTag](): Option[T] = {
     Option(this.toString)
       .filterNot(_.isEmpty)
       .map(Base64.getDecoder.decode(_))
       .filterNot(_.isEmpty)
-      .flatMap(bytes => Option(kryo.readObject(new Input(bytes), clazz)))
+      .flatMap(bytes => Option(kryo.readObject(new Input(bytes), classTag[T].runtimeClass.asInstanceOf[Class[T]])))
   }
 
   override def toString: String = data
