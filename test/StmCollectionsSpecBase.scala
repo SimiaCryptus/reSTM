@@ -27,7 +27,7 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
         collection.atomic.sync.contains(item) mustBe true
       }
       // Run concurrent add/delete tests
-      val futures = for (item <- randomUUIDs.take(50)) yield Future {
+      val futures = for (item <- randomUUIDs.take(20)) yield Future {
         try {
           for(i <- 0 until 2) {
             collection.atomic.sync.contains(item) mustBe false
@@ -51,6 +51,19 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
       input.foreach(collection.atomic.sync.add(_))
       val output = Stream.continually(collection.atomic.sync.remove).takeWhile(_.isDefined).map(_.get).toList
       input mustBe output
+    }
+  }
+
+  "StmExecutionQueue" should {
+    "support queued operations" in {
+      StmExecutionQueue.start(1)
+      val hasRun = STMPtr.static[java.lang.Boolean](new PointerType("test/SimpleTest/StmExecutionQueue/callback"))
+      hasRun.atomic.sync.init(false)
+      StmExecutionQueue.workQueue.atomic.sync.add((cluster, executionContext)=>{
+        hasRun.atomic(cluster,executionContext).sync.write(true)
+      })
+      Thread.sleep(1000)
+      hasRun.atomic.sync.get mustBe Some(true)
     }
   }
 }

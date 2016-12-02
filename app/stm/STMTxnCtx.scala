@@ -2,6 +2,7 @@ package stm
 
 import storage.Restm
 import storage.Restm._
+import storage.data.KryoValue
 
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
@@ -12,7 +13,7 @@ import scala.reflect.ClassTag
 class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
   private[stm] val defaultTimeout: Duration = 5.seconds
 
-  def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] = txnId.flatMap(cluster.newPtr(_, new ValueType(value)))
+  def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] = txnId.flatMap(cluster.newPtr(_, KryoValue(value)))
 
   private[stm] def commit()(implicit executionContext: ExecutionContext): Future[Unit] =
   //if(writeLocks.isEmpty) Future.successful(Unit) else
@@ -34,7 +35,7 @@ class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
         } else {
           lock(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
         }
-        lockF.map(_ => cluster.queueValue(id, txnId, new ValueType(value)))
+        lockF.map(_ => cluster.queueValue(id, txnId, KryoValue(value)))
       } else {
         Future.successful(Unit)
       }

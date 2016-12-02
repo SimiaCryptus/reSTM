@@ -3,7 +3,7 @@ package stm
 import storage.Restm
 import storage.Restm.PointerType
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.reflect._
 
@@ -97,6 +97,34 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     case x: STMPtr[_] => x.equalityFields == equalityFields
     case _ => false
   }
+
+  class AtomicApi(implicit cluster: Restm, executionContext: ExecutionContext) {
+
+    class SyncApi(defaultTimeout: Duration) {
+      def get(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.get, defaultTimeout)
+      def init(default: => T)(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.init(default), defaultTimeout)
+      def write(value: T)(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.write(value), defaultTimeout)
+    }
+    def sync(defaultTimeout: Duration) : SyncApi = new SyncApi(defaultTimeout)
+    def sync : SyncApi = sync(1.minutes)
+
+    def get(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = new STMTxn[Option[T]] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+        STMPtr.this.readOpt()
+    }.txnRun(cluster)(executionContext)
+
+    def init(default: => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) = new STMTxn[STMPtr[T]] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+        STMPtr.this.init(default)
+    }.txnRun(cluster)(executionContext)
+
+    def write(value: T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) = new STMTxn[Unit] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+        STMPtr.this.write(value)
+    }.txnRun(cluster)(executionContext)
+  }
+  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+
 }
 
 

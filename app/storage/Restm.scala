@@ -8,7 +8,7 @@ import scala.concurrent.duration._
 
 object Restm {
   type TimeStamp = TxnTime
-  type ValueType = JacksonValue
+  type ValueType = KryoValue
   type PointerType = StringPtr
 }
 

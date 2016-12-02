@@ -10,23 +10,30 @@ import scala.reflect._
 
 object KryoValue {
   private def kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
+
+  def apply(value: AnyRef) = new KryoValue({
+    val byteArrayOutputStream: ByteArrayOutputStream = new ByteArrayOutputStream
+    val output = new Output(byteArrayOutputStream)
+    kryo.writeClassAndObject(output, value)
+    output.close()
+    val str: String = Base64.getEncoder.encodeToString(byteArrayOutputStream.toByteArray)
+    str
+  })
 }
 import storage.data.KryoValue._
 
 class KryoValue(val data: String) {
 
-  def this(value: AnyRef) = this({
-    val output = new Output(new ByteArrayOutputStream)
-    kryo.writeObject(output, value)
-    Base64.getEncoder.encodeToString(output.toBytes)
-  })
-
   def deserialize[T<:AnyRef:ClassTag](): Option[T] = {
-    Option(this.toString)
+    val maybeBytes: Option[Array[Byte]] = Option(this.toString)
       .filterNot(_.isEmpty)
       .map(Base64.getDecoder.decode(_))
       .filterNot(_.isEmpty)
-      .flatMap(bytes => Option(kryo.readObject(new Input(bytes), classTag[T].runtimeClass.asInstanceOf[Class[T]])))
+    val retVal: Option[AnyRef] = maybeBytes
+      .map(new Input(_))
+      .map(kryo.readClassAndObject(_))
+    retVal
+      .map(_.asInstanceOf[T])
   }
 
   override def toString: String = data

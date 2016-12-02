@@ -12,13 +12,8 @@ import scala.reflect._
 object JacksonValue {
   val utf8: Charset = java.nio.charset.Charset.forName("UTF-8")
   val mapper = new ObjectMapper().registerModule(DefaultScalaModule).enableDefaultTyping(DefaultTyping.NON_FINAL)
-}
 
-import storage.data.JacksonValue._
-
-class JacksonValue(val data: String) {
-
-  def this(value: Any) = this({
+  def apply(value: Any) = new JacksonValue({
     if (value.isInstanceOf[String]) {
       value.toString
     } else {
@@ -27,6 +22,11 @@ class JacksonValue(val data: String) {
       writer.toString
     }
   })
+}
+
+import storage.data.JacksonValue._
+
+class JacksonValue(val data: String) {
 
   def deserialize[T<:AnyRef:ClassTag](): Option[T] = {
     Option(this.toString).filterNot(_.isEmpty).map[T](json => {

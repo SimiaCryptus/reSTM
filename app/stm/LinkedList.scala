@@ -7,6 +7,8 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
 
+
+
 object LinkedList {
   def empty[T <: AnyRef] = new STMTxn[LinkedList[T]] {
     override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[LinkedList[T]] = create[T]
@@ -44,14 +46,14 @@ class LinkedList[T <: AnyRef](rootPtr : STMPtr[Option[LinkedListHead[T]]]) {
       prev.add(value)
     }).flatMap(newRootData=>rootPtr.write(Option(newRootData)))
   }
-  def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Option[T]] = {
     rootPtr.readOpt()
       .map(_.flatMap(x => x))
       .map(_.map(r => r.remove()))
-      .flatMap(newRootTupleOpt=>{
-        val (newRoot, removedItem) = newRootTupleOpt.get
-        rootPtr.write(Option(newRoot)).map(_=>removedItem)
-      })
+      .flatMap(_.map(newRootTuple=>{
+        val (newRoot, removedItem) = newRootTuple
+        rootPtr.write(Option(newRoot)).map(_ => removedItem)
+      }).getOrElse(Future.successful(None)))
   }
 }
 
