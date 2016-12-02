@@ -18,9 +18,8 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
   def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
 
   "TreeSet" should {
-
     "support basic (concurrent) operations" in {
-      val collection = TreeSet.static[String](new PointerType("test/SimpleTest"))
+      val collection = TreeSet.static[String](new PointerType("test/SimpleTest/TreeSet"))
       // Bootstrap collection synchronously to control contention
       for (item <- randomUUIDs.take(5)) {
         collection.atomic.sync.contains(item) mustBe false
@@ -43,7 +42,16 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
       }
       Await.result(Future.sequence(futures), 1.minutes)
     }
+  }
 
+  "LinkedList" should {
+    "support basic (concurrent) operations" in {
+      val collection = LinkedList.static[String](new PointerType("test/SimpleTest/LinkedList"))
+      val input: List[String] = randomUUIDs.take(5).toList
+      input.foreach(collection.atomic.sync.add(_))
+      val output = Stream.continually(collection.atomic.sync.remove).takeWhile(_.isDefined).map(_.get).toList
+      input mustBe output
+    }
   }
 }
 
