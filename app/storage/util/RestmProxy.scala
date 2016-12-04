@@ -1,7 +1,6 @@
 package storage.util
 
 import java.nio.charset.Charset
-import java.util.concurrent.{LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 
 import dispatch.{as, url, _}
 import storage.Restm

@@ -23,7 +23,7 @@ class JacksonValueSpec extends WordSpec with MustMatchers {
     }
   }
 
-  def verify[T<:AnyRef:ClassTag](input: T): Unit = {
+  def verify[T <: AnyRef : ClassTag](input: T): Unit = {
     val string: String = JacksonValue(input).toString
     val output = new JacksonValue(string).deserialize[T]().get
     input mustBe output
@@ -51,7 +51,7 @@ class KryoValueSpec extends WordSpec with MustMatchers {
     }
   }
 
-  def verify[T<:AnyRef:ClassTag](input: T): Unit = {
+  def verify[T <: AnyRef : ClassTag](input: T): Unit = {
     val string: String = KryoValue(input).toString
     val output = new KryoValue(string).deserialize[T]().get
     input mustBe output

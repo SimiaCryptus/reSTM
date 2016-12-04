@@ -27,7 +27,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     log(s"$this $msg")
   }
 
-  def getCurrentValue(): Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
+  def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
     withActor {
       msg += 1
       Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_._1))
@@ -93,7 +93,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
 
   def writeBlob(time: TimeStamp, value: ValueType): Future[Unit] = qos("ptr") {
     withActor {
-      require(writeLock.exists(time == _), s"Lock mismatch: $writeLock != $time")
+      require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
       require(queuedValue.isEmpty, "Value already queued")
       if (committed) {
         history += writeLock.get -> value
@@ -118,7 +118,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
 
   def writeCommit(time: TimeStamp): Future[Unit] = qos("ptr") {
     withActor {
-      require(writeLock.exists(time == _), "Lock mismatch")
+      require(writeLock.contains(time), "Lock mismatch")
       if (queuedValue.isDefined) {
         history += writeLock.get -> queuedValue.get
         writeLock = None
@@ -142,7 +142,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
 
   def writeReset(time: TimeStamp = writeLock.get): Future[Unit] = qos("ptr") {
     withActor {
-      require(writeLock.exists(time == _), "Lock mismatch")
+      require(writeLock.contains(time), "Lock mismatch")
       writeLock = None
       queuedValue = None
       committed = false

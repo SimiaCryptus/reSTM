@@ -10,7 +10,8 @@ import scala.concurrent.duration.{Duration, _}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.reflect.ClassTag
 
-class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
+class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxnCtx]) {
+
   private[stm] val defaultTimeout: Duration = 5.seconds
 
   def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] = txnId.flatMap(cluster.newPtr(_, KryoValue(value)))
@@ -27,7 +28,7 @@ class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
   private[this] val writeLocks = new mutable.HashSet[PointerType]()
 
 
-  private[stm] def write[T <: AnyRef: ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
+  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
     readOpt(id).flatMap(prior => {
       if (value != prior.orNull) {
         val lockF = if (writeLocks.contains(id)) {
@@ -65,7 +66,8 @@ class STMTxnCtx(cluster: Restm, priority: Duration, prior: Option[STMTxnCtx]) {
   private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = txnId.flatMap(txnId => {
     cluster.lock(id, txnId)
   }).map(result => {
-    if (result.isEmpty) writeLocks += id; result.isEmpty
+    if (result.isEmpty) writeLocks += id;
+    result.isEmpty
   })
 
 

@@ -6,8 +6,8 @@ import com.google.common.annotations.VisibleForTesting
 import storage.Restm
 import storage.util.ActorLog
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 
 trait STMTxn[+R] {
   def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[R]

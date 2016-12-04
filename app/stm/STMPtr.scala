@@ -34,19 +34,19 @@ object STMPtr {
 class STMPtr[T <: AnyRef](val id: PointerType) {
 
   def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
-    optValue.map(_=>Future.successful(this)).getOrElse(write(default).map(_=>this))
+    optValue.map(_ => Future.successful(this)).getOrElse(write(default).map(_ => this))
   })
 
-  def initOrUpdate(default: => T, upadater: T=>T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+  def initOrUpdate(default: => T, upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
     val x = optValue.map(upadater).getOrElse(default)
-    write(x).map(_=>this)
+    write(x).map(_ => this)
   })
 
-  def update(upadater: T=>T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
-    write(upadater(optValue.get)).map(_=>this)
+  def update(upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+    write(upadater(optValue.get)).map(_ => this)
   })
 
-  def initOrUpdate(cluster: Restm, default: => T, upadater: T=>T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = new STMTxn[STMPtr[T]] {
+  def initOrUpdate(cluster: Restm, default: => T, upadater: T => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = new STMTxn[STMPtr[T]] {
     override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
       initOrUpdate(default, upadater)
     }
@@ -86,7 +86,9 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
       Await.result(STMPtr.this.read(), defaultTimeout)
     }
   }
+
   def sync(defaultTimeout: Duration) = new SyncApi(defaultTimeout)
+
   def sync(implicit ctx: STMTxnCtx) = new SyncApi(ctx.defaultTimeout)
 
   private def equalityFields = List(id)
@@ -102,11 +104,15 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
     class SyncApi(defaultTimeout: Duration) {
       def get(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.get, defaultTimeout)
+
       def init(default: => T)(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.init(default), defaultTimeout)
+
       def write(value: T)(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.write(value), defaultTimeout)
     }
-    def sync(defaultTimeout: Duration) : SyncApi = new SyncApi(defaultTimeout)
-    def sync : SyncApi = sync(1.minutes)
+
+    def sync(defaultTimeout: Duration): SyncApi = new SyncApi(defaultTimeout)
+
+    def sync: SyncApi = sync(1.minutes)
 
     def get(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = new STMTxn[Option[T]] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -123,6 +129,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
         STMPtr.this.write(value)
     }.txnRun(cluster)(executionContext)
   }
+
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
 }

@@ -4,6 +4,7 @@ import java.util.concurrent.Executors
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm._
+import stm.lib0.{LinkedList, StmExecutionQueue, TreeSet}
 import storage.Restm._
 import storage.util._
 import storage.{RestmActors, _}
@@ -15,6 +16,7 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
 
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+
   def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
 
   "TreeSet" should {
@@ -29,7 +31,7 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
       // Run concurrent add/delete tests
       val futures = for (item <- randomUUIDs.take(20)) yield Future {
         try {
-          for(i <- 0 until 2) {
+          for (i <- 0 until 2) {
             collection.atomic.sync.contains(item) mustBe false
             collection.atomic.sync.add(item)
             collection.atomic.sync.contains(item) mustBe true
@@ -37,7 +39,7 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
             collection.atomic.sync.contains(item) mustBe false
           }
         } catch {
-          case e => throw new RuntimeException(s"Error in item $item",e)
+          case e => throw new RuntimeException(s"Error in item $item", e)
         }
       }
       Await.result(Future.sequence(futures), 1.minutes)
@@ -59,8 +61,8 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
       StmExecutionQueue.start(1)
       val hasRun = STMPtr.static[java.lang.Boolean](new PointerType("test/SimpleTest/StmExecutionQueue/callback"))
       hasRun.atomic.sync.init(false)
-      StmExecutionQueue.workQueue.atomic.sync.add((cluster, executionContext)=>{
-        hasRun.atomic(cluster,executionContext).sync.write(true)
+      StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
+        hasRun.atomic(cluster, executionContext).sync.write(true)
       })
       Thread.sleep(1000)
       hasRun.atomic.sync.get mustBe Some(true)

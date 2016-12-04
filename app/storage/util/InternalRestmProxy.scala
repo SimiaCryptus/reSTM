@@ -2,7 +2,7 @@ package storage.util
 
 import dispatch.{as, url, _}
 import storage.Restm._
-import storage.{LockedException, RestmImpl, RestmInternal}
+import storage.{LockedException, RestmInternal}
 
 import scala.concurrent.{ExecutionContext, ExecutionException, Future}
 
@@ -34,7 +34,8 @@ class InternalRestmProxy(val baseUrl: String)(implicit executionContext: Executi
         case 200 => Option(new ValueType(response.getResponseBody))
         case 409 => throw new LockedException(new TimeStamp(response.getResponseBody))
       }
-    }}).recoverWith({
+    }
+    }).recoverWith({
       case e: ExecutionException if e.getCause != null && e.getCause != e => Future.failed(e.getCause)
     })
   }
@@ -73,10 +74,12 @@ class InternalRestmProxy(val baseUrl: String)(implicit executionContext: Executi
 
   override def _initValue(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean] = {
     Http((url(baseUrl) / "_mem" / "init" / id.toString).addQueryParameter("time", time.toString).PUT << value.toString
-      > { _.getStatusCode match {
+      > {
+      _.getStatusCode match {
         case 200 => true
         case 409 => false
-      }})
+      }
+    })
   }
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] = {

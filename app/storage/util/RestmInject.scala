@@ -1,6 +1,6 @@
 package storage.util
 
-import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import java.util.concurrent.Executors
 import javax.inject.Singleton
 
 import storage.Restm.{PointerType, TimeStamp, ValueType}

@@ -1,7 +1,5 @@
 package storage
 
-import java.util.concurrent.{LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
-
 import storage.Restm._
 import storage.data.TxnTime
 
@@ -12,7 +10,7 @@ object RestmImpl {
   var failChainedCalls = false
 }
 
-class RestmImpl(val internal : RestmInternal)(implicit executionContext : ExecutionContext) extends Restm {
+class RestmImpl(val internal: RestmInternal)(implicit executionContext: ExecutionContext) extends Restm {
 
   override def getPtr(id: PointerType): Future[Option[ValueType]] = internal._getValue(id).recoverWith({
     case e: LockedException if e.conflitingTxn.age > 5.seconds =>
@@ -38,7 +36,7 @@ class RestmImpl(val internal : RestmInternal)(implicit executionContext : Execut
       val id: PointerType = new PointerType()
       internal._initValue(time, value, id).map(ok => Option(id).filter(_ => ok))
     }
-    def recursiveNewPtr: Future[PointerType] = newPtrAttempt.flatMap(attempt=>attempt.map(ptr=>Future.successful(ptr))
+    def recursiveNewPtr: Future[PointerType] = newPtrAttempt.flatMap(attempt => attempt.map(ptr => Future.successful(ptr))
       .getOrElse(recursiveNewPtr))
     recursiveNewPtr
   }

@@ -51,7 +51,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
 
   override def toString = s"txn@$name#$msg"
 
-  def getState() = qos("txn") {
+  def getState = qos("txn") {
     withActor {
       state
     }

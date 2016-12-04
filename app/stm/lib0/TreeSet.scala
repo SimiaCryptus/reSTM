@@ -1,5 +1,6 @@
-package stm
+package stm.lib0
 
+import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -11,30 +12,36 @@ object TreeSet {
   def empty[T <: Comparable[T]] = new STMTxn[TreeSet[T]] {
     override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeSet[T]] = create[T]
   }
+
   def create[T <: Comparable[T]](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[BinaryTreeNode[T]]](None).map(new TreeSet(_))
 
-  def static[T <: Comparable[T]](id:PointerType) = new TreeSet(STMPtr.static[Option[BinaryTreeNode[T]]](id, None))
+  def static[T <: Comparable[T]](id: PointerType) = new TreeSet(STMPtr.static[Option[BinaryTreeNode[T]]](id, None))
 }
 
-class TreeSet[T <: Comparable[T]](rootPtr : STMPtr[Option[BinaryTreeNode[T]]]) {
+class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
+
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) {
 
-    class SyncApi(duration:Duration) {
+    class SyncApi(duration: Duration) {
       def add(value: T) = Await.result(AtomicApi.this.add(value), duration)
+
       def remove(value: T) = Await.result(AtomicApi.this.remove(value), duration)
+
       def contains(value: T) = Await.result(AtomicApi.this.contains(value), duration)
     }
-    def sync(duration:Duration) = new SyncApi(duration)
+
+    def sync(duration: Duration) = new SyncApi(duration)
+
     def sync = new SyncApi(10.seconds)
 
     def add(value: T) = new STMTxn[Unit] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] =
-        TreeSet.this.add(value).map(_=>Unit)
+        TreeSet.this.add(value).map(_ => Unit)
     }.txnRun(cluster)(executionContext)
 
     def remove(value: T) = new STMTxn[Unit] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] =
-        TreeSet.this.remove(value).map(_=>Unit)
+        TreeSet.this.remove(value).map(_ => Unit)
     }.txnRun(cluster)(executionContext)
 
     def contains(value: T) = new STMTxn[Boolean] {
@@ -42,30 +49,35 @@ class TreeSet[T <: Comparable[T]](rootPtr : STMPtr[Option[BinaryTreeNode[T]]]) {
         TreeSet.this.contains(value)
     }.txnRun(cluster)(executionContext)
   }
+
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatMap(x => x)).map(prev => {
+    rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(r => r += value).getOrElse(new BinaryTreeNode[T](value))
-    }).flatMap(newRootData=>rootPtr.write(Option(newRootData)))
+    }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
+
   def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatMap(x => x)).map(prev => {
+    rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.flatMap(r => r -= value)
-    }).flatMap(newRootData=>rootPtr.write(newRootData))
+    }).flatMap(newRootData => rootPtr.write(newRootData))
   }
+
   def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatMap(x => x)).map(prev => {
-      prev.map(_.contains(value)).getOrElse(false)
+    rootPtr.readOpt().map(_.flatten).map(prev => {
+      prev.exists(_.contains(value))
     })
   }
+
   def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatMap(x => x)).map(prev => {
+    rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.min()).getOrElse(None)
     })
   }
+
   def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatMap(x => x)).map(prev => {
+    rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.max()).getOrElse(None)
     })
   }
@@ -89,44 +101,44 @@ private case class BinaryTreeNode[T <: Comparable[T]]
   def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeNode[T]] = {
     val compare: Int = value.compareTo(newValue)
     if (compare == 0) {
-      if(left.isEmpty && right.isEmpty) {
+      if (left.isEmpty && right.isEmpty) {
         None
-      } else if(left.isDefined) {
+      } else if (left.isDefined) {
         left.map(leftPtr => {
           val prevNode: BinaryTreeNode[T] = leftPtr.sync.get
           val newValue: T = prevNode.min()
           val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
-          maybeNode.map(newNode=>{
+          maybeNode.map(newNode => {
             leftPtr.sync <= newNode
-            BinaryTreeNode.this.copy(value=newValue)
-          }).getOrElse(BinaryTreeNode.this.copy(left=None, value=newValue))
+            BinaryTreeNode.this.copy(value = newValue)
+          }).getOrElse(BinaryTreeNode.this.copy(left = None, value = newValue))
         })
       } else {
         right.map(rightPtr => {
           val prevNode: BinaryTreeNode[T] = rightPtr.sync.get
           val newValue: T = prevNode.max()
           val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
-          maybeNode.map(newNode=>{
+          maybeNode.map(newNode => {
             rightPtr.sync <= newNode
-            BinaryTreeNode.this.copy(value=newValue)
-          }).getOrElse(BinaryTreeNode.this.copy(right=None, value=newValue))
+            BinaryTreeNode.this.copy(value = newValue)
+          }).getOrElse(BinaryTreeNode.this.copy(right = None, value = newValue))
         })
       }
     } else if (compare < 0) {
       left.map(leftPtr => {
-        Option((leftPtr.sync.get -= newValue).map(newLeft=>{
+        Option((leftPtr.sync.get -= newValue).map(newLeft => {
           leftPtr.sync <= newLeft
           BinaryTreeNode.this
-        }).getOrElse(BinaryTreeNode.this.copy(left=None)))
+        }).getOrElse(BinaryTreeNode.this.copy(left = None)))
       }).getOrElse({
         throw new NoSuchElementException
       })
     } else {
       right.map(rightPtr => {
-        Option((rightPtr.sync.get -= newValue).map(newRight=>{
+        Option((rightPtr.sync.get -= newValue).map(newRight => {
           rightPtr.sync <= newRight
           BinaryTreeNode.this
-        }).getOrElse(BinaryTreeNode.this.copy(right=None)))
+        }).getOrElse(BinaryTreeNode.this.copy(right = None)))
       }).getOrElse({
         throw new NoSuchElementException
       })

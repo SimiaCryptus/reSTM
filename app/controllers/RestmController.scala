@@ -11,8 +11,8 @@ import storage._
 import storage.util.{InternalRestmProxy, RestmInternalHashRouter}
 
 import scala.collection.mutable
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
 class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
@@ -20,6 +20,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   val peers = new mutable.HashSet[String]()
   val localName: String = InetAddress.getLocalHost.getHostAddress
   val peerPort = 898
+
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
   val storageService = new RestmImpl(new RestmInternalHashRouter {

@@ -1,9 +1,9 @@
-import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import java.util.concurrent.Executors
 
 import org.scalatestplus.play._
 import storage.util.RestmProxy
 
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
+import scala.concurrent.ExecutionContext
 
 class IntegrationSpec extends ClusterSpecBase with OneServerPerTest {
 

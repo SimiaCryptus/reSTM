@@ -73,7 +73,7 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
         } catch {
           case e =>
             Thread.sleep(1000)
-            throw new RuntimeException(s"Error verifying $item",e)
+            throw new RuntimeException(s"Error verifying $item", e)
         }
       }
     }
@@ -190,14 +190,14 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
     Await.result(new STMTxn[Boolean] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         val eventualMaybeBinaryTreeNode: Future[Option[BinaryTreeNode]] = ptr.readOpt()
-        eventualMaybeBinaryTreeNode.map(v=>{
+        eventualMaybeBinaryTreeNode.map(v => {
           val option: Option[Boolean] = v.map(_.contains(item))
           option.getOrElse(false)
         })
       }
     }.txnRun(cluster)(executionContext), 30.seconds) mustBe true
   } catch {
-    case e => throw new RuntimeException(s"Error processing $item",e)
+    case e => throw new RuntimeException(s"Error processing $item", e)
   }
 
   def verifyMissing(ptr: STMPtr[BinaryTreeNode], uuids: ParSeq[String]): ParSeq[Future[String]] = {

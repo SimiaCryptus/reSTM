@@ -20,11 +20,12 @@ object KryoValue {
     str
   })
 }
+
 import storage.data.KryoValue._
 
 class KryoValue(val data: String) {
 
-  def deserialize[T<:AnyRef:ClassTag](): Option[T] = {
+  def deserialize[T <: AnyRef : ClassTag](): Option[T] = {
     val maybeBytes: Option[Array[Byte]] = Option(this.toString)
       .filterNot(_.isEmpty)
       .map(Base64.getDecoder.decode(_))

@@ -1,8 +1,8 @@
 package storage.util
 
-import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import java.util.concurrent.Executors
 
-import storage.{RestmActors, RestmImpl, RestmInternal}
+import storage.{RestmActors, RestmImpl}
 
 import scala.concurrent.ExecutionContext
 

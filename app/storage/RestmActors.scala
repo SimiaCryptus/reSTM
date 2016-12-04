@@ -1,7 +1,5 @@
 package storage
 
-import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
-
 import storage.Restm._
 import storage.actors._
 
@@ -32,7 +30,7 @@ class RestmActors(implicit executionContext: ExecutionContext) extends RestmInte
   }
 
   override def _txnState(time: TimeStamp): Future[String] = {
-    getTxnActor(time).getState()
+    getTxnActor(time).getState
   }
 
   def _resetValue(id: PointerType, time: TimeStamp): Future[Unit] = {
@@ -48,7 +46,7 @@ class RestmActors(implicit executionContext: ExecutionContext) extends RestmInte
   }
 
   def _getValue(id: PointerType): Future[Option[ValueType]] = {
-    getPtrActor(id).getCurrentValue().map(_.map(_._2))
+    getPtrActor(id).getCurrentValue.map(_.map(_._2))
   }
 
   def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = {

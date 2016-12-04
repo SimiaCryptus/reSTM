@@ -28,7 +28,7 @@ import storage.data.JacksonValue._
 
 class JacksonValue(val data: String) {
 
-  def deserialize[T<:AnyRef:ClassTag](): Option[T] = {
+  def deserialize[T <: AnyRef : ClassTag](): Option[T] = {
     Option(this.toString).filterNot(_.isEmpty).map[T](json => {
       //def prototype = new TypeReference[T]() {}
       def prototype = classTag[T].runtimeClass.asInstanceOf[Class[T]]
