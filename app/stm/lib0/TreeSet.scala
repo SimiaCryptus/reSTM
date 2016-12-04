@@ -5,7 +5,7 @@ import storage.Restm
 import storage.Restm.PointerType
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 
 
 object TreeSet {
@@ -20,34 +20,21 @@ object TreeSet {
 
 class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) {
+  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
 
-    class SyncApi(duration: Duration) {
-      def add(value: T) = Await.result(AtomicApi.this.add(value), duration)
-
-      def remove(value: T) = Await.result(AtomicApi.this.remove(value), duration)
-
-      def contains(value: T) = Await.result(AtomicApi.this.contains(value), duration)
+    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+      def add(key: T) = sync { AtomicApi.this.add(key) }
+      def remove(value: T) = sync { AtomicApi.this.remove(value) }
+      def contains(value: T) = sync { AtomicApi.this.contains(value) }
     }
 
     def sync(duration: Duration) = new SyncApi(duration)
 
     def sync = new SyncApi(10.seconds)
 
-    def add(value: T) = new STMTxn[Unit] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] =
-        TreeSet.this.add(value).map(_ => Unit)
-    }.txnRun(cluster)(executionContext)
-
-    def remove(value: T) = new STMTxn[Unit] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] =
-        TreeSet.this.remove(value).map(_ => Unit)
-    }.txnRun(cluster)(executionContext)
-
-    def contains(value: T) = new STMTxn[Boolean] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] =
-        TreeSet.this.contains(value)
-    }.txnRun(cluster)(executionContext)
+    def add(key: T) = atomic { TreeSet.this.add(key)(_,executionContext).map(_ => Unit) }
+    def remove(key: T) = atomic { TreeSet.this.remove(key)(_,executionContext) }
+    def contains(key: T) = atomic { TreeSet.this.contains(key)(_,executionContext) }
   }
 
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi

@@ -34,10 +34,18 @@ class LinkedList[T <: AnyRef](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
 
+  def stream()(implicit cluster: Restm, executionContext: ExecutionContext) : Stream[T] = {
+    rootPtr.atomic.sync.get.flatten.flatMap(_.tail).map(
+      _.atomic.sync.get.map(node=>node.value -> node.next)
+    ).map(Stream.iterate(_)(_.get._2.flatMap(
+      _.atomic.sync.get.map(node=>node.value -> node.next)
+    )).takeWhile(_.isDefined).map(_.get._1)).getOrElse(Stream.empty)
+  }
+
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
-    rootPtr.readOpt().map(_.flatten).map(_.getOrElse(new LinkedListHead)).map(prev => {
-      prev.add(value)
-    }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
+    val read: Future[LinkedListHead[T]] = rootPtr.readOpt().map(_.flatten).map(_.getOrElse(new LinkedListHead))
+    val update: Future[LinkedListHead[T]] = read.map(_.add(value))
+    update.flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
   def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
@@ -58,8 +66,9 @@ private case class LinkedListHead[T <: AnyRef]
 ) {
   def add(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): LinkedListHead[T] = {
     if (head.isDefined) {
-      val newNodeAddr = STMPtr.dynamicSync(LinkedListNode(newValue, right = head))
-      head.get <= head.get.sync.get.copy(left = Option(newNodeAddr))
+      val newNodeAddr = STMPtr.dynamicSync(LinkedListNode(newValue, prev = head))
+      val headPtr: STMPtr[LinkedListNode[T]] = head.get
+      headPtr <= headPtr.sync.get.copy(next = Option(newNodeAddr))
       copy(head = Option(newNodeAddr))
     } else {
       val newRoot: (STMPtr[LinkedListNode[T]]) = STMPtr.dynamicSync(LinkedListNode(newValue))
@@ -70,9 +79,9 @@ private case class LinkedListHead[T <: AnyRef]
   def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): (LinkedListHead[T], Option[T]) = {
     if (head.isDefined) {
       val tailNode: LinkedListNode[T] = tail.get.sync.get
-      val newTailAddr = tailNode.left
+      val newTailAddr = tailNode.next
       if (newTailAddr.isDefined) {
-        newTailAddr.get <= newTailAddr.get.sync.get.copy(right = None)
+        newTailAddr.get <= newTailAddr.get.sync.get.copy(prev = None)
         (copy(tail = newTailAddr), Option(tailNode.value))
       } else {
         (copy(head = None, tail = None), Option(tailNode.value))
@@ -86,11 +95,11 @@ private case class LinkedListHead[T <: AnyRef]
 private case class LinkedListNode[T <: AnyRef]
 (
   value: T,
-  left: Option[STMPtr[LinkedListNode[T]]] = None,
-  right: Option[STMPtr[LinkedListNode[T]]] = None
+  next: Option[STMPtr[LinkedListNode[T]]] = None,
+  prev: Option[STMPtr[LinkedListNode[T]]] = None
 ) {
 
-  private def equalityFields = List(value, left, right)
+  private def equalityFields = List(value, next, prev)
 
   override def hashCode(): Int = equalityFields.hashCode()
 

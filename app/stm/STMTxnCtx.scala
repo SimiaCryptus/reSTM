@@ -28,7 +28,6 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   private[this] val writeLocks = new mutable.HashSet[PointerType]()
   private[this] val pendingWrites = new mutable.HashMap[PointerType,ValueType]()
 
-
   private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
     require(!pendingWrites.contains(id))
     readOpt(id).flatMap(prior => {
@@ -74,7 +73,6 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     if (result.isEmpty) writeLocks += id;
     result.isEmpty
   })
-
 
   override def toString = {
     "txn@" + Option(txnId).filter(_.isCompleted).map(future => Await.result(future, 1.second))
