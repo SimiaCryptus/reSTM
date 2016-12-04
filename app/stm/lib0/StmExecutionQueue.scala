@@ -40,7 +40,6 @@ object StmExecutionQueue extends StmExecutionQueue {
 trait StmExecutionQueue {
   def workQueue : LinkedList[(Restm, ExecutionContext) => Unit]
 
-
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(f: Task[_]) = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }
     def add[T](f: (Restm, ExecutionContext)=>T, ancestors: List[Task[_]] = List.empty) = atomic { StmExecutionQueue.this.add[T](f, ancestors)(_,executionContext) }

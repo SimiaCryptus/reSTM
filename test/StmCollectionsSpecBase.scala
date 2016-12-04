@@ -59,13 +59,17 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
   "StmExecutionQueue" should {
     "support queued operations" in {
       StmExecutionQueue.start(1)
-      val hasRun = STMPtr.static[java.lang.Boolean](new PointerType("test/SimpleTest/StmExecutionQueue/callback"))
-      hasRun.atomic.sync.init(false)
+      val hasRun = STMPtr.static[java.lang.Integer](new PointerType("test/SimpleTest/StmExecutionQueue/callback"))
+      hasRun.atomic.sync.init(0)
       StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
-        hasRun.atomic(cluster, executionContext).sync.write(true)
+        hasRun.atomic(cluster, executionContext).sync.write(1)
+        "foo"
+      }).atomic.map(StmExecutionQueue, (value, cluster, executionContext) => {
+        require(value=="foo")
+        hasRun.atomic(cluster, executionContext).sync.write(2)
       })
       Thread.sleep(1000)
-      hasRun.atomic.sync.get mustBe Some(true)
+      hasRun.atomic.sync.get mustBe Some(2)
     }
   }
 }

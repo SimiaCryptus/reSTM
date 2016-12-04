@@ -26,9 +26,11 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
 
   private lazy val txnId = cluster.newTxn(priority)
   private[this] val writeLocks = new mutable.HashSet[PointerType]()
+  private[this] val pendingWrites = new mutable.HashMap[PointerType,ValueType]()
 
 
   private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
+    require(!pendingWrites.contains(id))
     readOpt(id).flatMap(prior => {
       if (value != prior.orNull) {
         val lockF = if (writeLocks.contains(id)) {
@@ -36,7 +38,10 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
         } else {
           lock(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
         }
-        lockF.map(_ => cluster.queueValue(id, txnId, KryoValue(value)))
+        lockF.map(x => {
+          pendingWrites += id -> KryoValue(value)
+          cluster.queueValue(id, txnId, KryoValue(value))
+        })
       } else {
         Future.successful(Unit)
       }

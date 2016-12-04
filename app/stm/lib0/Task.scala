@@ -10,32 +10,42 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
-
 object Task {
   def create[T](f: (Restm, ExecutionContext) => T, ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     STMPtr.dynamic[TaskData[T]](new TaskData[T](task = Option(f), triggers = ancestors)).map(new Task(_))
 
   def static[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]))
-
 }
 
 class Task[T](root : STMPtr[TaskData[T]]) {
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
-    //def add(value: T) = atomic { LinkedList.this.add(value) }
+  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+    def result() = atomic { Task.this.result()(_,executionContext) }
+    def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U) = atomic { Task.this.map(queue, function)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      //def add(value: T) = sync { AtomicApi.this.add(value) }
+      def result() = sync { AtomicApi.this.result() }
+      def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U) = sync { AtomicApi.this.map(queue, function) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
   }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    //def add(value: T) = sync { LinkedList.this.add(value) }
+    def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.result() }
+    def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
+
+  def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[U]] = {
+    val func: (Restm, ExecutionContext) => U = wrapMap(function)
+    Task.create(func, List(Task.this)).flatMap(task=>task.initTriggers(queue).map(_=>task))
+  }
+
+  def wrapMap[U](function: (T, Restm, ExecutionContext) => U): (Restm, ExecutionContext) => U = {
+    (c, e) => function(Task.this.atomic(c, e).sync.result(), c, e)
+  }
 
   def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     root.read().map(currentState => currentState.result.isDefined || currentState.exception.isDefined)
@@ -82,6 +92,9 @@ class Task[T](root : STMPtr[TaskData[T]]) {
     })
   }
 
+  def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[T] = {
+    root.read().map(currentState => currentState.exception.map(throw _).orElse(currentState.result).get)
+  }
 
   def canRun()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     root.read().flatMap(currentState => {
@@ -135,7 +148,6 @@ class Task[T](root : STMPtr[TaskData[T]]) {
       .getOrElse(Future.successful(Unit)))
   }
 }
-
 
 private case class TaskData[T](
                               task : Option[(Restm, ExecutionContext) => T] = None,
