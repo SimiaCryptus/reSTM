@@ -12,16 +12,9 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
 
   private[this] val locks = new mutable.HashSet[PointerType]()
   private[this] var state = "OPEN"
-  private[this] var msg = 0
 
-  private[this] def nextMsg = {
-    msg += 1
-    msg
-  }
-
-  private[this] def logMsg(msg: String) = {
-    log(s"txn@$name#$nextMsg $msg")
-  }
+  private[this] def logMsg(msg: String) = log(s"$this $msg")
+  override def toString = s"txn@$name#$messageNumber"
 
   def addLock(id: PointerType): Future[String] = qos("txn") {
     withActor {
@@ -48,8 +41,6 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
       case _ =>
     })
   }
-
-  override def toString = s"txn@$name#$msg"
 
   def getState = qos("txn") {
     withActor {

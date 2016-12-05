@@ -67,7 +67,6 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
     })
   }
 
-
   def cleanup(time: TimeStamp): Future[Unit] = {
     val state: Future[String] = internal._txnState(time)
     state.map({

@@ -12,6 +12,7 @@ import storage.{RestmActors, _}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 
+
 abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
 

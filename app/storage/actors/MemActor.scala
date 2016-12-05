@@ -8,33 +8,30 @@ import util.OperationMetrics._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
 
+
+class HistoryRecord(val time : TimeStamp, val value : ValueType) {
+  var coldStorageTs : Option[Long] = None
+}
+
 class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
-  private[this] val history = new scala.collection.mutable.ArrayBuffer[(TimeStamp, ValueType)]
+  val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]
   private[this] var lastRead: Option[TimeStamp] = None
   private[this] var writeLock: Option[TimeStamp] = None
   private[this] var committed: Boolean = false
   private[this] var queuedValue: Option[ValueType] = None
 
-  private[this] var msg = 0
-
-  private[this] def nextMsg = {
-    msg += 1
-    msg
-  }
-
-  private[this] def logMsg(msg: String) = {
-    log(s"$this $msg")
-  }
+  private[this] def logMsg(msg: String) = log(s"$this $msg")
+  override def toString = s"ptr@$name#${history.size}#$messageNumber"
 
   def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
     withActor {
-      msg += 1
-      Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_._1))
+      Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_.time))
+        .map(record=>record.time->record.value)
     }.andThen({
       case Success(result) =>
         logMsg(s"getCurrentValue")
-      case _ =>
+      case e : Throwable => logMsg(s"getCurrentValue failed - $e")
     })
   }
 
@@ -42,13 +39,13 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     withActor {
       writeLock.foreach(writeLock => if (writeLock < time) throw new LockedException(writeLock))
       lastRead = lastRead.filter(_ > time).orElse(Option(time))
-      Option(history.toArray.filter(_._1 <= time)
-        .filter(_._1 >= ifModifiedSince.getOrElse(new TimeStamp(0l))))
-        .filterNot(_.isEmpty).map(_.maxBy(_._1)._2)
+      Option(history.toArray.filter(_.time <= time)
+        .filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))))
+        .filterNot(_.isEmpty).map(_.maxBy(_.time).value)
     }.andThen({
       case Success(result) =>
         logMsg(s"getValue($time, $ifModifiedSince) $result")
-      case _ =>
+      case e : Throwable => logMsg(s"getValue failed - $e")
     })
   }
 
@@ -57,14 +54,18 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       if (history.nonEmpty) {
         false
       } else {
-        history += time -> value
+        history += new HistoryRecord(time, value)
         lastRead = Option(time)
         writeLock = None
         queuedValue = None
         committed = false
         true
       }
-    }
+    }.andThen({
+      case Success(result) =>
+        logMsg(s"init($time, $value) $result")
+      case e : Throwable => logMsg(s"Init failed - $e")
+    })
   }
 
   def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = qos("ptr") {
@@ -96,7 +97,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
       require(queuedValue.isEmpty, "Value already queued")
       if (committed) {
-        history += writeLock.get -> value
+        history += new HistoryRecord(writeLock.get, value)
         writeLock = None
         queuedValue = None
         committed = false
@@ -112,7 +113,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         } else {
           logMsg(s"writeBlob($time, $value) queued")
         }
-      case _ =>
+      case e : Throwable => logMsg(s"writeBlob failed - $e")
     }).map(_ => Unit)
   }
 
@@ -120,7 +121,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     withActor {
       require(writeLock.contains(time), "Lock mismatch")
       if (queuedValue.isDefined) {
-        history += writeLock.get -> queuedValue.get
+        history += new HistoryRecord(writeLock.get, queuedValue.get)
         writeLock = None
         queuedValue = None
         committed = false
@@ -154,5 +155,4 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   }
 
 
-  override def toString = s"ptr@$name#${history.size}#$nextMsg"
 }

@@ -46,7 +46,6 @@ abstract class STMSpecBase extends WordSpec with MustMatchers {
 
     }
 
-
     "simple binary tree" in {
 
       val ptr = STMPtr.static[BinaryTreeNode](new PointerType)

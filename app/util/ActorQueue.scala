@@ -10,12 +10,16 @@ import scala.util.Try
 trait ActorQueue {
   private[this] val queue = new java.util.concurrent.ConcurrentLinkedQueue[() => Unit]()
   private[this] val guard = new AtomicBoolean(false)
+  protected def messageNumber() = processedMessages
+  private[this] var processedMessages = 0
 
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = {
     val promise = Promise[T]()
     queue.add(() => {
       val result: Try[T] = Try {
-        f
+        val result = f
+        processedMessages += 1
+        result
       }.recover(errorHandler)
       promise.complete(result)
     })
