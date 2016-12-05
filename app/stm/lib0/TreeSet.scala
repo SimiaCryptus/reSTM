@@ -27,17 +27,23 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
       def remove(value: T) = sync { AtomicApi.this.remove(value) }
       def contains(value: T) = sync { AtomicApi.this.contains(value) }
     }
-
     def sync(duration: Duration) = new SyncApi(duration)
-
     def sync = new SyncApi(10.seconds)
 
     def add(key: T) = atomic { TreeSet.this.add(key)(_,executionContext).map(_ => Unit) }
     def remove(key: T) = atomic { TreeSet.this.remove(key)(_,executionContext) }
     def contains(key: T) = atomic { TreeSet.this.contains(key)(_,executionContext) }
   }
-
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+
+  class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+    def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeSet.this.add(key) }
+    def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeSet.this.remove(value) }
+    def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeSet.this.contains(value) }
+  }
+  def sync(duration: Duration) = new SyncApi(duration)
+  def sync = new SyncApi(10.seconds)
+
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
