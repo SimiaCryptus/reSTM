@@ -78,11 +78,11 @@ private case class BinaryTreeNode[T <: Comparable[T]]
 ) {
 
   def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    right.map(_.sync.get.min).getOrElse(value)
+    right.map(_.sync.read.min).getOrElse(value)
   }
 
   def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    left.map(_.sync.get.min).getOrElse(value)
+    left.map(_.sync.read.min).getOrElse(value)
   }
 
   def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeNode[T]] = {
@@ -92,7 +92,7 @@ private case class BinaryTreeNode[T <: Comparable[T]]
         None
       } else if (left.isDefined) {
         left.map(leftPtr => {
-          val prevNode: BinaryTreeNode[T] = leftPtr.sync.get
+          val prevNode: BinaryTreeNode[T] = leftPtr.sync.read
           val newValue: T = prevNode.min()
           val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
           maybeNode.map(newNode => {
@@ -102,7 +102,7 @@ private case class BinaryTreeNode[T <: Comparable[T]]
         })
       } else {
         right.map(rightPtr => {
-          val prevNode: BinaryTreeNode[T] = rightPtr.sync.get
+          val prevNode: BinaryTreeNode[T] = rightPtr.sync.read
           val newValue: T = prevNode.max()
           val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
           maybeNode.map(newNode => {
@@ -113,7 +113,7 @@ private case class BinaryTreeNode[T <: Comparable[T]]
       }
     } else if (compare < 0) {
       left.map(leftPtr => {
-        Option((leftPtr.sync.get -= newValue).map(newLeft => {
+        Option((leftPtr.sync.read -= newValue).map(newLeft => {
           leftPtr.sync <= newLeft
           BinaryTreeNode.this
         }).getOrElse(BinaryTreeNode.this.copy(left = None)))
@@ -122,7 +122,7 @@ private case class BinaryTreeNode[T <: Comparable[T]]
       })
     } else {
       right.map(rightPtr => {
-        Option((rightPtr.sync.get -= newValue).map(newRight => {
+        Option((rightPtr.sync.read -= newValue).map(newRight => {
           rightPtr.sync <= newRight
           BinaryTreeNode.this
         }).getOrElse(BinaryTreeNode.this.copy(right = None)))
@@ -135,14 +135,14 @@ private case class BinaryTreeNode[T <: Comparable[T]]
   def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeNode[T] = {
     if (value.compareTo(newValue) < 0) {
       left.map(leftPtr => {
-        leftPtr.sync <= (leftPtr.sync.get += newValue)
+        leftPtr.sync <= (leftPtr.sync.read += newValue)
         BinaryTreeNode.this
       }).getOrElse({
         this.copy(left = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
       })
     } else {
       right.map(rightPtr => {
-        rightPtr.sync <= (rightPtr.sync.get += newValue)
+        rightPtr.sync <= (rightPtr.sync.read += newValue)
         BinaryTreeNode.this
       }).getOrElse({
         this.copy(right = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
@@ -154,9 +154,9 @@ private case class BinaryTreeNode[T <: Comparable[T]]
     if (value.compareTo(newValue) == 0) {
       true
     } else if (value.compareTo(newValue) < 0) {
-      left.exists(_.sync.get.contains(newValue))
+      left.exists(_.sync.read.contains(newValue))
     } else {
-      right.exists(_.sync.get.contains(newValue))
+      right.exists(_.sync.read.contains(newValue))
     }
   }
 

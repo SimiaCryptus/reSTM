@@ -1,5 +1,6 @@
 package stm
 
+import stm.lib0.{AtomicApiBase, SyncApiBase}
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -46,18 +47,6 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     write(upadater(optValue.get)).map(_ => this)
   })
 
-  def initOrUpdate(cluster: Restm, default: => T, upadater: T => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = new STMTxn[STMPtr[T]] {
-    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-      initOrUpdate(default, upadater)
-    }
-  }.txnRun(cluster)(executionContext)
-
-  def init(cluster: Restm, default: => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = new STMTxn[STMPtr[T]] {
-    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-      init(default)
-    }
-  }.txnRun(cluster)(executionContext)
-
   def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Boolean] = ctx.lock(id)
     .recover({ case e => throw new RuntimeException(s"failed lock to $id", e) })
 
@@ -65,10 +54,8 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     .recover({ case e => throw new RuntimeException(s"failed readOpt to $id", e) })
 
   def read()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)
-    .recover({ case e => throw new RuntimeException(s"failed read to $id", e) })
 
   def read(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.getOrElse(default))
-    .recover({ case e => throw new RuntimeException(s"failed read to $id", e) })
 
   def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
     .recover({ case e => throw new RuntimeException(s"failed write to $id", e) })
@@ -77,60 +64,44 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     STMPtr.this.write(value)
   }
 
-  class SyncApi(defaultTimeout: Duration) {
-    def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
-      Await.result(STMPtr.this <= value, defaultTimeout)
+  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+
+    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+      def readOpt(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.readOpt)
+      def init(default: => T)(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.init(default))
+      def write(value: T)(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.write(value))
     }
 
-    implicit def get(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): T = {
-      Await.result(STMPtr.this.read(), defaultTimeout)
-    }
+    def sync(defaultTimeout: Duration): SyncApi = new SyncApi(defaultTimeout)
+    def sync: SyncApi = sync(1.minutes)
+
+    def readOpt(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] =
+      atomic { STMPtr.this.readOpt()(_,executionContext,classTag) }
+
+    def init(default: => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) =
+      atomic { STMPtr.this.init(default)(_,executionContext,classTag) }
+
+    def write(value: T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) =
+      atomic { STMPtr.this.write(value)(_,executionContext,classTag) }
   }
+  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
+  class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+    def read(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.read())
+    def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.init(default))
+    def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.write(value))
+    def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = STMPtr.this <= value
+  }
   def sync(defaultTimeout: Duration) = new SyncApi(defaultTimeout)
-
   def sync(implicit ctx: STMTxnCtx) = new SyncApi(ctx.defaultTimeout)
 
   private def equalityFields = List(id)
-
   override def hashCode(): Int = equalityFields.hashCode()
-
   override def equals(obj: scala.Any): Boolean = obj match {
     case x: STMPtr[_] => x.equalityFields == equalityFields
     case _ => false
   }
 
-  class AtomicApi(implicit cluster: Restm, executionContext: ExecutionContext) {
-
-    class SyncApi(defaultTimeout: Duration) {
-      def get(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.get, defaultTimeout)
-
-      def init(default: => T)(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.init(default), defaultTimeout)
-
-      def write(value: T)(implicit classTag: ClassTag[T]) = Await.result(AtomicApi.this.write(value), defaultTimeout)
-    }
-
-    def sync(defaultTimeout: Duration): SyncApi = new SyncApi(defaultTimeout)
-
-    def sync: SyncApi = sync(1.minutes)
-
-    def get(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = new STMTxn[Option[T]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-        STMPtr.this.readOpt()
-    }.txnRun(cluster)(executionContext)
-
-    def init(default: => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) = new STMTxn[STMPtr[T]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-        STMPtr.this.init(default)
-    }.txnRun(cluster)(executionContext)
-
-    def write(value: T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) = new STMTxn[Unit] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-        STMPtr.this.write(value)
-    }.txnRun(cluster)(executionContext)
-  }
-
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
 }
 

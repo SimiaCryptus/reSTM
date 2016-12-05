@@ -148,7 +148,7 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
         hasRun.atomic(cluster, executionContext).sync.write(2)
       })
       Thread.sleep(1000)
-      hasRun.atomic.sync.get mustBe Some(2)
+      hasRun.atomic.sync.readOpt mustBe Some(2)
     }
   }
 
@@ -168,15 +168,15 @@ abstract class StmCollectionsSpecBase extends WordSpec with MustMatchers {
         }
       }))
       Thread.sleep(1500)
-      val ticks: Integer = hasRun.atomic.sync.get.get
+      val ticks: Integer = hasRun.atomic.sync.readOpt.get
       println(ticks)
       require(ticks > 1)
       monitor.interrupt()
       StmDaemons.threads.values.foreach(_.interrupt())
       Thread.sleep(500)
-      val ticks2: Integer = hasRun.atomic.sync.get.get
+      val ticks2: Integer = hasRun.atomic.sync.readOpt.get
       Thread.sleep(500)
-      val ticks3: Integer = hasRun.atomic.sync.get.get
+      val ticks3: Integer = hasRun.atomic.sync.readOpt.get
       require(ticks2 == ticks3)
     }
   }

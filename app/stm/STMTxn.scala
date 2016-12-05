@@ -20,7 +20,6 @@ trait STMTxn[+R] {
     this
   }
 
-
   final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = {
     val opId = UUID.randomUUID().toString
     def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = {
