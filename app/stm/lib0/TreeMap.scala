@@ -75,43 +75,43 @@ private case class BinaryTreeMapNode[T <: Comparable[T],V]
   right: Option[STMPtr[BinaryTreeMapNode[T,V]]] = None
 ) {
 
-  def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    right.map(_.sync.read.min).getOrElse(key)
+  def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T,V] = {
+    right.map(_.sync.read.min).getOrElse(this)
   }
 
-  def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    left.map(_.sync.read.min).getOrElse(key)
+  def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T,V] = {
+    left.map(_.sync.read.min).getOrElse(this)
   }
 
-  def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeMapNode[T,V]] = {
-    val compare: Int = key.compareTo(newValue)
+  def -=(toRemove: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeMapNode[T,V]] = {
+    val compare: Int = key.compareTo(toRemove)
     if (compare == 0) {
       if (left.isEmpty && right.isEmpty) {
         None
       } else if (left.isDefined) {
         left.map(leftPtr => {
           val prevNode: BinaryTreeMapNode[T,V] = leftPtr.sync.read
-          val newValue: T = prevNode.min()
-          val maybeNode: Option[BinaryTreeMapNode[T,V]] = prevNode -= newValue
+          val promotedNode = prevNode.min()
+          val maybeNode: Option[BinaryTreeMapNode[T,V]] = prevNode -= promotedNode.key
           maybeNode.map(newNode => {
             leftPtr.sync <= newNode
-            BinaryTreeMapNode.this.copy(key = newValue)
-          }).getOrElse(BinaryTreeMapNode.this.copy(left = None, key = newValue))
+            BinaryTreeMapNode.this.copy(key = promotedNode.key, value = promotedNode.value)
+          }).getOrElse(BinaryTreeMapNode.this.copy(left = None, key = promotedNode.key, value = promotedNode.value))
         })
       } else {
         right.map(rightPtr => {
           val prevNode: BinaryTreeMapNode[T,V] = rightPtr.sync.read
-          val newValue: T = prevNode.max()
-          val maybeNode: Option[BinaryTreeMapNode[T,V]] = prevNode -= newValue
+          val promotedNode = prevNode.max()
+          val maybeNode: Option[BinaryTreeMapNode[T,V]] = prevNode -= promotedNode.key
           maybeNode.map(newNode => {
             rightPtr.sync <= newNode
-            BinaryTreeMapNode.this.copy(key = newValue)
-          }).getOrElse(BinaryTreeMapNode.this.copy(right = None, key = newValue))
+            BinaryTreeMapNode.this.copy(key = promotedNode.key, value = promotedNode.value)
+          }).getOrElse(BinaryTreeMapNode.this.copy(right = None, key = promotedNode.key, value = promotedNode.value))
         })
       }
     } else if (compare < 0) {
       left.map(leftPtr => {
-        Option((leftPtr.sync.read -= newValue).map(newLeft => {
+        Option((leftPtr.sync.read -= toRemove).map(newLeft => {
           leftPtr.sync <= newLeft
           BinaryTreeMapNode.this
         }).getOrElse(BinaryTreeMapNode.this.copy(left = None)))
@@ -120,7 +120,7 @@ private case class BinaryTreeMapNode[T <: Comparable[T],V]
       })
     } else {
       right.map(rightPtr => {
-        Option((rightPtr.sync.read -= newValue).map(newRight => {
+        Option((rightPtr.sync.read -= toRemove).map(newRight => {
           rightPtr.sync <= newRight
           BinaryTreeMapNode.this
         }).getOrElse(BinaryTreeMapNode.this.copy(right = None)))

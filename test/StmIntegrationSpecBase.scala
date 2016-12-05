@@ -133,9 +133,9 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
         collection.atomic.sync.contains(item) mustBe true
       }
       // Run concurrent add/delete tests
-      val futures = for (item <- randomUUIDs.take(20)) yield Future {
+      val futures = for (item <- randomUUIDs.take(10)) yield Future {
         try {
-          for (i <- 0 until 2) {
+          for (i <- 0 until 10) {
             collection.atomic.sync.contains(item) mustBe false
             collection.atomic.sync.add(item)
             collection.atomic.sync.contains(item) mustBe true
@@ -200,13 +200,12 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       val futures = for (item <- randomUUIDs.take(20)) yield Future {
         try {
           println(item)
-          for (i <- 0 until 2) {
+          for (i <- 0 until 10) {
             collection.atomic.sync.get(item._1) mustBe None
             collection.atomic.sync.contains(item._1) mustBe false
             collection.atomic.sync.add(item._1, item._2)
 
-            // Known Bug: Concurrent deletion corrupts map?
-            //collection.atomic.sync.get(item._1) mustBe Option(item._2)
+            collection.atomic.sync.get(item._1) mustBe Option(item._2)
             collection.atomic.sync.contains(item._1) mustBe true
 
             collection.atomic.sync.remove(item._1)

@@ -90,7 +90,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     def read(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.read())
     def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.init(default))
     def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.write(value))
-    def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = STMPtr.this <= value
+    def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this <= value)
   }
   def sync(defaultTimeout: Duration) = new SyncApi(defaultTimeout)
   def sync(implicit ctx: STMTxnCtx) = new SyncApi(ctx.defaultTimeout)
