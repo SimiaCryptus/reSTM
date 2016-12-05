@@ -13,8 +13,9 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
   private[this] val locks = new mutable.HashSet[PointerType]()
   private[this] var state = "OPEN"
 
+  private def objId = Integer.toHexString(System.identityHashCode(TxnActor.this))
   private[this] def logMsg(msg: String) = log(s"$this $msg")
-  override def toString = s"txn@$name#$messageNumber"
+  override def toString = s"txn@$objId:$name#$messageNumber"
 
   def addLock(id: PointerType): Future[String] = qos("txn") {
     withActor {

@@ -22,7 +22,8 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   private[this] var queuedValue: Option[ValueType] = None
 
   private[this] def logMsg(msg: String) = log(s"$this $msg")
-  override def toString = s"ptr@$name#${history.size}#$messageNumber"
+  private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
+  override def toString = s"ptr@$objId:$name#${history.size}#$messageNumber"
 
   def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = qos("ptr") {
     withActor {

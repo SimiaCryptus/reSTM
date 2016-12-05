@@ -73,6 +73,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
   def clear() = {
     ptrs.clear()
     txns.clear()
+    coldStorage.clear()
   }
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] = {

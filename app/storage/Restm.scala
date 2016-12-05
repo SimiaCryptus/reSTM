@@ -7,6 +7,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 object Restm {
+  def value(value: AnyRef): ValueType = KryoValue(value)
+
   type TimeStamp = TxnTime
   type ValueType = KryoValue
   type PointerType = StringPtr

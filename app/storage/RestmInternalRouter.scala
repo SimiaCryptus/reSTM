@@ -1,7 +1,6 @@
-package storage.util
+package storage
 
 import storage.Restm._
-import storage.RestmInternal
 
 import scala.concurrent.Future
 
@@ -43,7 +42,7 @@ trait RestmInternalRouter extends RestmInternal {
 
 }
 
-trait RestmInternalHashRouter extends RestmInternalRouter {
+trait RestmInternalStaticListRouter extends RestmInternalRouter {
   def shards: List[RestmInternal]
 
   def inner(shardObj: AnyRef): RestmInternal = {

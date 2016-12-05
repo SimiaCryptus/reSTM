@@ -8,7 +8,7 @@ import akka.actor.ActorSystem
 import play.api.mvc._
 import storage.Restm._
 import storage._
-import storage.util.{InternalRestmProxy, RestmInternalHashRouter}
+import storage.util.InternalRestmProxy
 
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -23,7 +23,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
 
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
-  val storageService = new RestmImpl(new RestmInternalHashRouter {
+  val storageService = new RestmImpl(new RestmInternalStaticListRouter {
     val local: RestmActors = new RestmActors()(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 
     override def shards: List[RestmInternal] = {

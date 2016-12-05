@@ -33,9 +33,9 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
         awsCredentialsProvider = new AWSStaticCredentialsProvider(credentials))
       val ids = randomUUIDs.take(5).toList
       addItems(ids)
-      Thread.sleep(1000)
+      Thread.sleep(5000) // DynamoDB has loose R/W consistency
       deleteItems(ids)
-      Thread.sleep(1000)
+      Thread.sleep(5000) // DynamoDB has loose R/W consistency
       addItems(ids)
     }
   }
