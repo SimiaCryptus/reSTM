@@ -79,8 +79,11 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
 
   def writeValue(id: String, time: String) = Action.async { request => {
     storageService.queueValue(new PointerType(id), new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(x => Ok(""))
-  }
-  }
+  }}
+
+  def delValue(id: String, time: String) = Action.async { request => {
+    storageService.delete(new PointerType(id), new TimeStamp(time)).map(x => Ok(""))
+  }}
 
   def newTxn(priority: Int) = Action.async {
     storageService.newTxn(priority.milliseconds).map(x => Ok(x.toString))

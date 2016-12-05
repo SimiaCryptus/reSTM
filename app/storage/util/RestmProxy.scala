@@ -67,8 +67,13 @@ class RestmProxy(val baseUrl: String)(implicit executionContext: ExecutionContex
   }
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] = {
-    Http((url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString).PUT << value.toString OK as.String)
-      .map(_ => {})
+    val request: Req = (url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString)
+    Http(request.PUT << value.toString OK as.String).map(_ => {})
+  }
+
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] = {
+    val request: Req = (url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString)
+    Http(request.DELETE OK as.String).map(_ => {})
   }
 
 }

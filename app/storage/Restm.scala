@@ -29,6 +29,8 @@ trait Restm {
 
   def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit]
 
+  def delete(id: PointerType, time: TimeStamp): Future[Unit]
+
   def commit(time: TimeStamp): Future[Unit]
 
   def reset(time: TimeStamp): Future[Unit]

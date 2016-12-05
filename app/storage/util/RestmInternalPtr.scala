@@ -41,4 +41,7 @@ trait RestmInternalPtr extends RestmInternal {
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
     _inner.queueValue(id, time, value)
 
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] =
+    _inner.delete(id, time)
+
 }

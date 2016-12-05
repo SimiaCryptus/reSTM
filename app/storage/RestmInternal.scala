@@ -26,4 +26,6 @@ trait RestmInternal {
   def _txnState(time: TimeStamp): Future[String]
 
   def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit]
+
+  def delete(id: PointerType, time: TimeStamp): Future[Unit]
 }

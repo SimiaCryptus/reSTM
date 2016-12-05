@@ -120,4 +120,6 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
   def _commitTxn(time: TimeStamp): Future[Set[PointerType]] = {
     getTxnActor(time).setState("COMMIT")
   }
+
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] = getPtrActor(id).delete(time)
 }

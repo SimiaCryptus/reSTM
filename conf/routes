@@ -12,6 +12,7 @@ PUT     /mem                        controllers.RestmController.newValue(time: S
 GET     /mem/*id                    controllers.RestmController.getValue(id: String, time: Option[String], ifModifiedSince: Option[String])
 POST    /mem/*id                    controllers.RestmController.lockValue(id: String, time: String)
 PUT     /mem/*id                    controllers.RestmController.writeValue(id: String, time: String)
+DELETE  /mem/*id                    controllers.RestmController.delValue(id: String, time: String)
 
 GET     /txn                        controllers.RestmController.newTxn(priority: Int = 0)
 GET     /txn/*time                  controllers.RestmController.getTxn(time:String)

@@ -87,4 +87,7 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
     internal.queueValue(id, time, value)
+
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] =
+    internal.delete(id, time)
 }

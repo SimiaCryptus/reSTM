@@ -52,6 +52,9 @@ trait RestmInternalReplicator extends RestmInternal {
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
     Future.sequence(inner().map(_.queueValue(id, time, value))).map(_=>Unit)
 
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] =
+    Future.sequence(inner().map(_.delete(id, time))).map(_=>Unit)
+
 }
 
 class RestmInternalStaticListReplicator(val shards: Seq[RestmInternal])(implicit val executionContext: ExecutionContext) extends RestmInternalReplicator {

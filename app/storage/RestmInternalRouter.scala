@@ -40,6 +40,9 @@ trait RestmInternalRouter extends RestmInternal {
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =
     inner(id).queueValue(id, time, value)
 
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] =
+    inner(id).delete(id, time)
+
 }
 
 trait RestmInternalStaticListRouter extends RestmInternalRouter {

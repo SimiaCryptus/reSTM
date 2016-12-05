@@ -118,6 +118,31 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }).map(_ => Unit)
   }
 
+  def delete(time: TimeStamp): Future[Unit] = qos("ptr") {
+    withActor {
+      require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
+      require(queuedValue.isEmpty, "Value already queued")
+      if (committed) {
+        history += new HistoryRecord(writeLock.get, null)
+        writeLock = None
+        queuedValue = None
+        committed = false
+        true
+      } else {
+        queuedValue = Option(null)
+        false
+      }
+    }.andThen({
+      case Success(result) =>
+        if (result) {
+          logMsg(s"delete($time) written")
+        } else {
+          logMsg(s"delete($time) queued")
+        }
+      case e : Throwable => logMsg(s"delete failed - $e")
+    }).map(_ => Unit)
+  }
+
   def writeCommit(time: TimeStamp): Future[Unit] = qos("ptr") {
     withActor {
       require(writeLock.contains(time), "Lock mismatch")
