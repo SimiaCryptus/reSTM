@@ -18,6 +18,7 @@ object Task {
 
   sealed trait TaskResult[T]
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
+  final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers:List[Task[T]] = List.empty) extends TaskResult[T]
 }
 
 import stm.lib0.Task._
@@ -86,15 +87,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   }
 
   def initTriggers(queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    root.read.flatMap(prev=>{
-      Future.sequence(prev.triggers.map(_.addSubscriber(Task.this, queue))).map(_.reduceOption(_&&_).getOrElse(true)).flatMap(allTriggersTripped=>{
-        if(allTriggersTripped) {
-          queue.add(Task.this)
-        } else {
-          Future.successful(Unit)
-        }
-      })
-    })
+    root.read.flatMap(_.initTriggers(Task.this, queue)).map(_=>Unit)
   }
 
   def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[T] = {
@@ -118,19 +111,22 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   def complete(result:Try[TaskResult[T]])(implicit cluster: Restm, executionContext: ExecutionContext): Future[Unit] = {
     new STMTxn[Map[Task[_], StmExecutionQueue]] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-        root.read().map(currentState => {
-          root.write(result.transform[TaskData[T]](
+        root.read().flatMap(currentState => {
+          result.transform[Future[TaskData[T]]](
             taskResult => Try {
               taskResult match {
-                case TaskSuccess(result)=>
-                  currentState.copy(result = Option(result))
+                case TaskSuccess(result) =>
+                  Future.successful(currentState.copy(result = Option(result)))
+                case TaskContinue(queue, next, newTriggers) =>
+                  currentState
+                    .copy(task = Option(next), triggers = newTriggers)
+                    .initTriggers(Task.this, queue)
               }
             },
             exception => Try {
-              currentState.copy(exception = Option(exception))
+              Future.successful(currentState.copy(exception = Option(exception)))
             }
-          ).get)
-          currentState.subscribers
+          ).get.flatMap(update=>root.write(update)).map(_=>currentState.subscribers)
         })
       }
     }.txnRun(cluster)(executionContext).flatMap(subscribers => {
@@ -164,4 +160,14 @@ private case class TaskData[T](
                               exception: Option[Throwable] = None,
                               triggers: List[Task[_]] = List.empty,
                               subscribers: Map[Task[_], StmExecutionQueue] = Map.empty
-                              )
+                              ) {
+  def initTriggers(t:Task[T], queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskData[T]] = {
+    Future.sequence(this.triggers.map(_.addSubscriber(t, queue))).map(_.reduceOption(_ && _).getOrElse(true)).flatMap(allTriggersTripped => {
+      if (allTriggersTripped) {
+        queue.add(t).map(_=>TaskData.this)
+      } else {
+        Future.successful(TaskData.this)
+      }
+    })
+  }
+}

@@ -4,6 +4,7 @@ import java.util.concurrent.Executors
 import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
+import stm.lib0.Task.TaskResult
 import stm.lib0._
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
@@ -13,6 +14,23 @@ import storage.{RestmActors, _}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.Try
+
+object StmIntegrationSpecBase {
+  def recursiveTask(counter: STMPtr[java.lang.Integer])(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
+    val x = Await.result(new STMTxn[Int] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+        //implicit val executionContext = _executionContext
+        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
+      }
+    }.txnRun(cluster)(executionContext), 100.milliseconds)
+    if (x < 5) {
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter) _
+      new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue)
+    } else {
+      new Task.TaskSuccess("foo")
+    }
+  }
+}
 
 
 abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
@@ -261,10 +279,19 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       }).atomic.map(StmExecutionQueue, (value, cluster, executionContext) => {
         require(value=="foo")
         hasRun.atomic(cluster, executionContext).sync.write(2)
-        new Task.TaskSuccess()
+        new Task.TaskSuccess("bar")
       })
       Thread.sleep(1000)
       hasRun.atomic.sync.readOpt mustBe Some(2)
+    }
+    "support continued operations" in {
+      StmExecutionQueue.start(1)
+      val counter = STMPtr.static[java.lang.Integer](new PointerType)
+      counter.atomic.sync.init(0)
+
+      StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter) _)
+      Thread.sleep(1000)
+      counter.atomic.sync.readOpt mustBe Some(5)
     }
   }
 
