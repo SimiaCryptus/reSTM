@@ -11,20 +11,25 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
 object Task {
-  def create[T](f: (Restm, ExecutionContext) => T, ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+  def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     STMPtr.dynamic[TaskData[T]](new TaskData[T](task = Option(f), triggers = ancestors)).map(new Task(_))
 
   def static[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]))
+
+  sealed trait TaskResult[T]
+  final case class TaskSuccess[T](value:T) extends TaskResult[T]
 }
+
+import stm.lib0.Task._
 
 class Task[T](root : STMPtr[TaskData[T]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
     def result() = atomic { Task.this.result()(_,executionContext) }
-    def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U) = atomic { Task.this.map(queue, function)(_,executionContext) }
+    def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = atomic { Task.this.map(queue, function)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def result() = sync { AtomicApi.this.result() }
-      def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U) = sync { AtomicApi.this.map(queue, function) }
+      def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = sync { AtomicApi.this.map(queue, function) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
@@ -32,14 +37,14 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.result() }
-    def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
+    def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
 
-  def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => U)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[U]] = {
-    val func: (Restm, ExecutionContext) => U = wrapMap(function)
+  def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[U]] = {
+    val func: (Restm, ExecutionContext) => TaskResult[U] = wrapMap(function)
     Task.create(func, List(Task.this)).flatMap(task=>task.initTriggers(queue).map(_=>task))
   }
 
@@ -52,7 +57,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   }
 
   def atomicObtainTask(executorId: String = UUID.randomUUID().toString)(implicit cluster: Restm, executionContext: ExecutionContext) = {
-    new STMTxn[Option[(Restm, ExecutionContext) => T]] {
+    new STMTxn[Option[(Restm, ExecutionContext) => TaskResult[T]]] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         obtainTask(executorId)
       }
@@ -110,13 +115,16 @@ class Task[T](root : STMPtr[TaskData[T]]) {
     }.txnRun(cluster)(executionContext)
   }
 
-  def complete(result:Try[T])(implicit cluster: Restm, executionContext: ExecutionContext): Future[Unit] = {
+  def complete(result:Try[TaskResult[T]])(implicit cluster: Restm, executionContext: ExecutionContext): Future[Unit] = {
     new STMTxn[Map[Task[_], StmExecutionQueue]] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         root.read().map(currentState => {
           root.write(result.transform[TaskData[T]](
-            result => Try {
-              currentState.copy(result = Option(result))
+            taskResult => Try {
+              taskResult match {
+                case TaskSuccess(result)=>
+                  currentState.copy(result = Option(result))
+              }
             },
             exception => Try {
               currentState.copy(exception = Option(exception))
@@ -150,7 +158,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
 }
 
 private case class TaskData[T](
-                              task : Option[(Restm, ExecutionContext) => T] = None,
+                              task : Option[(Restm, ExecutionContext) => TaskResult[T]] = None,
                               executorId : Option[String] = None,
                               result : Option[T] = None,
                               exception: Option[Throwable] = None,

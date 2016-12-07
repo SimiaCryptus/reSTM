@@ -1,6 +1,7 @@
 package stm.lib0
 
 import stm.STMTxnCtx
+import stm.lib0.Task.TaskResult
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -42,17 +43,17 @@ trait StmExecutionQueue {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(f: Task[_]) = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }
-    def add[T](f: (Restm, ExecutionContext)=>T, ancestors: List[Task[_]] = List.empty) = atomic { StmExecutionQueue.this.add[T](f, ancestors)(_,executionContext) }
+    def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty) = atomic { StmExecutionQueue.this.add[T](f, ancestors)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(f: Task[_]) = sync { AtomicApi.this.add(f) }
-      def add[T](f: (Restm, ExecutionContext)=>T, ancestors: List[Task[_]] = List.empty) = sync { AtomicApi.this.add[T](f, ancestors) }
+      def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty) = sync { AtomicApi.this.add[T](f, ancestors) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
   }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add[T](f: (Restm, ExecutionContext)=>T, ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+    def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
       sync { StmExecutionQueue.this.add[T](f, ancestors) }
     def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { StmExecutionQueue.this.add(f) }
   }
@@ -60,7 +61,7 @@ trait StmExecutionQueue {
   def sync = new SyncApi(10.seconds)
 
 
-  def add[T](f: (Restm, ExecutionContext)=>T, ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[T]] = {
+  def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[T]] = {
     Task.create(f, ancestors).flatMap(task=>task.initTriggers(StmExecutionQueue.this).map(_=>task))
   }
 

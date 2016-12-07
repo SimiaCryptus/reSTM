@@ -257,10 +257,11 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       hasRun.atomic.sync.init(0)
       StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
         hasRun.atomic(cluster, executionContext).sync.write(1)
-        "foo"
+        new Task.TaskSuccess("foo")
       }).atomic.map(StmExecutionQueue, (value, cluster, executionContext) => {
         require(value=="foo")
         hasRun.atomic(cluster, executionContext).sync.write(2)
+        new Task.TaskSuccess()
       })
       Thread.sleep(1000)
       hasRun.atomic.sync.readOpt mustBe Some(2)
