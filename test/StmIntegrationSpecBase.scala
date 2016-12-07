@@ -150,6 +150,18 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
     }
   }
 
+  "TreeCollection" should {
+    val collection = TreeCollection.static[String](new PointerType)
+    def randomStr = UUID.randomUUID().toString.take(8)
+    def randomUUIDs = Stream.continually(randomStr)
+    "support basic operations" in {
+      val input = randomUUIDs.take(5).toSet
+      input.foreach(collection.atomic.sync.add(_))
+      val output = Stream.continually(collection.atomic.sync.get()).takeWhile(_.isDefined).map(_.get).toSet
+      output mustBe input
+    }
+  }
+
   "TreeMap" should {
     val collection = TreeMap.static[String,String](new PointerType)
     def randomStr = UUID.randomUUID().toString.take(8)
@@ -305,11 +317,11 @@ class LocalClusterStmIntegrationSpec extends StmIntegrationSpecBase with BeforeA
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class IntegrationStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
+class ServletStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
   val cluster = new RestmProxy(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class IntegrationInteralStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
+class ActorServletStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val cluster = new RestmImpl(new InternalRestmProxy(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }

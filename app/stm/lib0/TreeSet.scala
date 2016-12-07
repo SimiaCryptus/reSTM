@@ -16,7 +16,110 @@ object TreeSet {
   def create[T <: Comparable[T]](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[BinaryTreeNode[T]]](None).map(new TreeSet(_))
 
   def static[T <: Comparable[T]](id: PointerType) = new TreeSet(STMPtr.static[Option[BinaryTreeNode[T]]](id, None))
+
+
+  private case class BinaryTreeNode[T <: Comparable[T]]
+  (
+    value: T,
+    left: Option[STMPtr[BinaryTreeNode[T]]] = None,
+    right: Option[STMPtr[BinaryTreeNode[T]]] = None
+  ) {
+
+    def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
+      right.map(_.sync.read.min).getOrElse(value)
+    }
+
+    def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
+      left.map(_.sync.read.min).getOrElse(value)
+    }
+
+    def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeNode[T]] = {
+      val compare: Int = value.compareTo(newValue)
+      if (compare == 0) {
+        if (left.isEmpty && right.isEmpty) {
+          None
+        } else if (left.isDefined) {
+          left.map(leftPtr => {
+            val prevNode: BinaryTreeNode[T] = leftPtr.sync.read
+            val newValue: T = prevNode.min()
+            val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
+            maybeNode.map(newNode => {
+              leftPtr.sync <= newNode
+              BinaryTreeNode.this.copy(value = newValue)
+            }).getOrElse(BinaryTreeNode.this.copy(left = None, value = newValue))
+          })
+        } else {
+          right.map(rightPtr => {
+            val prevNode: BinaryTreeNode[T] = rightPtr.sync.read
+            val newValue: T = prevNode.max()
+            val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
+            maybeNode.map(newNode => {
+              rightPtr.sync <= newNode
+              BinaryTreeNode.this.copy(value = newValue)
+            }).getOrElse(BinaryTreeNode.this.copy(right = None, value = newValue))
+          })
+        }
+      } else if (compare < 0) {
+        left.map(leftPtr => {
+          Option((leftPtr.sync.read -= newValue).map(newLeft => {
+            leftPtr.sync <= newLeft
+            BinaryTreeNode.this
+          }).getOrElse(BinaryTreeNode.this.copy(left = None)))
+        }).getOrElse({
+          throw new NoSuchElementException
+        })
+      } else {
+        right.map(rightPtr => {
+          Option((rightPtr.sync.read -= newValue).map(newRight => {
+            rightPtr.sync <= newRight
+            BinaryTreeNode.this
+          }).getOrElse(BinaryTreeNode.this.copy(right = None)))
+        }).getOrElse({
+          throw new NoSuchElementException
+        })
+      }
+    }
+
+    def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeNode[T] = {
+      if (value.compareTo(newValue) < 0) {
+        left.map(leftPtr => {
+          leftPtr.sync <= (leftPtr.sync.read += newValue)
+          BinaryTreeNode.this
+        }).getOrElse({
+          this.copy(left = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
+        })
+      } else {
+        right.map(rightPtr => {
+          rightPtr.sync <= (rightPtr.sync.read += newValue)
+          BinaryTreeNode.this
+        }).getOrElse({
+          this.copy(right = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
+        })
+      }
+    }
+
+    def contains(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = {
+      if (value.compareTo(newValue) == 0) {
+        true
+      } else if (value.compareTo(newValue) < 0) {
+        left.exists(_.sync.read.contains(newValue))
+      } else {
+        right.exists(_.sync.read.contains(newValue))
+      }
+    }
+
+    private def equalityFields = List(value, left, right)
+
+    override def hashCode(): Int = equalityFields.hashCode()
+
+    override def equals(obj: scala.Any): Boolean = obj match {
+      case x: BinaryTreeNode[_] => x.equalityFields == equalityFields
+      case _ => false
+    }
+  }
+
 }
+import stm.lib0.TreeSet._
 
 class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
 
@@ -73,105 +176,5 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.max()).getOrElse(None)
     })
-  }
-}
-
-private case class BinaryTreeNode[T <: Comparable[T]]
-(
-  value: T,
-  left: Option[STMPtr[BinaryTreeNode[T]]] = None,
-  right: Option[STMPtr[BinaryTreeNode[T]]] = None
-) {
-
-  def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    right.map(_.sync.read.min).getOrElse(value)
-  }
-
-  def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-    left.map(_.sync.read.min).getOrElse(value)
-  }
-
-  def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeNode[T]] = {
-    val compare: Int = value.compareTo(newValue)
-    if (compare == 0) {
-      if (left.isEmpty && right.isEmpty) {
-        None
-      } else if (left.isDefined) {
-        left.map(leftPtr => {
-          val prevNode: BinaryTreeNode[T] = leftPtr.sync.read
-          val newValue: T = prevNode.min()
-          val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
-          maybeNode.map(newNode => {
-            leftPtr.sync <= newNode
-            BinaryTreeNode.this.copy(value = newValue)
-          }).getOrElse(BinaryTreeNode.this.copy(left = None, value = newValue))
-        })
-      } else {
-        right.map(rightPtr => {
-          val prevNode: BinaryTreeNode[T] = rightPtr.sync.read
-          val newValue: T = prevNode.max()
-          val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
-          maybeNode.map(newNode => {
-            rightPtr.sync <= newNode
-            BinaryTreeNode.this.copy(value = newValue)
-          }).getOrElse(BinaryTreeNode.this.copy(right = None, value = newValue))
-        })
-      }
-    } else if (compare < 0) {
-      left.map(leftPtr => {
-        Option((leftPtr.sync.read -= newValue).map(newLeft => {
-          leftPtr.sync <= newLeft
-          BinaryTreeNode.this
-        }).getOrElse(BinaryTreeNode.this.copy(left = None)))
-      }).getOrElse({
-        throw new NoSuchElementException
-      })
-    } else {
-      right.map(rightPtr => {
-        Option((rightPtr.sync.read -= newValue).map(newRight => {
-          rightPtr.sync <= newRight
-          BinaryTreeNode.this
-        }).getOrElse(BinaryTreeNode.this.copy(right = None)))
-      }).getOrElse({
-        throw new NoSuchElementException
-      })
-    }
-  }
-
-  def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeNode[T] = {
-    if (value.compareTo(newValue) < 0) {
-      left.map(leftPtr => {
-        leftPtr.sync <= (leftPtr.sync.read += newValue)
-        BinaryTreeNode.this
-      }).getOrElse({
-        this.copy(left = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
-      })
-    } else {
-      right.map(rightPtr => {
-        rightPtr.sync <= (rightPtr.sync.read += newValue)
-        BinaryTreeNode.this
-      }).getOrElse({
-        this.copy(right = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
-      })
-    }
-  }
-
-  def contains(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = {
-    if (value.compareTo(newValue) == 0) {
-      true
-    } else if (value.compareTo(newValue) < 0) {
-      left.exists(_.sync.read.contains(newValue))
-    } else {
-      right.exists(_.sync.read.contains(newValue))
-    }
-  }
-
-  private def equalityFields = List(value, left, right)
-
-  override def hashCode(): Int = equalityFields.hashCode()
-
-  override def equals(obj: scala.Any): Boolean = obj match {
-    case x: BinaryTreeNode[_] => x.equalityFields == equalityFields
-    case _ => false
   }
 }

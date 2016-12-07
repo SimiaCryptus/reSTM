@@ -25,7 +25,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
 
   private lazy val txnId = cluster.newTxn(priority)
   private[this] val writeLocks = new mutable.HashSet[PointerType]()
-  private[this] val pendingWrites = new mutable.HashMap[PointerType,ValueType]()
+  private[this] val pendingWrites = new mutable.HashMap[PointerType,Option[ValueType]]()
 
   private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
     require(!pendingWrites.contains(id))
@@ -37,7 +37,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
           lock(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
         }
         lockF.map(x => {
-          pendingWrites += id -> Restm.value(value)
+          pendingWrites += id -> Option(Restm.value(value))
           cluster.queueValue(id, txnId, Restm.value(value))
         })
       } else {
@@ -45,6 +45,26 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
       }
     })
   })
+
+  def delete(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit]  = txnId.flatMap(txnId => {
+    require(!pendingWrites.contains(id))
+    readOpt(id).flatMap(prior => {
+      if (prior.isDefined) {
+        val lockF = if (writeLocks.contains(id)) {
+          Future.successful(Unit)
+        } else {
+          lock(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
+        }
+        lockF.map(x => {
+          pendingWrites += id -> None
+          cluster.delete(id, txnId)
+        })
+      } else {
+        Future.successful(Unit)
+      }
+    })
+  })
+
 
   val readCache: TrieMap[PointerType, Future[Option[_]]] = new TrieMap()
 

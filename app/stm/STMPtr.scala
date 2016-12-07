@@ -60,8 +60,15 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
   def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
     .recover({ case e => throw new RuntimeException(s"failed write to $id", e) })
 
+  def delete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.delete(id)
+    .recover({ case e => throw new RuntimeException(s"failed write to $id", e) })
+
   def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
     STMPtr.this.write(value)
+  }
+
+  def <=(value: Option[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
+    value.map(STMPtr.this.write(_)).getOrElse(STMPtr.this.delete())
   }
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
@@ -91,6 +98,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.init(default))
     def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.write(value))
     def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this <= value)
+    def <=(value: Option[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this <= value)
   }
   def sync(defaultTimeout: Duration) = new SyncApi(defaultTimeout)
   def sync(implicit ctx: STMTxnCtx) = new SyncApi(ctx.defaultTimeout)
