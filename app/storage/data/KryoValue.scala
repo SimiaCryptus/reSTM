@@ -11,31 +11,37 @@ import scala.reflect._
 object KryoValue {
   private def kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
 
-  def apply(value: AnyRef) = new KryoValue({
+  def apply(value: AnyRef) = new KryoValue(toString(value))
+
+  def toString(value: AnyRef): String = Base64.getEncoder.encodeToString(serialize(value))
+
+  def serialize(value: AnyRef): Array[Byte] = {
     val byteArrayOutputStream: ByteArrayOutputStream = new ByteArrayOutputStream
     val output = new Output(byteArrayOutputStream)
     kryo.writeClassAndObject(output, value)
     output.close()
-    val str: String = Base64.getEncoder.encodeToString(byteArrayOutputStream.toByteArray)
-    str
-  })
-}
+    byteArrayOutputStream.toByteArray
+  }
 
-import storage.data.KryoValue._
-
-class KryoValue(val data: String) {
-
-  def deserialize[T <: AnyRef : ClassTag](): Option[T] = {
-    val maybeBytes: Option[Array[Byte]] = Option(this.toString)
+  def deserialize[T <: AnyRef : ClassTag](data: String): Option[T] = {
+    Option(data)
       .filterNot(_.isEmpty)
       .map(Base64.getDecoder.decode(_))
       .filterNot(_.isEmpty)
-    val retVal: Option[AnyRef] = maybeBytes
+      .flatMap(deserialize[T])
+  }
+
+  def deserialize[T <: AnyRef : ClassTag](data: Array[Byte]): Option[T] = {
+    Option(data)
       .map(new Input(_))
       .map(kryo.readClassAndObject(_))
-    retVal
       .map(_.asInstanceOf[T])
   }
+}
+
+class KryoValue(val data: String) {
+
+  def deserialize[T <: AnyRef : ClassTag](): Option[T] = KryoValue.deserialize[T](data)
 
   override def toString: String = data
 

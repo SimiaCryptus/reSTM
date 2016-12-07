@@ -5,6 +5,7 @@ import java.util.UUID
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm
 import storage.Restm.PointerType
+import storage.data.KryoValue
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -12,9 +13,9 @@ import scala.util.Try
 
 object Task {
   def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-    STMPtr.dynamic[TaskData[T]](new TaskData[T](task = Option(f), triggers = ancestors)).map(new Task(_))
+    STMPtr.dynamic[TaskData[T]](new TaskData[T](KryoValue.toString(f), triggers = ancestors)).map(new Task(_))
 
-  def static[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]))
+  def static[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]()))
 
   sealed trait TaskResult[T]
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
@@ -118,8 +119,10 @@ class Task[T](root : STMPtr[TaskData[T]]) {
                 case TaskSuccess(result) =>
                   Future.successful(currentState.copy(result = Option(result)))
                 case TaskContinue(queue, next, newTriggers) =>
-                  currentState
-                    .copy(task = Option(next), triggers = newTriggers)
+                  val copy: TaskData[T] = currentState
+                    .copy(triggers = newTriggers)
+                  val task: TaskData[T] = copy.newTask(next)
+                  task
                     .initTriggers(Task.this, queue)
               }
             },
@@ -154,13 +157,19 @@ class Task[T](root : STMPtr[TaskData[T]]) {
 }
 
 private case class TaskData[T](
-                              task : Option[(Restm, ExecutionContext) => TaskResult[T]] = None,
+                              kryoTask : String = "",
                               executorId : Option[String] = None,
                               result : Option[T] = None,
                               exception: Option[Throwable] = None,
                               triggers: List[Task[_]] = List.empty,
                               subscribers: Map[Task[_], StmExecutionQueue] = Map.empty
                               ) {
+
+  def task : Option[(Restm, ExecutionContext) => TaskResult[T]] = KryoValue.deserialize(kryoTask)
+  def newTask(task : (Restm, ExecutionContext) => TaskResult[T]) = {
+    this.copy(kryoTask = KryoValue.toString(task))
+  }
+
   def initTriggers(t:Task[T], queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskData[T]] = {
     Future.sequence(this.triggers.map(_.addSubscriber(t, queue))).map(_.reduceOption(_ && _).getOrElse(true)).flatMap(allTriggersTripped => {
       if (allTriggersTripped) {
