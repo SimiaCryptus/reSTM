@@ -1,7 +1,7 @@
 package stm.lib0
 
+import stm.STMTxnCtx
 import stm.lib0.Task.TaskResult
-import stm.{STMPtr, STMTxnCtx}
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -11,12 +11,8 @@ import scala.concurrent.{ExecutionContext, Future}
 
 
 object StmExecutionQueue extends StmExecutionQueue {
-  class NonePtr[T](id:PointerType) extends STMPtr[Option[T]](id) {
-    override def default(): Future[Option[Option[T]]] = Future.successful(None)
-  }
 
-  val workQueue : LinkedList[Task[_]] = new LinkedList[Task[_]](new NonePtr(new PointerType("StmExecutionQueue/workQueue")))
-  //  LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))
+  val workQueue = LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))
   private val threads = new ArrayBuffer[Thread]
 
   private def task(implicit cluster: Restm, executionContext: ExecutionContext) = new Runnable {

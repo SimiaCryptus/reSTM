@@ -4,10 +4,12 @@ import java.util.concurrent.Executors
 import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
+import stm.lib0.StmDaemons.DaemonConfig
 import stm.lib0.Task.TaskResult
 import stm.lib0._
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
+import storage.data.KryoValue
 import storage.util._
 import storage.{RestmActors, _}
 
@@ -300,7 +302,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       val monitor = StmDaemons.init()
       val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
-      StmDaemons.config.atomic.sync.add(("SimpleTest/StmDaemons", (cluster, executionContext) => {
+      StmDaemons.config.atomic.sync.add(new DaemonConfig("SimpleTest/StmDaemons", KryoValue((cluster: Restm, executionContext:ExecutionContext) => {
         while(!Thread.interrupted()) {
           new STMTxn[Integer] {
             override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Integer] = {
@@ -309,7 +311,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
           }.txnRun(cluster)(executionContext)
           Thread.sleep(100)
         }
-      }))
+      })))
       Thread.sleep(1500)
       val ticks: Integer = hasRun.atomic.sync.readOpt.get
       println(ticks)

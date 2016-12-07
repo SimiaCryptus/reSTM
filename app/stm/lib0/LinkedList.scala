@@ -11,7 +11,10 @@ object LinkedList {
   def create[T <: AnyRef](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     STMPtr.dynamic[Option[LinkedListHead[T]]](None).map(new LinkedList(_))
 
-  def static[T <: AnyRef](id: PointerType) = new LinkedList(STMPtr.static[Option[LinkedListHead[T]]](id, None))
+  class NonePtr[T](id:PointerType) extends STMPtr[Option[T]](id) {
+    override def default(): Future[Option[Option[T]]] = Future.successful(None)
+  }
+  def static[T <: AnyRef](id: PointerType) = new LinkedList(new NonePtr[LinkedListHead[T]](id))
 }
 
 class LinkedList[T <: AnyRef](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
