@@ -1,7 +1,7 @@
 package stm.lib0
 
-import stm.STMTxnCtx
 import stm.lib0.Task.TaskResult
+import stm.{STMPtr, STMTxnCtx}
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -11,7 +11,12 @@ import scala.concurrent.{ExecutionContext, Future}
 
 
 object StmExecutionQueue extends StmExecutionQueue {
-  val workQueue = LinkedList.static[(Restm, ExecutionContext) => Unit](new PointerType("StmExecutionQueue/workQueue"))
+  class NonePtr[T](id:PointerType) extends STMPtr[Option[T]](id) {
+    override def default(): Future[Option[Option[T]]] = Future.successful(None)
+  }
+
+  val workQueue : LinkedList[Task[_]] = new LinkedList[Task[_]](new NonePtr(new PointerType("StmExecutionQueue/workQueue")))
+  //  LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))
   private val threads = new ArrayBuffer[Thread]
 
   private def task(implicit cluster: Restm, executionContext: ExecutionContext) = new Runnable {
@@ -19,7 +24,7 @@ object StmExecutionQueue extends StmExecutionQueue {
       while (!Thread.interrupted()) {
         val item = workQueue.atomic.sync.remove()
         if (item.isDefined) {
-          item.get(cluster, executionContext)
+          item.get.run(cluster, executionContext)
         } else {
           Thread.sleep(100)
         }
@@ -39,7 +44,7 @@ object StmExecutionQueue extends StmExecutionQueue {
 }
 
 trait StmExecutionQueue {
-  def workQueue : LinkedList[(Restm, ExecutionContext) => Unit]
+  def workQueue : LinkedList[Task[_]]
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(f: Task[_]) = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }
@@ -66,6 +71,6 @@ trait StmExecutionQueue {
   }
 
   def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
-    workQueue.add((c,e)=>f.run(c,e))
+    workQueue.add(f)
   }
 }

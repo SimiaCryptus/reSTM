@@ -290,7 +290,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       counter.atomic.sync.init(0)
 
       StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter) _)
-      Thread.sleep(1000)
+      Thread.sleep(10000)
       counter.atomic.sync.readOpt mustBe Some(5)
     }
   }

@@ -20,14 +20,8 @@ object STMPtr {
 
   def static[T <: AnyRef](id: PointerType)(implicit classTag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id)
 
-  def static[T <: AnyRef](id: PointerType, default: => T)(implicit classTag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id) {
-    override def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = super.readOpt().map(_.orElse(Option(default)))
-  }
-
-  def static[T <: AnyRef](id: PointerType, default: STMTxn[T])(implicit classTag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id) {
-    override def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = {
-      super.readOpt().flatMap(_.map(Future.successful).getOrElse(default.txnLogic())).map(Option(_))
-    }
+  def static[T <: AnyRef](id: PointerType, _default: => T)(implicit classTag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id) {
+    override def default() = Future.successful(Option(_default))
   }
 
 }
@@ -50,7 +44,9 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
   def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Boolean] = ctx.lock(id)
     .recover({ case e => throw new RuntimeException(s"failed lock to $id", e) })
 
+  def default() : Future[Option[T]] = Future.successful(None)
   def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = ctx.readOpt[T](id)
+    .flatMap(_.map(value=>Future.successful(Option(value))).getOrElse(default))
     .recover({ case e => throw new RuntimeException(s"failed readOpt to $id", e) })
 
   def read()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)

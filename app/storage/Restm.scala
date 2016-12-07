@@ -7,10 +7,10 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 object Restm {
-  def value(value: AnyRef): ValueType = KryoValue(value)
+  def value(value: AnyRef): ValueType = JacksonValue(value)
 
   type TimeStamp = TxnTime
-  type ValueType = KryoValue
+  type ValueType = JacksonValue
   type PointerType = StringPtr
 }
 
