@@ -1,6 +1,7 @@
 package stm.lib0
 
 import java.util.UUID
+import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm
@@ -8,8 +9,8 @@ import storage.Restm.PointerType
 import storage.data.KryoValue
 
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Try
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success, Try}
 
 object Task {
   def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -20,6 +21,8 @@ object Task {
   sealed trait TaskResult[T]
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
   final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers:List[Task[T]] = List.empty) extends TaskResult[T]
+
+  val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
 }
 
 import stm.lib0.Task._
@@ -28,9 +31,11 @@ class Task[T](root : STMPtr[TaskData[T]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
     def result() = atomic { Task.this.result()(_,executionContext) }
+    def isComplete() = atomic { Task.this.isComplete()(_,executionContext) }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = atomic { Task.this.map(queue, function)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def result() = sync { AtomicApi.this.result() }
+      def isComplete() = sync { AtomicApi.this.isComplete() }
       def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = sync { AtomicApi.this.map(queue, function) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
@@ -40,6 +45,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.result() }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
+    def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.isComplete() }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -56,6 +62,26 @@ class Task[T](root : STMPtr[TaskData[T]]) {
 
   def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     root.read().map(currentState => currentState.result.isDefined || currentState.exception.isDefined)
+  }
+
+  def future(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    val promise = Promise[T]()
+    val schedule: ScheduledFuture[_] = scheduledThreadPool.schedule(new Runnable {
+      override def run(): Unit = {
+        for(isComplete <- Task.this.atomic.isComplete()) {
+          if(isComplete) {
+            Task.this.atomic.result().onComplete({
+              case Success(x) =>
+                promise.success(x)
+              case Failure(x) =>
+                promise.failure(x)
+            })
+          }
+        }
+      }
+    }, 1, TimeUnit.SECONDS)
+    promise.future.onComplete({case _ => schedule.cancel(false)})
+    promise.future
   }
 
   def atomicObtainTask(executorId: String = UUID.randomUUID().toString)(implicit cluster: Restm, executionContext: ExecutionContext) = {

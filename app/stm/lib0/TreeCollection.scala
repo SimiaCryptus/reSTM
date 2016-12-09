@@ -1,5 +1,6 @@
 package stm.lib0
 
+import stm.lib0.Task.{TaskResult, TaskSuccess}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm
 import storage.Restm.PointerType
@@ -101,6 +102,30 @@ object TreeCollection {
       case x: BinaryTreeNode[_] => x.equalityFields == equalityFields
       case _ => false
     }
+
+    def sortTask(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]) : Task[LinkedList[T]] = {
+      StmExecutionQueue.atomic(cluster,executionContext).sync.add(sort());
+    }
+
+    def sort()(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]) : TaskResult[LinkedList[T]] = {
+      val leftList: Option[Task[LinkedList[T]]] = left.flatMap(_.atomic(cluster,executionContext).sync.readOpt).map(_.sortTask(cluster,executionContext))
+      val rightList: Option[Task[LinkedList[T]]] = right.flatMap(_.atomic(cluster,executionContext).sync.readOpt).map(_.sortTask(cluster,executionContext))
+      val tasks: List[Task[LinkedList[T]]] = List(leftList, rightList).filter(_.isDefined).map(_.get)
+      new Task.TaskContinue(newFunction = (cluster,executionContext)=>{
+        val sources = tasks.map(_.atomic(cluster,executionContext).sync.result())
+        def read(list: LinkedList[T]): Option[(T, Option[LinkedList[T]])] = list.atomic(cluster,executionContext).sync.remove().map(_ -> Option(list))
+        var cursors = (sources.map(list => read(list)).filter(_.isDefined).map(_.get) ++ List(value->None))
+        val result = LinkedList.static[T](new PointerType)
+        while(!cursors.isEmpty) {
+          val (nextValue, optList) = cursors.minBy(_._1)
+          result.atomic(cluster,executionContext).sync.add(nextValue)
+          cursors = cursors.filterNot(_._2 == optList)
+          cursors = optList.flatMap(list=>read(list)).map(cursors++List(_)).getOrElse(cursors)
+        }
+        new TaskSuccess(result)
+      }, queue = StmExecutionQueue, newTriggers = tasks)
+
+    }
   }
 }
 import stm.lib0.TreeCollection._
@@ -112,18 +137,21 @@ class TreeCollection[T](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(key: T) = sync { AtomicApi.this.add(key) }
       def get() = sync { AtomicApi.this.get() }
+      def sort()(implicit ordering: Ordering[T]) = sync { AtomicApi.this.sort() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
 
     def add(key: T) = atomic { TreeCollection.this.add(key)(_,executionContext).map(_ => Unit) }
     def get() = atomic { TreeCollection.this.get()(_,executionContext) }
+    def sort()(implicit ordering: Ordering[T]) = atomic { TreeCollection.this.sort()(_,executionContext, ordering) }
   }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeCollection.this.add(key) }
     def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeCollection.this.get() }
+    def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]) = sync { TreeCollection.this.sort() }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -152,6 +180,12 @@ class TreeCollection[T](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
   def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.max()).getOrElse(None)
+    })
+  }
+
+  def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]) = {
+    rootPtr.readOpt().map(_.flatten).map(prev => {
+      prev.map(_.sortTask(ctx.cluster, executionContext)(ordering)).get
     })
   }
 }

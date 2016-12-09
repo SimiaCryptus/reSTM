@@ -8,16 +8,16 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 object LinkedList {
-  def create[T <: AnyRef](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+  def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     STMPtr.dynamic[Option[LinkedListHead[T]]](None).map(new LinkedList(_))
 
   class NonePtr[T](id:PointerType) extends STMPtr[Option[T]](id) {
     override def default(): Future[Option[Option[T]]] = Future.successful(None)
   }
-  def static[T <: AnyRef](id: PointerType) = new LinkedList(new NonePtr[LinkedListHead[T]](id))
+  def static[T](id: PointerType) = new LinkedList(new NonePtr[LinkedListHead[T]](id))
 }
 
-class LinkedList[T <: AnyRef](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
+class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(value: T) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
@@ -62,7 +62,7 @@ class LinkedList[T <: AnyRef](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   }
 }
 
-private case class LinkedListHead[T <: AnyRef]
+private case class LinkedListHead[T]
 (
   head: Option[STMPtr[LinkedListNode[T]]] = None,
   tail: Option[STMPtr[LinkedListNode[T]]] = None
@@ -95,7 +95,7 @@ private case class LinkedListHead[T <: AnyRef]
   }
 }
 
-private case class LinkedListNode[T <: AnyRef]
+private case class LinkedListNode[T]
 (
   value: T,
   next: Option[STMPtr[LinkedListNode[T]]] = None,

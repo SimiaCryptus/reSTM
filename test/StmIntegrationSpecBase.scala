@@ -180,6 +180,16 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       val output = Stream.continually(collection.atomic.sync.get()).takeWhile(_.isDefined).map(_.get).toSet
       output mustBe input
     }
+    "support sorting" in {
+      StmExecutionQueue.start(1)
+      val input = randomUUIDs.take(5).toSet
+      input.foreach(collection.atomic.sync.add(_))
+      val sort: Task[LinkedList[String]] = collection.atomic.sync.sort()
+      Await.result(sort.future, 1.minutes)
+      val list: LinkedList[String] = sort.atomic.sync.result()
+      val output = list.stream().toList
+      output mustBe input.toList.sorted
+    }
   }
 
   "TreeMap" should {
@@ -285,6 +295,17 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       })
       Thread.sleep(1000)
       hasRun.atomic.sync.readOpt mustBe Some(2)
+    }
+    "support futures" in {
+      StmExecutionQueue.start(1)
+      val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
+      hasRun.atomic.sync.init(0)
+      val task: Task[String] = StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
+        hasRun.atomic(cluster, executionContext).sync.write(1)
+        new Task.TaskSuccess("foo")
+      })
+      Await.result(task.future, 10.seconds) mustBe "foo"
+      hasRun.atomic.sync.readOpt mustBe Some(1)
     }
     "support continued operations" in {
       StmExecutionQueue.start(1)
