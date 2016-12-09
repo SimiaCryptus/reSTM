@@ -66,7 +66,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
 
   def future(implicit cluster: Restm, executionContext: ExecutionContext) = {
     val promise = Promise[T]()
-    val schedule: ScheduledFuture[_] = scheduledThreadPool.schedule(new Runnable {
+    val schedule: ScheduledFuture[_] = scheduledThreadPool.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = {
         for(isComplete <- Task.this.atomic.isComplete()) {
           if(isComplete) {
@@ -79,7 +79,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
           }
         }
       }
-    }, 1, TimeUnit.SECONDS)
+    }, 1, 1, TimeUnit.SECONDS)
     promise.future.onComplete({case _ => schedule.cancel(false)})
     promise.future
   }

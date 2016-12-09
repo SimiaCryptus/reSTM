@@ -18,15 +18,14 @@ import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Futu
 import scala.util.Try
 
 object StmIntegrationSpecBase {
-  def recursiveTask(counter: STMPtr[java.lang.Integer])(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
+  def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
     val x = Await.result(new STMTxn[Int] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-        //implicit val executionContext = _executionContext
         counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
       }
     }.txnRun(cluster)(executionContext), 100.milliseconds)
-    if (x < 5) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter) _
+    if (n>1) {
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter,n-1) _
       new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue)
     } else {
       new Task.TaskSuccess("foo")
@@ -182,7 +181,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
     }
     "support sorting" in {
       StmExecutionQueue.start(1)
-      val input = randomUUIDs.take(5).toSet
+      val input = randomUUIDs.take(20).toSet
       input.foreach(collection.atomic.sync.add(_))
       val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
       val sortResult: LinkedList[String] = Await.result(sortTask.future, 30.seconds)
@@ -303,16 +302,17 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
         hasRun.atomic(cluster, executionContext).sync.write(1)
         new Task.TaskSuccess("foo")
       })
-      Await.result(task.future, 10.seconds) mustBe "foo"
+      Await.result(task.future, 30.seconds) mustBe "foo"
       hasRun.atomic.sync.readOpt mustBe Some(1)
     }
     "support continued operations" in {
       StmExecutionQueue.start(1)
       val counter = STMPtr.static[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
-      val task = StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter) _)
+      val count = 20
+      val task = StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter,count) _)
       Await.result(task.future, 10.seconds)
-      counter.atomic.sync.readOpt mustBe Some(5)
+      counter.atomic.sync.readOpt mustBe Some(count)
     }
   }
 
