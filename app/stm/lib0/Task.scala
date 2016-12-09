@@ -93,14 +93,13 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   }
 
   def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    root.read().map(currentState => {
+    root.read().flatMap(currentState => {
       val task: Option[(Restm, ExecutionContext) => TaskResult[T]] = currentState.kryoTask.flatMap(x=>x.deserialize())
       task.filter(_ => {
         currentState.executorId.isEmpty && currentState.result.isEmpty && currentState.exception.isEmpty
       }).map(task => {
-        root.write(currentState.copy(executorId = Option(executorId)))
-        task
-      })
+        root.write(currentState.copy(executorId = Option(executorId))).map(_=>task).map(Option(_))
+      }).getOrElse(Future.successful(None))
     })
   }
 
