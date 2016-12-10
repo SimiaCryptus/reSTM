@@ -6,6 +6,7 @@ import java.nio.charset.Charset
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.google.gson.{Gson, GsonBuilder, JsonElement}
 
 import scala.reflect._
 
@@ -34,6 +35,11 @@ class JacksonValue(val data: String) {
       def prototype = classTag[T].runtimeClass.asInstanceOf[Class[T]]
       mapper.readValue[T](json, prototype)
     })
+  }
+
+  def pretty: String = {
+    val gson: Gson = new GsonBuilder().setPrettyPrinting().create()
+    gson.toJson(gson.fromJson(toString, classOf[JsonElement]))
   }
 
   override def toString: String = data

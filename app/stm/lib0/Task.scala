@@ -8,6 +8,7 @@ import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
 
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
@@ -22,20 +23,38 @@ object Task {
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
   final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers:List[Task[T]] = List.empty) extends TaskResult[T]
 
-  val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+  private[Task] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+  private[Task] val futureCache = new TrieMap[(Restm, Task[_]), Future[_]]()
 }
+
+
+object TaskStatus {
+  object Blocked extends TaskStatus
+  object Queued extends TaskStatus
+  object Running extends TaskStatus
+  object Success extends TaskStatus
+  class Failed(val ex : String) extends TaskStatus
+  object Unknown extends TaskStatus
+  object Ex_NotDefined extends TaskStatus
+}
+sealed class TaskStatus {}
+
+case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[TaskStatusTrace] = List.empty)
+
 
 import stm.lib0.Task._
 
-class Task[T](root : STMPtr[TaskData[T]]) {
+class Task[T](private[Task] val root : STMPtr[TaskData[T]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
     def result() = atomic { Task.this.result()(_,executionContext) }
     def isComplete() = atomic { Task.this.isComplete()(_,executionContext) }
+    def getStatusTrace() = atomic { Task.this.getStatusTrace()(_,executionContext) }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = atomic { Task.this.map(queue, function)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def result() = sync { AtomicApi.this.result() }
       def isComplete() = sync { AtomicApi.this.isComplete() }
+      def getStatusTrace() = sync { AtomicApi.this.getStatusTrace() }
       def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = sync { AtomicApi.this.map(queue, function) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
@@ -46,6 +65,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
     def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.result() }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
     def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.isComplete() }
+    def getStatusTrace()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.getStatusTrace() }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -61,10 +81,10 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   }
 
   def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    root.read().map(currentState => currentState.result.isDefined || currentState.exception.isDefined)
+    root.readOpt().map(_.map(currentState => currentState.result.isDefined || currentState.exception.isDefined).getOrElse(false))
   }
 
-  def future(implicit cluster: Restm, executionContext: ExecutionContext) = {
+  def future(implicit cluster: Restm, executionContext: ExecutionContext) = futureCache.getOrElseUpdate((cluster,this),{
     val promise = Promise[T]()
     val schedule: ScheduledFuture[_] = scheduledThreadPool.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = {
@@ -82,7 +102,7 @@ class Task[T](root : STMPtr[TaskData[T]]) {
     }, 1, 1, TimeUnit.SECONDS)
     promise.future.onComplete({case _ => schedule.cancel(false)})
     promise.future
-  }
+  }).asInstanceOf[Future[T]]
 
   def atomicObtainTask(executorId: String = UUID.randomUUID().toString)(implicit cluster: Restm, executionContext: ExecutionContext) = {
     new STMTxn[Option[(Restm, ExecutionContext) => TaskResult[T]]] {
@@ -124,6 +144,30 @@ class Task[T](root : STMPtr[TaskData[T]]) {
   def canRun()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     root.read().flatMap(currentState => {
       Future.sequence(currentState.triggers.map(_.isComplete())).map(_.reduceOption(_&&_).getOrElse(true))
+    })
+  }
+
+  def getStatusTrace()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
+    def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
+      val status: TaskStatus = if (currentState.result.isDefined) {
+        TaskStatus.Success
+      } else if (currentState.exception.isDefined) {
+        new TaskStatus.Failed(currentState.exception.get.toString)
+      } else if (currentState.executorId.isDefined) {
+        TaskStatus.Running
+      } else {
+        TaskStatus.Unknown
+      }
+      new TaskStatusTrace(id, status, List.empty)
+    }
+    root.readOpt().flatMap(currentState => {
+      val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id)).getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
+      def children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace())).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
+      statusTrace.status match {
+        case TaskStatus.Success => Future.successful(statusTrace)
+        case TaskStatus.Ex_NotDefined => Future.successful(statusTrace)
+        case _ => children.map(x=>statusTrace.copy(children = x))
+      }
     })
   }
 
@@ -175,8 +219,19 @@ class Task[T](root : STMPtr[TaskData[T]]) {
     implicit val _executionContext = executionContext
     atomicObtainTask().flatMap(_
       .map(task => Try { task(cluster, executionContext) })
+      .map(_.recoverWith({case e => e.printStackTrace();Failure(e)}))
       .map(result => complete( result ))
       .getOrElse(Future.successful(Unit)))
+  }
+
+  override def equals(other: Any): Boolean = other match {
+    case that: Task[T] => root == that.root
+    case _ => false
+  }
+
+  override def hashCode(): Int = {
+    val state = Seq(root)
+    state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
   }
 }
 

@@ -18,11 +18,18 @@ object StmExecutionQueue extends StmExecutionQueue {
   private def task(implicit cluster: Restm, executionContext: ExecutionContext) = new Runnable {
     override def run(): Unit = {
       while (!Thread.interrupted()) {
-        val item = workQueue.atomic.sync.remove()
-        if (item.isDefined) {
-          item.get.run(cluster, executionContext)
-        } else {
-          Thread.sleep(100)
+        try {
+          val item = workQueue.atomic.sync.remove()
+          if (item.isDefined) {
+            item.get.run(cluster, executionContext)
+            println("Ran a task!")
+          } else {
+            Thread.sleep(100)
+          }
+        } catch {
+          case e : Throwable =>
+            e.printStackTrace()
+            Thread.sleep(100)
         }
       }
     }
