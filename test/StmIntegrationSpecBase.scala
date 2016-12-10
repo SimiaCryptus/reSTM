@@ -1,5 +1,5 @@
+import java.util.UUID
 import java.util.concurrent.Executors
-import java.util.{Date, UUID}
 
 import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
@@ -9,7 +9,7 @@ import stm.lib0.Task.TaskResult
 import stm.lib0._
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
-import storage.data.{JacksonValue, KryoValue}
+import storage.data.KryoValue
 import storage.util._
 import storage.{RestmActors, _}
 
@@ -33,75 +33,29 @@ object StmIntegrationSpecBase {
   }
 }
 
-
-abstract class MetricsSpecBase extends WordSpec with MustMatchers {
-  implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-
-  "Metrics" should {
-    val collection = TreeCollection.static[String](new PointerType)
-    def randomStr = UUID.randomUUID().toString.take(8)
-    def randomUUIDs = Stream.continually(randomStr)
-    "work" in {
-      StmExecutionQueue.start(1)
-      val input = randomUUIDs.take(500).toSet
-      input.foreach(collection.atomic.sync.add(_))
-      val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
-      def now = new Date()
-      val timeout = new Date(now.getTime + 600.seconds.toMillis)
-      while(!sortTask.future.isCompleted && timeout.after(now)) {
-        println(JacksonValue(sortTask.atomic.sync.getStatusTrace()).pretty)
-        Thread.sleep(15000)
-      }
-      val sortResult: LinkedList[String] = Await.result(sortTask.future, 5.seconds)
-      val output = sortResult.stream().toList
-      output mustBe input.toList.sorted
-    }
-  }
-}
-
-class LocalClusterMetricsSpec extends MetricsSpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
-
-  override def beforeEach() {
-    shards.foreach(_.clear())
-  }
-
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
-}
-
-
 abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   "Transactional Pointers" should {
-
     "basic writes" in {
-
       val ptr = STMPtr.static[String](new PointerType)
-
       Await.result(new STMTxn[Option[String]] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
-
       Await.result(new STMTxn[Unit] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.write("true")
         }
       }.txnRun(cluster)(executionContext), 30.seconds)
-
       Await.result(new STMTxn[String] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.read()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe "true"
-
     }
-
   }
 
   "Transactional History" should {
@@ -307,6 +261,13 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       val output = Stream.continually(collection.atomic.sync.remove).takeWhile(_.isDefined).map(_.get).toList
       input mustBe output
     }
+    "support concurrency" in {
+      val collection = LinkedList.static[String](new PointerType)
+      val input: List[String] = randomUUIDs.take(50).toList
+      val inserts: List[Future[String]] = input.par.map(input => collection.atomic.add(input).flatMap(_ => collection.atomic.remove()).map(_.get)).toList
+      val output = Await.result(Future.sequence(inserts), 30.seconds)
+      input.sorted mustBe output.sorted
+    }
     "support stream iteration" in {
       val collection = LinkedList.static[String](new PointerType)
       val input: List[String] = randomUUIDs.take(50).toList
@@ -321,15 +282,14 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       StmExecutionQueue.start(1)
       val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
-      StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
+      Await.result(StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
         hasRun.atomic(cluster, executionContext).sync.write(1)
         new Task.TaskSuccess("foo")
-      }).atomic.map(StmExecutionQueue, (value, cluster, executionContext) => {
+      }).atomic.sync.map(StmExecutionQueue, (value, cluster, executionContext) => {
         require(value=="foo")
         hasRun.atomic(cluster, executionContext).sync.write(2)
         new Task.TaskSuccess("bar")
-      })
-      Thread.sleep(1000)
+      }).future, 1.seconds)
       hasRun.atomic.sync.readOpt mustBe Some(2)
     }
     "support futures" in {
