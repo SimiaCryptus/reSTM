@@ -9,6 +9,7 @@ import storage.util.ActorLog
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Random
 
 trait STMTxn[+R] {
   def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[R]
@@ -46,6 +47,7 @@ trait STMTxn[+R] {
             //e.printStackTrace(System.out)
             ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
             ctx.revert()
+            Thread.sleep(Random.nextInt(5+10*retryNumber))
             _txnRun(retryNumber + 1, Option(ctx))
           case e: Throwable =>
             if (allowCompletion) {

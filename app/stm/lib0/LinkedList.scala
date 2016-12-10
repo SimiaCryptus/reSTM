@@ -38,11 +38,14 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
 
   def stream()(implicit cluster: Restm, executionContext: ExecutionContext) : Stream[T] = {
-    rootPtr.atomic.sync.readOpt.flatten.flatMap(_.tail).map(
-      _.atomic.sync.readOpt.map(node=>node.value -> node.next)
-    ).map(Stream.iterate(_)(_.get._2.flatMap(
-      _.atomic.sync.readOpt.map(node=>node.value -> node.next)
-    )).takeWhile(_.isDefined).map(_.get._1)).getOrElse(Stream.empty)
+    rootPtr.atomic.sync.readOpt.flatten.flatMap(_.tail)
+      .map(tail=>tail.atomic.sync.readOpt.map(node => node.value -> node.next))
+      .map(seed=>Stream.iterate(seed)(prev=>{
+        val next: Option[(T, Option[STMPtr[LinkedListNode[T]]])] =
+          prev.get._2.flatMap(_.atomic.sync.readOpt.map(node => node.value -> node.next))
+        next
+      }).takeWhile(_.isDefined).map(_.get._1))
+      .getOrElse(Stream.empty)
   }
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
@@ -71,7 +74,7 @@ private case class LinkedListHead[T]
     if (head.isDefined) {
       val newNodeAddr = STMPtr.dynamicSync(LinkedListNode(newValue, prev = head))
       val headPtr: STMPtr[LinkedListNode[T]] = head.get
-      headPtr <= headPtr.sync.read.copy(next = Option(newNodeAddr))
+      headPtr.sync <= headPtr.sync.read.copy(next = Option(newNodeAddr))
       copy(head = Option(newNodeAddr))
     } else {
       val newRoot: (STMPtr[LinkedListNode[T]]) = STMPtr.dynamicSync(LinkedListNode(newValue))
@@ -84,7 +87,7 @@ private case class LinkedListHead[T]
       val tailNode: LinkedListNode[T] = tail.get.sync.read
       val newTailAddr = tailNode.next
       if (newTailAddr.isDefined) {
-        newTailAddr.get <= newTailAddr.get.sync.read.copy(prev = None)
+        newTailAddr.get.sync <= newTailAddr.get.sync.read.copy(prev = None)
         (copy(tail = newTailAddr), Option(tailNode.value))
       } else {
         (copy(head = None, tail = None), Option(tailNode.value))

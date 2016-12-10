@@ -20,10 +20,11 @@ object StmExecutionQueue extends StmExecutionQueue {
       while (!Thread.interrupted()) {
         try {
           val item = workQueue.atomic.sync.remove()
-          if (item.isDefined) {
-            item.get.run(cluster, executionContext)
-            println("Ran a task!")
-          } else {
+          item.map(item=>{
+            require(item.root != null)
+            item.run(cluster, executionContext)
+            //println(s"Ran a task at ${new Date()}")
+          }) getOrElse {
             Thread.sleep(100)
           }
         } catch {

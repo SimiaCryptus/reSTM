@@ -44,11 +44,11 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
     def randomUUIDs = Stream.continually(randomStr)
     "work" in {
       StmExecutionQueue.start(1)
-      val input = randomUUIDs.take(50).toSet
+      val input = randomUUIDs.take(500).toSet
       input.foreach(collection.atomic.sync.add(_))
       val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
       def now = new Date()
-      val timeout = new Date(now.getTime + 30.seconds.toMillis)
+      val timeout = new Date(now.getTime + 600.seconds.toMillis)
       while(!sortTask.future.isCompleted && timeout.after(now)) {
         println(JacksonValue(sortTask.atomic.sync.getStatusTrace()).pretty)
         Thread.sleep(15000)

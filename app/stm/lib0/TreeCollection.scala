@@ -164,11 +164,11 @@ class TreeCollection[T](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
   }
 
   def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]]  = {
-    rootPtr.readOpt().map(_.flatten).map(_.map(_.get())
-      .map(newRootData => {
-        rootPtr.write(newRootData._1)
-        newRootData._2
-      }))
+    rootPtr.readOpt().map(_.flatten).flatMap(value=>{
+      value.map(_.get()).map(newRootData => {
+          rootPtr.write(newRootData._1).map(_ => Option(newRootData._2))
+        }).getOrElse(Future.successful(None))
+    })
   }
 
   def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {

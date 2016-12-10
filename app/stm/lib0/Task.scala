@@ -44,7 +44,7 @@ case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[Ta
 
 import stm.lib0.Task._
 
-class Task[T](private[Task] val root : STMPtr[TaskData[T]]) {
+class Task[T](val root : STMPtr[TaskData[T]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
     def result() = atomic { Task.this.result()(_,executionContext) }
@@ -105,6 +105,7 @@ class Task[T](private[Task] val root : STMPtr[TaskData[T]]) {
   }).asInstanceOf[Future[T]]
 
   def atomicObtainTask(executorId: String = UUID.randomUUID().toString)(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    require(null != root)
     new STMTxn[Option[(Restm, ExecutionContext) => TaskResult[T]]] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
         obtainTask(executorId)
@@ -113,6 +114,7 @@ class Task[T](private[Task] val root : STMPtr[TaskData[T]]) {
   }
 
   def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    require(null != root)
     root.read().flatMap(currentState => {
       val task: Option[(Restm, ExecutionContext) => TaskResult[T]] = currentState.kryoTask.flatMap(x=>x.deserialize())
       task.filter(_ => {
