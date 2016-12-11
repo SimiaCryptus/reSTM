@@ -21,8 +21,9 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
     "work" in {
-      StmExecutionQueue.start(1)
-      val input = randomUUIDs.take(500).toSet
+      StmExecutionQueue.start(8)
+      StmExecutionQueue.verbose = true
+      val input = randomUUIDs.take(1000).toSet
       input.foreach(collection.atomic.sync.add(_))
       val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
       def now = new Date()

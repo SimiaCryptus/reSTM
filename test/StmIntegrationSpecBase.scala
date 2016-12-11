@@ -71,7 +71,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       }
 
       // Insert collection and expire transactions (never commit nor rollback)
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) Try {
+      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(1).toList) Try {
         Await.result(new STMTxn[Unit] {
           override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = Future {
             collection.sync.contains(item) mustBe false
@@ -105,7 +105,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
 
       // Insert collection and expire transactions (never commit nor rollback)
       RestmImpl.failChainedCalls = true
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) Try {
+      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(1).toList) Try {
         collection.atomic.sync.contains(item) mustBe false
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
@@ -175,8 +175,8 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       StmExecutionQueue.start(1)
       val input = randomUUIDs.take(20).toSet
       input.foreach(collection.atomic.sync.add(_))
-      val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
-      val sortResult: LinkedList[String] = Await.result(sortTask.future, 30.seconds)
+      val sortTask = collection.atomic.sort().flatMap(_.future)
+      val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
       val output = sortResult.stream().toList
       output mustBe input.toList.sorted
     }
@@ -258,14 +258,14 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       val collection = LinkedList.static[String](new PointerType)
       val input: List[String] = randomUUIDs.take(50).toList
       input.foreach(collection.atomic.sync.add(_))
-      val output = Stream.continually(collection.atomic.sync.remove).takeWhile(_.isDefined).map(_.get).toList
+      val output = Stream.continually(collection.atomic.sync.remove()).takeWhile(_.isDefined).map(_.get).toList
       input mustBe output
     }
     "support concurrency" in {
       val collection = LinkedList.static[String](new PointerType)
-      val input: List[String] = randomUUIDs.take(50).toList
-      val inserts: List[Future[String]] = input.par.map(input => collection.atomic.add(input).flatMap(_ => collection.atomic.remove()).map(_.get)).toList
-      val output = Await.result(Future.sequence(inserts), 30.seconds)
+      val input: List[String] = randomUUIDs.take(100).toList
+      val inserts: List[Future[String]] = input.par.map(input => collection.atomic.add(input,0.3).flatMap(_ => collection.atomic.remove(0.3)).map(_.get)).toList
+      val output = Await.result(Future.sequence(inserts), 60.seconds)
       input.sorted mustBe output.sorted
     }
     "support stream iteration" in {
@@ -289,7 +289,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
         require(value=="foo")
         hasRun.atomic(cluster, executionContext).sync.write(2)
         new Task.TaskSuccess("bar")
-      }).future, 1.seconds)
+      }).future, 10.seconds)
       hasRun.atomic.sync.readOpt mustBe Some(2)
     }
     "support futures" in {

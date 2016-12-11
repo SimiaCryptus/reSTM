@@ -6,6 +6,7 @@ import storage.Restm.PointerType
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Random
 
 object LinkedList {
   def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -20,19 +21,19 @@ object LinkedList {
 class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
-    def add(value: T) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
-    def remove() = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
+    def add(value: T, strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
+    def remove(strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(value: T) = sync { AtomicApi.this.add(value) }
-      def remove() = sync { AtomicApi.this.remove() }
+      def add(value: T, strictness:Double = 1.0) = sync { AtomicApi.this.add(value) }
+      def remove(strictness:Double = 1.0) = sync { AtomicApi.this.remove() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
   }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
   class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
-    def add(value: T)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.add(value) }
-    def remove()(implicit ctx: STMTxnCtx) = sync { LinkedList.this.remove() }
+    def add(value: T, strictness:Double = 1.0)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.add(value) }
+    def remove(strictness:Double = 1.0)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.remove() }
   }
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
@@ -48,16 +49,16 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
       .getOrElse(Stream.empty)
   }
 
-  def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
+  def add(value: T, strictness:Double = 1.0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
     val read: Future[LinkedListHead[T]] = rootPtr.readOpt().map(_.flatten).map(_.getOrElse(new LinkedListHead))
-    val update: Future[LinkedListHead[T]] = read.map(_.add(value))
+    val update: Future[LinkedListHead[T]] = read.map(_.add(value, strictness))
     update.flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
-  def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
+  def remove(strictness:Double = 1.0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
     rootPtr.readOpt()
       .map(_.flatten)
-      .map(_.map(r => r.remove()))
+      .map(_.map(r => r.remove(strictness)))
       .flatMap(_.map(newRootTuple => {
         val (newRoot, removedItem) = newRootTuple
         rootPtr.write(Option(newRoot)).map(_ => removedItem)
@@ -70,32 +71,56 @@ private case class LinkedListHead[T]
   head: Option[STMPtr[LinkedListNode[T]]] = None,
   tail: Option[STMPtr[LinkedListNode[T]]] = None
 ) {
-  def add(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): LinkedListHead[T] = {
+  def add(newValue: T, strictness:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): LinkedListHead[T] = {
     if (head.isDefined) {
-      val newNodeAddr = STMPtr.dynamicSync(LinkedListNode(newValue, prev = head))
-      val headPtr: STMPtr[LinkedListNode[T]] = head.get
-      headPtr.sync <= headPtr.sync.read.copy(next = Option(newNodeAddr))
-      copy(head = Option(newNodeAddr))
+      def insertAt(nodePtr: STMPtr[LinkedListNode[T]] = head.get): LinkedListHead[T] = {
+        val currentValue: LinkedListNode[T] = nodePtr.sync.read
+        if(currentValue.prev.isDefined && Random.nextDouble() > strictness) {
+          insertAt(currentValue.prev.get)
+        } else {
+          val newPtr = STMPtr.dynamicSync(LinkedListNode(newValue, prev = Option(nodePtr), next = currentValue.next))
+          nodePtr.sync <= currentValue.copy(next = Option(newPtr))
+          if (currentValue.next.isDefined) {
+            currentValue.next.foreach(ptr=>ptr.sync <= ptr.sync.read.copy(prev = Option(newPtr)))
+            LinkedListHead.this
+          } else {
+            LinkedListHead.this.copy(head = Option(newPtr))
+          }
+        }
+      }
+      insertAt()
     } else {
-      val newRoot: (STMPtr[LinkedListNode[T]]) = STMPtr.dynamicSync(LinkedListNode(newValue))
+      val newRoot = STMPtr.dynamicSync(LinkedListNode(newValue))
       copy(head = Option(newRoot), tail = Option(newRoot))
     }
   }
 
-  def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): (LinkedListHead[T], Option[T]) = {
-    if (head.isDefined) {
-      val tailNode: LinkedListNode[T] = tail.get.sync.read
-      val newTailAddr = tailNode.next
-      if (newTailAddr.isDefined) {
-        newTailAddr.get.sync <= newTailAddr.get.sync.read.copy(prev = None)
-        (copy(tail = newTailAddr), Option(tailNode.value))
-      } else {
-        (copy(head = None, tail = None), Option(tailNode.value))
+  def remove(strictness:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): (LinkedListHead[T], Option[T]) = {
+    if (tail.isDefined) {
+      def removeAt(nodePtr: STMPtr[LinkedListNode[T]] = tail.get): (LinkedListHead[T],Option[T]) = {
+        val currentValue: LinkedListNode[T] = nodePtr.sync.read
+        if(currentValue.next.isDefined && Random.nextDouble() > strictness) {
+          removeAt(currentValue.next.get)
+        } else {
+          currentValue.next.foreach(ptr => ptr.sync <= ptr.sync.read.copy(prev = currentValue.prev))
+          currentValue.prev.foreach(ptr => ptr.sync <= ptr.sync.read.copy(next = currentValue.next))
+          if(currentValue.prev.isDefined && currentValue.next.isDefined) {
+            (LinkedListHead.this, Option(currentValue.value))
+          } else if(currentValue.next.isDefined) {
+            (LinkedListHead.this.copy(tail = currentValue.next), Option(currentValue.value))
+          } else if(currentValue.prev.isDefined) {
+            (LinkedListHead.this.copy(head = currentValue.prev), Option(currentValue.value))
+          } else {
+            (LinkedListHead.this.copy(head = None, tail = None), Option(currentValue.value))
+          }
+        }
       }
+      removeAt()
     } else {
       (this, None)
     }
   }
+
 }
 
 private case class LinkedListNode[T]

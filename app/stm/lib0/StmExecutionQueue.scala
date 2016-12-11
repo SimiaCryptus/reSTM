@@ -1,5 +1,7 @@
 package stm.lib0
 
+import java.util.Date
+
 import stm.STMTxnCtx
 import stm.lib0.Task.TaskResult
 import storage.Restm
@@ -14,16 +16,19 @@ object StmExecutionQueue extends StmExecutionQueue {
 
   val workQueue = LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))
   private val threads = new ArrayBuffer[Thread]
+  var verbose = false
 
   private def task(implicit cluster: Restm, executionContext: ExecutionContext) = new Runnable {
+
+
     override def run(): Unit = {
       while (!Thread.interrupted()) {
         try {
-          val item = workQueue.atomic.sync.remove()
+          val item = workQueue.atomic.sync.remove(0.2)
           item.map(item=>{
             require(item.root != null)
             item.run(cluster, executionContext)
-            //println(s"Ran a task at ${new Date()}")
+            if(verbose) println(s"Ran a task at ${new Date()}")
           }) getOrElse {
             Thread.sleep(100)
           }
@@ -75,6 +80,6 @@ trait StmExecutionQueue {
   }
 
   def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
-    workQueue.add(f)
+    workQueue.add(f, 0.2)
   }
 }
