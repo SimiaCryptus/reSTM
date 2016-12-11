@@ -11,7 +11,7 @@ object ActorLog extends ActorQueue {
 
   private val file: File = new File(s"logs/actors.$now.log")
   private lazy val writer: PrintWriter = new PrintWriter(new FileOutputStream(file))
-  var enabled = false
+  var enabled = Option(System.getProperty("ActorLog")).map(java.lang.Boolean.parseBoolean(_)).getOrElse(false)
 
   override def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = if(!enabled) Future.successful(Unit) else withActor {
     writer.println(str)

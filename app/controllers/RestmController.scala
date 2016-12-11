@@ -25,20 +25,19 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
 
   val peers = new mutable.HashSet[String]()
   val localName: String = InetAddress.getLocalHost.getHostAddress
-  val peerPort = 898
+  val peerPort = Option(System.getProperty("peerPort")).map(Integer.parseInt(_)).getOrElse(898)
+  val workers = Option(System.getProperty("workers")).map(Integer.parseInt(_)).getOrElse(8)
 
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
   val storageService = new RestmImpl(new RestmInternalStaticListRouter {
     val local: RestmActors = new RestmActors()(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
-
     override def shards: List[RestmInternal] = {
       peerList.map(name => {
         if (name == localName) local
         else new InternalRestmProxy(s"http://$name:$peerPort")
       })
     }
-
   })
 
   def listPeers() = Action { request => Metrics.codeBlock("RestmController.listPeers") {
@@ -213,7 +212,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   def init() = Action {
     Metrics.codeBlock("RestmController.init") {
       StmDaemons.start()(storageService,exec)
-      StmExecutionQueue.registerDaemons(8)(storageService,exec)
+      StmExecutionQueue.registerDaemons(workers)(storageService,exec)
       Ok("Node started")
     }
   }
