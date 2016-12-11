@@ -15,7 +15,8 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.8.4",
   "com.twitter" %% "chill" % "0.8.1",
   "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.63",
-  "com.google.code.gson" % "gson" % "2.8.0"
+  "com.google.code.gson" % "gson" % "2.8.0",
+  "commons-io" % "commons-io" % "2.5"
 )
 
 

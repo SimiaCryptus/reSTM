@@ -1,5 +1,6 @@
 package controllers
 
+import java.io.File
 import java.net.InetAddress
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -7,31 +8,49 @@ import javax.inject._
 
 import _root_.util.Metrics
 import akka.actor.ActorSystem
+import org.apache.commons.io.FileUtils
 import play.api.mvc._
 import stm.lib0._
 import storage.Restm._
 import storage._
 import storage.data.JacksonValue
-import storage.util.InternalRestmProxy
+import storage.util.{DynamoColdStorage, InternalRestmProxy}
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
-
+object RestmController {
+  val properties: Map[String, String] = System.getProperties.asScala.toMap
+  lazy val configFile: Map[String, String] = Option(new File("restm.config"))
+    .filter(_.exists())
+    .map(FileUtils.readLines(_, "UTF-8"))
+    .map(_.asScala.toList).getOrElse(List.empty)
+    .map(_.trim).filterNot(_.startsWith("//"))
+    .map(_.split("=").map(_.trim)).filter(2 == _.size)
+    .map(split => split(0) -> split(1)).toMap
+  def getConfig(key:String) = {
+    configFile.get(key).orElse(properties.get(key))
+  }
+}
+import controllers.RestmController._
 
 @Singleton
 class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
   val peers = new mutable.HashSet[String]()
   val localName: String = InetAddress.getLocalHost.getHostAddress
-  val peerPort = Option(System.getProperty("peerPort")).map(Integer.parseInt(_)).getOrElse(898)
-  val workers = Option(System.getProperty("workers")).map(Integer.parseInt(_)).getOrElse(8)
+  val table = getConfig("dynamoTable")
+  private lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
+  private val coldStorage: ColdStorage = dynamo.getOrElse(new HeapColdStorage)
+  private lazy val local: RestmActors = new RestmActors(coldStorage)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  val peerPort = getConfig("peerPort").map(Integer.parseInt(_)).getOrElse(898)
+  val workers = getConfig("workers").map(Integer.parseInt(_)).getOrElse(8)
 
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
   val storageService = new RestmImpl(new RestmInternalStaticListRouter {
-    val local: RestmActors = new RestmActors()(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
     override def shards: List[RestmInternal] = {
       peerList.map(name => {
         if (name == localName) local
@@ -206,6 +225,16 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   def metrics() = Action {
     Metrics.codeBlock("RestmController.metrics") {
       Ok(JacksonValue.simple(Metrics.get()).pretty).as("application/json")
+    }
+  }
+
+  def about() = Action {
+    Metrics.codeBlock("RestmController.about") {
+      Ok(JacksonValue.simple(Map(
+        "peers" -> peers,
+        "table" -> table,
+        "peerPort" -> peerPort
+      )).pretty).as("application/json")
     }
   }
 
