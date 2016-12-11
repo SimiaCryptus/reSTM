@@ -1,42 +1,68 @@
 package stm.lib0
 
+import java.util.concurrent.TimeUnit
+
 import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
+
+object DaemonConfig {
+  def apply(name:String, f:(Restm, ExecutionContext)=>Unit) = {
+    new DaemonConfig(name, KryoValue(f))
+  }
+}
+case class DaemonConfig(name: String, impl: KryoValue) {
+  def deserialize() = impl.deserialize[(Restm, ExecutionContext)=>Unit]()
+}
 
 object StmDaemons {
 
-  case class DaemonConfig(name: String, impl: KryoValue) {
-    def deserialize() = impl.deserialize[(Restm, ExecutionContext)=>Unit]()
-  }
 
   val config = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
-  val threads = new scala.collection.concurrent.TrieMap[String,Thread]
+  private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]
+  private[this] var mainThread: Option[Thread] = None
 
-  def init()(implicit cluster: Restm, executionContext: ExecutionContext) = {
-    val thread: Thread = new Thread(new Runnable {
-      override def run(): Unit = {
-        while(!Thread.interrupted()) {
-          startAll()
-          Thread.sleep(1000)
+  def init()(implicit cluster: Restm, executionContext: ExecutionContext) : Unit = {
+    if(!mainThread.filter(_.isAlive).isDefined) mainThread = Option({
+      val thread: Thread = new Thread(new Runnable {
+        override def run(): Unit = try {
+          while(!Thread.interrupted()) {
+            startAll()
+            Thread.sleep(1000)
+          }
+        } finally {
+          daemonThreads.values.foreach(_.interrupt())
         }
-      }
+      })
+      thread.setName("StmDaemons-poller")
+      thread.start()
+      thread
     })
-    thread.setName("StmDaemons-poller")
-    thread.start()
-    thread
   }
 
-  def startAll()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+  def stopAll()(implicit executionContext: ExecutionContext) = {
+    mainThread.foreach(_.interrupt())
+    val promise: Promise[Unit] = Promise[Unit]
+    def isMainAlive: Boolean = mainThread.filter(_.isAlive).isDefined
+    def allDaemonsComplete: Boolean = daemonThreads.filter(_._2.isAlive).isEmpty
+    val scheduledFuture = Task.scheduledThreadPool.scheduleAtFixedRate(new Runnable {
+      override def run(): Unit = if(!isMainAlive && allDaemonsComplete) promise.success(Unit)
+    }, 100, 100, TimeUnit.MILLISECONDS)
+    val future: Future[Unit] = promise.future
+    future.onComplete(_=>scheduledFuture.cancel(false))
+    future
+  }
+
+  private[this] def startAll()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    daemonThreads.filter(!_._2.isAlive).forall(t=>daemonThreads.remove(t._1, t._2))
     config.stream().foreach(item=>{
-      threads.getOrElseUpdate(item.name, {
+      daemonThreads.getOrElseUpdate(item.name, {
+        val task: (Restm, ExecutionContext) => Unit = item.deserialize().get
         val thread: Thread = new Thread(new Runnable {
-          override def run(): Unit = {
-            item.deserialize().get(cluster, executionContext)
-          }
+          override def run(): Unit = task(cluster, executionContext)
         })
         thread.start()
         thread.setName("StmDaemons-" + item.name)

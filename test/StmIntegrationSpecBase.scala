@@ -4,12 +4,10 @@ import java.util.concurrent.Executors
 import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
-import stm.lib0.StmDaemons.DaemonConfig
 import stm.lib0.Task.TaskResult
 import stm.lib0._
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
-import storage.data.KryoValue
 import storage.util._
 import storage.{RestmActors, _}
 
@@ -172,13 +170,14 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       output mustBe input
     }
     "support sorting" in {
-      StmExecutionQueue.start(1)
+      StmExecutionQueue.init(1)
       val input = randomUUIDs.take(20).toSet
       input.foreach(collection.atomic.sync.add(_))
       val sortTask = collection.atomic.sort().flatMap(_.future)
       val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
       val output = sortResult.stream().toList
       output mustBe input.toList.sorted
+      Await.result(StmDaemons.stopAll(), 30.seconds)
     }
   }
 
@@ -263,7 +262,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
     }
     "support concurrency" in {
       val collection = LinkedList.static[String](new PointerType)
-      val input: List[String] = randomUUIDs.take(100).toList
+      val input: List[String] = randomUUIDs.take(50).toList
       val inserts: List[Future[String]] = input.par.map(input => collection.atomic.add(input,0.3).flatMap(_ => collection.atomic.remove(0.3)).map(_.get)).toList
       val output = Await.result(Future.sequence(inserts), 60.seconds)
       input.sorted mustBe output.sorted
@@ -279,7 +278,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
 
   "StmExecutionQueue" should {
     "support queued and chained operations" in {
-      StmExecutionQueue.start(1)
+      StmExecutionQueue.init(1)
       val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
       Await.result(StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
@@ -291,9 +290,10 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
         new Task.TaskSuccess("bar")
       }).future, 10.seconds)
       hasRun.atomic.sync.readOpt mustBe Some(2)
+      Await.result(StmDaemons.stopAll(), 30.seconds)
     }
     "support futures" in {
-      StmExecutionQueue.start(1)
+      StmExecutionQueue.init(1)
       val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
       val task: Task[String] = StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
@@ -302,43 +302,43 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       })
       Await.result(task.future, 30.seconds) mustBe "foo"
       hasRun.atomic.sync.readOpt mustBe Some(1)
+      Await.result(StmDaemons.stopAll(), 30.seconds)
     }
     "support continued operations" in {
-      StmExecutionQueue.start(1)
+      StmExecutionQueue.init(1)
       val counter = STMPtr.static[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
       val count = 20
       val task = StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter,count) _)
       Await.result(task.future, 10.seconds)
       counter.atomic.sync.readOpt mustBe Some(count)
+      Await.result(StmDaemons.stopAll(), 30.seconds)
     }
   }
 
   "StmDaemons" should {
     "support named daemons" in {
-      val monitor = StmDaemons.init()
-      val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
-      hasRun.atomic.sync.init(0)
-      StmDaemons.config.atomic.sync.add(new DaemonConfig("SimpleTest/StmDaemons", KryoValue((cluster: Restm, executionContext:ExecutionContext) => {
+      StmDaemons.init()
+      val counter = STMPtr.static[java.lang.Integer](new PointerType)
+      counter.atomic.sync.init(0)
+      StmDaemons.config.atomic.sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
         while(!Thread.interrupted()) {
           new STMTxn[Integer] {
             override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Integer] = {
-              hasRun.read().flatMap(prev=>hasRun.write(prev+1).map(_=>prev+1))
+              counter.read().flatMap(prev=>counter.write(prev+1).map(_=>prev+1))
             }
           }.txnRun(cluster)(executionContext)
           Thread.sleep(100)
         }
-      })))
+      }))
       Thread.sleep(1500)
-      val ticks: Integer = hasRun.atomic.sync.readOpt.get
+      val ticks: Integer = counter.atomic.sync.readOpt.get
       println(ticks)
       require(ticks > 1)
-      monitor.interrupt()
-      StmDaemons.threads.values.foreach(_.interrupt())
+      Await.result(StmDaemons.stopAll(), 30.seconds)
+      val ticks2: Integer = counter.atomic.sync.readOpt.get
       Thread.sleep(500)
-      val ticks2: Integer = hasRun.atomic.sync.readOpt.get
-      Thread.sleep(500)
-      val ticks3: Integer = hasRun.atomic.sync.readOpt.get
+      val ticks3: Integer = counter.atomic.sync.readOpt.get
       require(ticks2 == ticks3)
     }
   }

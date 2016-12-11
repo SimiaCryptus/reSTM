@@ -7,53 +7,15 @@ import stm.lib0.Task.TaskResult
 import storage.Restm
 import storage.Restm.PointerType
 
-import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 
-object StmExecutionQueue extends StmExecutionQueue {
+object StmExecutionQueue extends StmExecutionQueue(LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))) {
 
-  val workQueue = LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))
-  private val threads = new ArrayBuffer[Thread]
-  var verbose = false
-
-  private def task(implicit cluster: Restm, executionContext: ExecutionContext) = new Runnable {
-
-
-    override def run(): Unit = {
-      while (!Thread.interrupted()) {
-        try {
-          val item = workQueue.atomic.sync.remove(0.2)
-          item.map(item=>{
-            require(item.root != null)
-            item.run(cluster, executionContext)
-            if(verbose) println(s"Ran a task at ${new Date()}")
-          }) getOrElse {
-            Thread.sleep(100)
-          }
-        } catch {
-          case e : Throwable =>
-            e.printStackTrace()
-            Thread.sleep(100)
-        }
-      }
-    }
-  }
-
-  def start(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext) = {
-    threads ++= (for (i <- 1 to count) yield {
-      val thread: Thread = new Thread(task)
-      thread.setDaemon(true)
-      thread.setName(s"StmExecutionQueue-$i")
-      thread.start()
-      thread
-    })
-  }
 }
 
-trait StmExecutionQueue {
-  def workQueue : LinkedList[Task[_]]
+class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(f: Task[_]) = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }
@@ -82,4 +44,38 @@ trait StmExecutionQueue {
   def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
     workQueue.add(f, 0.2)
   }
+
+  var verbose = false
+
+  def task()(cluster: Restm, executionContext: ExecutionContext): Unit = {
+    implicit val _cluster = cluster
+    implicit val _executionContext = executionContext
+    while (!Thread.interrupted()) {
+      try {
+        val item = workQueue.atomic.sync.remove(0.2)
+        item.map(item => {
+          require(item.root != null)
+          item.run(cluster, executionContext)
+          if (verbose) println(s"Ran a task at ${new Date()}")
+        }) getOrElse {
+          Thread.sleep(100)
+        }
+      } catch {
+        case e: InterruptedException =>
+          Thread.currentThread().interrupt()
+        case e: Throwable =>
+          e.printStackTrace()
+          Thread.sleep(100)
+      }
+    }
+  }
+
+  def init(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    StmDaemons.init()
+    (1 to count).map(i=>{
+      val f: (Restm, ExecutionContext) => Unit = task() _
+      DaemonConfig(s"Queue-${workQueue.id}-$i", f)
+    }).foreach(daemon=>StmDaemons.config.atomic.sync.add(daemon))
+  }
+
 }

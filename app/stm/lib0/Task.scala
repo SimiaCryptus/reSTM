@@ -23,7 +23,7 @@ object Task {
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
   final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers:List[Task[T]] = List.empty) extends TaskResult[T]
 
-  private[Task] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+  private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
   private[Task] val futureCache = new TrieMap[(Restm, Task[_]), Future[_]]()
 }
 

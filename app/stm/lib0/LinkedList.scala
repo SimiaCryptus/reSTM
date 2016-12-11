@@ -19,7 +19,7 @@ object LinkedList {
 }
 
 class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
-
+  def id = rootPtr.id.toString
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(value: T, strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
     def remove(strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
