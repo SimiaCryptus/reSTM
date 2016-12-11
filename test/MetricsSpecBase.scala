@@ -27,7 +27,7 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
       input.foreach(collection.atomic.sync.add(_))
       val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
       def now = new Date()
-      val timeout = new Date(now.getTime + 600.seconds.toMillis)
+      val timeout = new Date(now.getTime + 300.seconds.toMillis)
       while(!sortTask.future.isCompleted && timeout.after(now)) {
         println(JacksonValue(sortTask.atomic.sync.getStatusTrace()).pretty)
         Thread.sleep(15000)

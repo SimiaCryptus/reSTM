@@ -5,7 +5,7 @@ import java.util.UUID
 
 import com.google.common.annotations.VisibleForTesting
 import storage.Restm
-import storage.util.ActorLog
+import storage.actors.ActorLog
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}

@@ -1,6 +1,7 @@
 package storage
 
 import storage.Restm._
+import storage.actors.ActorLog
 import storage.data.TxnTime
 
 import scala.concurrent.duration._
@@ -53,7 +54,7 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
           case "RESET" => internal._resetValue(id, time); result
           case "COMMIT" =>
             System.err.println(s"Transaction committed before lock returned: ptr=$id, txn=$time")
-            util.ActorLog.log(s"Transaction committed before lock returned: ptr=$id, txn=$time")
+            ActorLog.log(s"Transaction committed before lock returned: ptr=$id, txn=$time")
             internal._commitValue(id, time)
             result
         })

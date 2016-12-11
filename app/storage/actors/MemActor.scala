@@ -2,7 +2,6 @@ package storage.actors
 
 import storage.LockedException
 import storage.Restm._
-import util.ActorQueue
 import util.OperationMetrics._
 
 import scala.concurrent.{ExecutionContext, Future}

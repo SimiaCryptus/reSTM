@@ -1,8 +1,6 @@
-package util
+package storage.actors
 
 import java.util.concurrent.atomic.AtomicBoolean
-
-import storage.util.ActorLog
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try

@@ -2,7 +2,6 @@ package storage
 
 import storage.Restm._
 import storage.actors._
-import storage.util.ActorLog
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future, Promise}

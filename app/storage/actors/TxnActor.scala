@@ -1,7 +1,6 @@
 package storage.actors
 
 import storage.Restm._
-import util.ActorQueue
 import util.OperationMetrics._
 
 import scala.collection.mutable
