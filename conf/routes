@@ -37,4 +37,5 @@ GET    /demo/sort                   controllers.RestmController.demoSort(n:Int =
 GET    /sys/init                    controllers.RestmController.init()
 GET    /sys/shutdown                controllers.RestmController.shutdown()
 GET    /sys/threads                 controllers.RestmController.threadDump()
+GET    /sys/metrics                 controllers.RestmController.metrics()
 

@@ -1,6 +1,7 @@
 package storage.actors
 
 import storage.Restm._
+import util.Metrics
 import util.OperationMetrics._
 
 import scala.collection.mutable
@@ -16,35 +17,42 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
   private[this] def logMsg(msg: String) = log(s"$this $msg")
   override def toString = s"txn@$objId:$name#$messageNumber"
 
-  def addLock(id: PointerType): Future[String] = qos("txn") {
-    withActor {
-      if (state == "OPEN") locks += id
-      state
-    }.andThen({
-      case Success(result) =>
-        logMsg(s"addLock($id) $result")
-      case _ =>
-    })
+  def addLock(id: PointerType): Future[String] = Metrics.codeFuture("TxnActor.addLock") {
+    qos("txn") {
+      withActor {
+        if (state == "OPEN") locks += id
+        state
+      }.andThen({
+        case Success(result) =>
+          logMsg(s"addLock($id) $result")
+        case _ =>
+      })
+    }
   }
 
-  def setState(s: String): Future[Set[PointerType]] = qos("txn") {
-    withActor {
-      if (state != s) {
-        require(state == "OPEN", s"State is $state")
-        require(s != "OPEN", "Cannot reopen")
-        state = s
+
+  def setState(s: String): Future[Set[PointerType]] = Metrics.codeFuture("TxnActor.setState") {
+    qos("txn") {
+      withActor {
+        if (state != s) {
+          require(state == "OPEN", s"State is $state")
+          require(s != "OPEN", "Cannot reopen")
+          state = s
+        }
+        locks.toArray.toSet[PointerType]
+      }.andThen({
+        case Success(result) =>
+          logMsg(s"setState($s) $result")
+        case _ =>
+      })
+    }
+  }
+
+  def getState = Metrics.codeFuture("TxnActor.getState") {
+    qos("txn") {
+      withActor {
+        state
       }
-      locks.toArray.toSet[PointerType]
-    }.andThen({
-      case Success(result) =>
-        logMsg(s"setState($s) $result")
-      case _ =>
-    })
-  }
-
-  def getState = qos("txn") {
-    withActor {
-      state
     }
   }
 
