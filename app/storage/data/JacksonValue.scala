@@ -13,6 +13,17 @@ import scala.reflect._
 object JacksonValue {
   val utf8: Charset = java.nio.charset.Charset.forName("UTF-8")
   val mapper = new ObjectMapper().registerModule(DefaultScalaModule).enableDefaultTyping(DefaultTyping.NON_FINAL)
+  val simpleMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+
+  def simple(value: Any) = new JacksonValue({
+    if (value.isInstanceOf[String]) {
+      value.toString
+    } else {
+      val writer: StringWriter = new StringWriter()
+      simpleMapper.writeValue(writer, value)
+      writer.toString
+    }
+  })
 
   def apply(value: Any) = new JacksonValue({
     if (value.isInstanceOf[String]) {

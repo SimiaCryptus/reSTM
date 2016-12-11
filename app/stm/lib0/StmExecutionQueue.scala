@@ -70,8 +70,7 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
     }
   }
 
-  def init(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext) = {
-    StmDaemons.init()
+  def registerDaemons(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext) = {
     (1 to count).map(i=>{
       val f: (Restm, ExecutionContext) => Unit = task() _
       DaemonConfig(s"Queue-${workQueue.id}-$i", f)

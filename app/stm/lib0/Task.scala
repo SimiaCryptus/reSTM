@@ -17,7 +17,7 @@ object Task {
   def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     STMPtr.dynamic[TaskData[T]](new TaskData[T](Option(KryoValue(f)), triggers = ancestors)).map(new Task(_))
 
-  def static[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]()))
+  def apply[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]()))
 
   sealed trait TaskResult[T]
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
@@ -46,6 +46,7 @@ import stm.lib0.Task._
 
 class Task[T](val root : STMPtr[TaskData[T]]) {
 
+
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
     def result() = atomic { Task.this.result()(_,executionContext) }
     def isComplete() = atomic { Task.this.isComplete()(_,executionContext) }
@@ -70,6 +71,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
+  def id = root.id.toString
 
   def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[U]] = {
     val func: (Restm, ExecutionContext) => TaskResult[U] = wrapMap(function)
@@ -89,7 +91,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     val schedule: ScheduledFuture[_] = scheduledThreadPool.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = {
         for(isComplete <- Task.this.atomic.isComplete()) {
-          if(isComplete) {
+          if(isComplete && !promise.isCompleted) {
             Task.this.atomic.result().onComplete({
               case Success(x) =>
                 promise.success(x)

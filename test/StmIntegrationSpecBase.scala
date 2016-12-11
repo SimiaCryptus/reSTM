@@ -170,14 +170,15 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       output mustBe input
     }
     "support sorting" in {
-      StmExecutionQueue.init(1)
+      StmDaemons.start()
+      StmExecutionQueue.registerDaemons(1)
       val input = randomUUIDs.take(20).toSet
       input.foreach(collection.atomic.sync.add(_))
       val sortTask = collection.atomic.sort().flatMap(_.future)
       val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
       val output = sortResult.stream().toList
       output mustBe input.toList.sorted
-      Await.result(StmDaemons.stopAll(), 30.seconds)
+      Await.result(StmDaemons.stop(), 30.seconds)
     }
   }
 
@@ -278,7 +279,8 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
 
   "StmExecutionQueue" should {
     "support queued and chained operations" in {
-      StmExecutionQueue.init(1)
+      StmDaemons.start()
+      StmExecutionQueue.registerDaemons(1)
       val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
       Await.result(StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
@@ -290,10 +292,11 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
         new Task.TaskSuccess("bar")
       }).future, 10.seconds)
       hasRun.atomic.sync.readOpt mustBe Some(2)
-      Await.result(StmDaemons.stopAll(), 30.seconds)
+      Await.result(StmDaemons.stop(), 30.seconds)
     }
     "support futures" in {
-      StmExecutionQueue.init(1)
+      StmDaemons.start()
+      StmExecutionQueue.registerDaemons(1)
       val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
       val task: Task[String] = StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
@@ -302,23 +305,24 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       })
       Await.result(task.future, 30.seconds) mustBe "foo"
       hasRun.atomic.sync.readOpt mustBe Some(1)
-      Await.result(StmDaemons.stopAll(), 30.seconds)
+      Await.result(StmDaemons.stop(), 30.seconds)
     }
     "support continued operations" in {
-      StmExecutionQueue.init(1)
+      StmDaemons.start()
+      StmExecutionQueue.registerDaemons(1)
       val counter = STMPtr.static[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
       val count = 20
       val task = StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter,count) _)
       Await.result(task.future, 10.seconds)
       counter.atomic.sync.readOpt mustBe Some(count)
-      Await.result(StmDaemons.stopAll(), 30.seconds)
+      Await.result(StmDaemons.stop(), 30.seconds)
     }
   }
 
   "StmDaemons" should {
     "support named daemons" in {
-      StmDaemons.init()
+      StmDaemons.start()
       val counter = STMPtr.static[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
       StmDaemons.config.atomic.sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
@@ -335,7 +339,7 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       val ticks: Integer = counter.atomic.sync.readOpt.get
       println(ticks)
       require(ticks > 1)
-      Await.result(StmDaemons.stopAll(), 30.seconds)
+      Await.result(StmDaemons.stop(), 30.seconds)
       val ticks2: Integer = counter.atomic.sync.readOpt.get
       Thread.sleep(500)
       val ticks3: Integer = counter.atomic.sync.readOpt.get
@@ -367,6 +371,8 @@ class LocalClusterStmIntegrationSpec extends StmIntegrationSpecBase with BeforeA
 class ServletStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
   val cluster = new RestmProxy(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
+
+
 
 class ActorServletStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())

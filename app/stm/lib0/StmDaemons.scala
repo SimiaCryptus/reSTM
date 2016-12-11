@@ -25,7 +25,7 @@ object StmDaemons {
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]
   private[this] var mainThread: Option[Thread] = None
 
-  def init()(implicit cluster: Restm, executionContext: ExecutionContext) : Unit = {
+  def start()(implicit cluster: Restm, executionContext: ExecutionContext) : Unit = {
     if(!mainThread.filter(_.isAlive).isDefined) mainThread = Option({
       val thread: Thread = new Thread(new Runnable {
         override def run(): Unit = try {
@@ -43,16 +43,20 @@ object StmDaemons {
     })
   }
 
-  def stopAll()(implicit executionContext: ExecutionContext) = {
+  def stop()(implicit executionContext: ExecutionContext) = {
     mainThread.foreach(_.interrupt())
+    join()
+  }
+
+  def join()(implicit executionContext: ExecutionContext): Future[Unit] = {
     val promise: Promise[Unit] = Promise[Unit]
     def isMainAlive: Boolean = mainThread.filter(_.isAlive).isDefined
     def allDaemonsComplete: Boolean = daemonThreads.filter(_._2.isAlive).isEmpty
     val scheduledFuture = Task.scheduledThreadPool.scheduleAtFixedRate(new Runnable {
-      override def run(): Unit = if(!isMainAlive && allDaemonsComplete) promise.success(Unit)
+      override def run(): Unit = if (!isMainAlive && allDaemonsComplete) promise.success(Unit)
     }, 100, 100, TimeUnit.MILLISECONDS)
     val future: Future[Unit] = promise.future
-    future.onComplete(_=>scheduledFuture.cancel(false))
+    future.onComplete(_ => scheduledFuture.cancel(false))
     future
   }
 

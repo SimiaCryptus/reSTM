@@ -29,3 +29,12 @@ POST    /_txn/addLock/*time         controllers.RestmController._addLock(id:Stri
 POST    /_txn/reset/*time           controllers.RestmController._reset(time:String)
 POST    /_txn/commit/*time          controllers.RestmController._commit(time:String)
 
+GET    /task/result/*id             controllers.RestmController.taskResult(id:String)
+GET    /task/info/*id               controllers.RestmController.taskInfo(id:String)
+
+GET    /demo/sort                   controllers.RestmController.demoSort(n:Int = 100)
+
+GET    /sys/init                    controllers.RestmController.init()
+GET    /sys/shutdown                controllers.RestmController.shutdown()
+GET    /sys/threads                 controllers.RestmController.threadDump()
+

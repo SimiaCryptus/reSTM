@@ -1,13 +1,16 @@
 package controllers
 
 import java.net.InetAddress
+import java.util.UUID
 import java.util.concurrent.Executors
 import javax.inject._
 
 import akka.actor.ActorSystem
 import play.api.mvc._
+import stm.lib0._
 import storage.Restm._
 import storage._
+import storage.data.JacksonValue
 import storage.util.InternalRestmProxy
 
 import scala.collection.mutable
@@ -141,5 +144,40 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
 
   def _commit(time: String) = Action.async {
     storageService.internal._commitTxn(new TimeStamp(time)).map(x => x.map(_.toString).reduceOption(_ + "\n" + _).map(Ok(_)).getOrElse(Ok("")))
+  }
+
+  def shutdown() = Action.async {
+    StmDaemons.stop().map(_=>Ok("Node down"))
+  }
+
+  def taskResult(id: String) = Action.async {
+    val task: Task[AnyRef] = Task[AnyRef](new PointerType(id))
+    val future: Future[AnyRef] = task.future(storageService, exec)
+    future.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
+  }
+
+  def taskInfo(id: String) = Action.async {
+    Task(new PointerType(id)).atomic(storageService,exec).getStatusTrace.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
+  }
+
+  def threadDump() = Action {
+    import scala.collection.JavaConverters._
+    Ok(JacksonValue.simple(
+      Thread.getAllStackTraces().asScala.mapValues(_.map(s=>s"${s.getClass.getCanonicalName}.${s.getMethodName}(${s.getFileName}:${s.getLineNumber})"))
+    ).pretty).as("application/json")
+  }
+
+  def init() = Action {
+    StmDaemons.start()(storageService,exec)
+    StmExecutionQueue.registerDaemons(8)(storageService,exec)
+    Ok("Node started")
+  }
+
+  def demoSort(n: Int) = Action.async {
+    val collection = TreeCollection.static[String](new PointerType)
+    Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x:String)=>collection.atomic(storageService,exec).sync.add(x))
+    collection.atomic(storageService, exec).sort()
+      .map(task=>Ok(s"""<html><body><a href="/task/result/${task.id}">Task ${task.id} started</a></body></html>""")
+        .as("text/html"))
   }
 }
