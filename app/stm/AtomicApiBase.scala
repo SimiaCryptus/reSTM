@@ -1,14 +1,8 @@
-package stm.lib0
+package stm
 
-import stm.{STMTxn, STMTxnCtx}
 import storage.Restm
 
-import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
-
-abstract class SyncApiBase(duration: Duration) {
-  def sync[T](f: =>Future[T]) : T = Await.result(f, duration)
-}
+import scala.concurrent.{ExecutionContext, Future}
 
 abstract class AtomicApiBase()(implicit cluster: Restm, executionContext: ExecutionContext) {
   def atomic[T](f: STMTxnCtx=>Future[T]) : Future[T] = new STMTxn[T] {

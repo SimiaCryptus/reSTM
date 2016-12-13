@@ -1,7 +1,8 @@
-package stm.lib0
+package stm.concurrent
 
 import java.util.concurrent.TimeUnit
 
+import stm.collection.LinkedList
 import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue

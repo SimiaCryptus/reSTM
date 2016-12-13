@@ -1,9 +1,13 @@
-import org.scalatest.{MustMatchers, WordSpec}
-import storage.Restm
-import storage.Restm._
+import java.util.concurrent.Executors
 
-import scala.concurrent.Await
+import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
+import org.scalatestplus.play.OneServerPerTest
+import storage.Restm._
+import storage.remote.RestmHttpClient
+import storage.{Restm, RestmActors}
+
 import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext}
 
 abstract class ClusterSpecBase extends WordSpec with MustMatchers {
   def cluster: Restm
@@ -38,3 +42,18 @@ abstract class ClusterSpecBase extends WordSpec with MustMatchers {
     }
   }
 }
+class LocalClusterSpec extends ClusterSpecBase with BeforeAndAfterEach {
+
+  override def beforeEach() {
+    cluster.internal.asInstanceOf[RestmActors].clear()
+  }
+
+  val cluster = LocalRestmDb
+}
+class IntegrationSpec extends ClusterSpecBase with OneServerPerTest {
+
+  private val pool = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
+}
+
+

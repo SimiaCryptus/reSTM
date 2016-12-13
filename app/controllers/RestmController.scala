@@ -10,11 +10,13 @@ import _root_.util.Metrics
 import akka.actor.ActorSystem
 import org.apache.commons.io.FileUtils
 import play.api.mvc._
-import stm.lib0._
+import stm.collection.TreeCollection
+import stm.concurrent.{StmDaemons, StmExecutionQueue, Task}
 import storage.Restm._
 import storage._
 import storage.data.JacksonValue
-import storage.util.{DynamoColdStorage, InternalRestmProxy}
+import storage.remote.{RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
+import storage.util.DynamoColdStorage
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -54,7 +56,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
     override def shards: List[RestmInternal] = {
       peerList.map(name => {
         if (name == localName) local
-        else new InternalRestmProxy(s"http://$name:$peerPort")
+        else new RestmInternalRestmHttpClient(s"http://$name:$peerPort")
       })
     }
   })

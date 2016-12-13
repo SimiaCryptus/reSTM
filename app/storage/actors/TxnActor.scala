@@ -2,7 +2,6 @@ package storage.actors
 
 import storage.Restm._
 import util.Metrics
-import util.OperationMetrics._
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
@@ -18,7 +17,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
   override def toString = s"txn@$objId:$name#$messageNumber"
 
   def addLock(id: PointerType): Future[String] = Metrics.codeFuture("TxnActor.addLock") {
-    qos("txn") {
+    {
       withActor {
         if (state == "OPEN") locks += id
         state
@@ -32,7 +31,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
 
 
   def setState(s: String): Future[Set[PointerType]] = Metrics.codeFuture("TxnActor.setState") {
-    qos("txn") {
+    {
       withActor {
         if (state != s) {
           require(state == "OPEN", s"State is $state")
@@ -49,7 +48,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
   }
 
   def getState = Metrics.codeFuture("TxnActor.getState") {
-    qos("txn") {
+    {
       withActor {
         state
       }

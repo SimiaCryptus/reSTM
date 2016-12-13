@@ -2,8 +2,9 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 import org.scalatest.{MustMatchers, WordSpec}
-import stm.lib0._
+import stm.collection.TreeSet
 import storage.Restm._
+import storage.remote.RestmInternalStaticListReplicator
 import storage.{RestmActors, _}
 
 import scala.concurrent.ExecutionContext

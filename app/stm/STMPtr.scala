@@ -1,6 +1,5 @@
 package stm
 
-import stm.lib0.{AtomicApiBase, SyncApiBase}
 import storage.Restm
 import storage.Restm.PointerType
 

@@ -1,9 +1,10 @@
-package stm.lib0
+package stm.concurrent
 
 import java.util.UUID
 import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
-import stm.{STMPtr, STMTxn, STMTxnCtx}
+import stm._
+import stm.concurrent.Task.TaskResult
 import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
@@ -26,7 +27,7 @@ object Task {
   private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
   private[Task] val futureCache = new TrieMap[(Restm, Task[_]), Future[_]]()
 }
-
+import stm.concurrent.Task._
 
 object TaskStatus {
   object Blocked extends TaskStatus
@@ -40,9 +41,6 @@ object TaskStatus {
 sealed class TaskStatus {}
 
 case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[TaskStatusTrace] = List.empty)
-
-
-import stm.lib0.Task._
 
 class Task[T](val root : STMPtr[TaskData[T]]) {
 
@@ -166,9 +164,19 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     }
     root.readOpt().flatMap(currentState => {
       val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id)).getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
-      def children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace())).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
+      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace())).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
       statusTrace.status match {
         case TaskStatus.Success => Future.successful(statusTrace)
+        case TaskStatus.Unknown => children.map(children=>{
+          val pending = children.filter(_.status match {
+            case TaskStatus.Success => false
+            case _:TaskStatus.Failed => false
+            case _ => true
+          })
+          if(pending.isEmpty) statusTrace.copy(status = TaskStatus.Queued)
+          else statusTrace.copy(status = TaskStatus.Blocked, children = children)
+        })
+        case _:TaskStatus.Failed => Future.successful(statusTrace)
         case TaskStatus.Ex_NotDefined => Future.successful(statusTrace)
         case _ => children.map(x=>statusTrace.copy(children = x))
       }

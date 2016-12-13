@@ -3,7 +3,7 @@ import java.util.concurrent.Executors
 
 import com.amazonaws.auth.{AWSCredentials, AWSStaticCredentialsProvider, BasicAWSCredentials}
 import org.scalatest.{MustMatchers, WordSpec}
-import stm.lib0._
+import stm.collection.TreeSet
 import storage.Restm._
 import storage.util._
 import storage.{RestmActors, _}

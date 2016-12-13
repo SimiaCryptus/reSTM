@@ -1,6 +1,6 @@
-package stm.lib0
+package stm.collection
 
-import stm.{STMPtr, STMTxn, STMTxnCtx}
+import stm._
 import storage.Restm
 import storage.Restm.PointerType
 

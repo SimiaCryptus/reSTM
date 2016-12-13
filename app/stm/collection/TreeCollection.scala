@@ -1,7 +1,9 @@
-package stm.lib0
+package stm.collection
 
-import stm.lib0.Task.{TaskResult, TaskSuccess}
-import stm.{STMPtr, STMTxn, STMTxnCtx}
+import stm._
+import stm.collection.TreeCollection.BinaryTreeNode
+import stm.concurrent.Task.{TaskResult, TaskSuccess}
+import stm.concurrent.{StmExecutionQueue, Task}
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -136,7 +138,6 @@ object TreeCollection {
 
   }
 }
-import stm.lib0.TreeCollection._
 
 class TreeCollection[T](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
 

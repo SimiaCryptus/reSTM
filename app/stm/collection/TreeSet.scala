@@ -1,6 +1,7 @@
-package stm.lib0
+package stm.collection
 
-import stm.{STMPtr, STMTxn, STMTxnCtx}
+import stm._
+import stm.collection.TreeSet.BinaryTreeNode
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -119,7 +120,6 @@ object TreeSet {
   }
 
 }
-import stm.lib0.TreeSet._
 
 class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
 

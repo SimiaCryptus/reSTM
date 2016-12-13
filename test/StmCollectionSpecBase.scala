@@ -1,21 +1,20 @@
 import java.util.UUID
 import java.util.concurrent.Executors
 
-import _root_.util.OperationMetrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
-import stm.lib0.Task.TaskResult
-import stm.lib0._
+import stm.collection.{LinkedList, TreeCollection, TreeMap, TreeSet}
+import stm.concurrent.Task.TaskResult
+import stm.concurrent.{StmExecutionQueue, Task}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
-import storage.util._
+import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
 import storage.{RestmActors, _}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
-import scala.util.Try
 
-object StmIntegrationSpecBase {
+object StmCollectionSpecBase {
   def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
     val x = Await.result(new STMTxn[Int] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
@@ -31,97 +30,9 @@ object StmIntegrationSpecBase {
   }
 }
 
-abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
+abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-
-  "Transactional Pointers" should {
-    "basic writes" in {
-      val ptr = STMPtr.static[String](new PointerType)
-      Await.result(new STMTxn[Option[String]] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-          ptr.readOpt()
-        }
-      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
-      Await.result(new STMTxn[Unit] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-          ptr.write("true")
-        }
-      }.txnRun(cluster)(executionContext), 30.seconds)
-      Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-          ptr.read()
-        }
-      }.txnRun(cluster)(executionContext), 30.seconds) mustBe "true"
-    }
-  }
-
-  "Transactional History" should {
-    "recover orphaned trasactions" in {
-
-      val collection = TreeSet.static[String](new PointerType)
-
-      // Bootstrap collection to reduce contention at root nodes via serial inserts
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
-        collection.atomic.sync.contains(item) mustBe false
-        collection.atomic.sync.add(item)
-        collection.atomic.sync.contains(item) mustBe true
-      }
-
-      // Insert collection and expire transactions (never commit nor rollback)
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(1).toList) Try {
-        Await.result(new STMTxn[Unit] {
-          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = Future {
-            collection.sync.contains(item) mustBe false
-            collection.sync.add(item)
-            collection.sync.contains(item) mustBe true
-          }
-        }.testAbandoned().txnRun(cluster)(executionContext), 30.seconds)
-      }
-      Thread.sleep(5000)
-
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
-        collection.atomic.sync.contains(item) mustBe false
-        collection.atomic.sync.add(item)
-        collection.atomic.sync.contains(item) mustBe true
-      }
-
-      OperationMetrics.metrics.map(e => e._1 + ": " + e._2.toString).foreach(System.out.println)
-      OperationMetrics.metrics.clear()
-    }
-
-    "recover orphaned pointers" in {
-
-      val collection = TreeSet.static[String](new PointerType)
-
-      // Bootstrap collection to reduce contention at root nodes via serial inserts
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
-        collection.atomic.sync.contains(item) mustBe false
-        collection.atomic.sync.add(item)
-        collection.atomic.sync.contains(item) mustBe true
-      }
-
-      // Insert collection and expire transactions (never commit nor rollback)
-      RestmImpl.failChainedCalls = true
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(1).toList) Try {
-        collection.atomic.sync.contains(item) mustBe false
-        collection.atomic.sync.add(item)
-        collection.atomic.sync.contains(item) mustBe true
-      }
-      RestmImpl.failChainedCalls = false
-      Thread.sleep(5000)
-
-      for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
-        collection.atomic.sync.contains(item) mustBe false
-        collection.atomic.sync.add(item)
-        collection.atomic.sync.contains(item) mustBe true
-      }
-
-      OperationMetrics.metrics.map(e => e._1 + ": " + e._2.toString).foreach(System.out.println)
-      OperationMetrics.metrics.clear()
-    }
-
-  }
 
   "TreeSet" should {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
@@ -168,17 +79,6 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
       input.foreach(collection.atomic.sync.add(_))
       val output = Stream.continually(collection.atomic.sync.get()).takeWhile(_.isDefined).map(_.get).toSet
       output mustBe input
-    }
-    "support sorting" in {
-      StmDaemons.start()
-      StmExecutionQueue.registerDaemons(1)
-      val input = randomUUIDs.take(20).toSet
-      input.foreach(collection.atomic.sync.add(_))
-      val sortTask = collection.atomic.sort().flatMap(_.future)
-      val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
-      val output = sortResult.stream().toList
-      output mustBe input.toList.sorted
-      Await.result(StmDaemons.stop(), 30.seconds)
     }
   }
 
@@ -277,79 +177,9 @@ abstract class StmIntegrationSpecBase extends WordSpec with MustMatchers {
     }
   }
 
-  "StmExecutionQueue" should {
-    "support queued and chained operations" in {
-      StmDaemons.start()
-      StmExecutionQueue.registerDaemons(1)
-      val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
-      hasRun.atomic.sync.init(0)
-      Await.result(StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
-        hasRun.atomic(cluster, executionContext).sync.write(1)
-        new Task.TaskSuccess("foo")
-      }).atomic.sync.map(StmExecutionQueue, (value, cluster, executionContext) => {
-        require(value=="foo")
-        hasRun.atomic(cluster, executionContext).sync.write(2)
-        new Task.TaskSuccess("bar")
-      }).future, 10.seconds)
-      hasRun.atomic.sync.readOpt mustBe Some(2)
-      Await.result(StmDaemons.stop(), 30.seconds)
-    }
-    "support futures" in {
-      StmDaemons.start()
-      StmExecutionQueue.registerDaemons(1)
-      val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
-      hasRun.atomic.sync.init(0)
-      val task: Task[String] = StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
-        hasRun.atomic(cluster, executionContext).sync.write(1)
-        new Task.TaskSuccess("foo")
-      })
-      Await.result(task.future, 30.seconds) mustBe "foo"
-      hasRun.atomic.sync.readOpt mustBe Some(1)
-      Await.result(StmDaemons.stop(), 30.seconds)
-    }
-    "support continued operations" in {
-      StmDaemons.start()
-      StmExecutionQueue.registerDaemons(1)
-      val counter = STMPtr.static[java.lang.Integer](new PointerType)
-      counter.atomic.sync.init(0)
-      val count = 20
-      val task = StmExecutionQueue.atomic.sync.add(StmIntegrationSpecBase.recursiveTask(counter,count) _)
-      Await.result(task.future, 10.seconds)
-      counter.atomic.sync.readOpt mustBe Some(count)
-      Await.result(StmDaemons.stop(), 30.seconds)
-    }
-  }
-
-  "StmDaemons" should {
-    "support named daemons" in {
-      StmDaemons.start()
-      val counter = STMPtr.static[java.lang.Integer](new PointerType)
-      counter.atomic.sync.init(0)
-      StmDaemons.config.atomic.sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
-        while(!Thread.interrupted()) {
-          new STMTxn[Integer] {
-            override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Integer] = {
-              counter.read().flatMap(prev=>counter.write(prev+1).map(_=>prev+1))
-            }
-          }.txnRun(cluster)(executionContext)
-          Thread.sleep(100)
-        }
-      }))
-      Thread.sleep(1500)
-      val ticks: Integer = counter.atomic.sync.readOpt.get
-      println(ticks)
-      require(ticks > 1)
-      Await.result(StmDaemons.stop(), 30.seconds)
-      val ticks2: Integer = counter.atomic.sync.readOpt.get
-      Thread.sleep(500)
-      val ticks3: Integer = counter.atomic.sync.readOpt.get
-      require(ticks2 == ticks3)
-    }
-  }
-
 }
 
-class LocalStmIntegrationSpec extends StmIntegrationSpecBase with BeforeAndAfterEach {
+class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
   override def beforeEach() {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
@@ -357,7 +187,7 @@ class LocalStmIntegrationSpec extends StmIntegrationSpecBase with BeforeAndAfter
   val cluster = LocalRestmDb
 }
 
-class LocalClusterStmIntegrationSpec extends StmIntegrationSpecBase with BeforeAndAfterEach {
+class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
   private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
 
@@ -368,14 +198,14 @@ class LocalClusterStmIntegrationSpec extends StmIntegrationSpecBase with BeforeA
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class ServletStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
-  val cluster = new RestmProxy(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerTest {
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
 
 
-class ActorServletStmIntegrationSpec extends StmIntegrationSpecBase with OneServerPerTest {
+class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerTest {
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val cluster = new RestmImpl(new InternalRestmProxy(s"http://localhost:$port")(newExeCtx))(newExeCtx)
+  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 

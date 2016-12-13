@@ -1,8 +1,6 @@
 import java.time.Clock
 
 import com.google.inject.AbstractModule
-import storage.Restm
-import storage.util.RestmInject
 
 /**
   * This class is a Guice module that tells Guice how to bind several
@@ -18,7 +16,6 @@ class Module extends AbstractModule {
 
   override def configure() = {
     bind(classOf[Clock]).toInstance(Clock.systemDefaultZone)
-    bind(classOf[Restm]).to(classOf[RestmInject])
   }
 
 }

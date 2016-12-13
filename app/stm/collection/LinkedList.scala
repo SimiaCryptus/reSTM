@@ -1,6 +1,6 @@
-package stm.lib0
+package stm.collection
 
-import stm._
+import stm.{SyncApiBase, _}
 import storage.Restm
 import storage.Restm.PointerType
 
