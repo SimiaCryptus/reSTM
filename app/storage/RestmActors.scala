@@ -1,5 +1,6 @@
 package storage
 
+import _root_.util.Metrics._
 import storage.Restm._
 import storage.actors._
 
@@ -14,16 +15,18 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
     val thread: Thread = new Thread(new Runnable {
       override def run(): Unit = {
         while(!Thread.interrupted()) {
-          for(item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) item match {
-            case id : PointerType =>
-              val actor = getPtrActor(id)
-              val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
-              if(!recordsToUpload.isEmpty) {
-                coldStorage.store(id, recordsToUpload.map(record=>record.time->record.value).toMap)
-                recordsToUpload.foreach(_.coldStorageTs = Option(System.currentTimeMillis()))
-                ActorLog.log(s"$actor Persisted")
-              }
-            case p : Promise[Unit] => p.success(Unit)
+          for(item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) codeBlock("RestmActors.dequeueStorage") {
+            item match {
+              case id : PointerType =>
+                val actor = getPtrActor(id)
+                val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
+                if(!recordsToUpload.isEmpty) codeBlock("Restm.coldStorage.store") {
+                  coldStorage.store(id, recordsToUpload.map(record=>record.time->record.value).toMap)
+                  recordsToUpload.foreach(_.coldStorageTs = Option(System.currentTimeMillis()))
+                  ActorLog.log(s"$actor Persisted")
+                }
+              case p : Promise[Unit] => p.success(Unit)
+            }
           }
           Thread.sleep(10)
         }
@@ -37,37 +40,41 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
 
   def flushColdStorage() : Future[Unit] = {
     val promise = Promise[Unit]()
-    freezeQueue.add(promise)
+    queueStorage(promise)
     promise.future
   }
 
   protected val txns: TrieMap[TimeStamp, TxnActor] = new scala.collection.concurrent.TrieMap[TimeStamp, TxnActor]()
 
-  protected def getTxnActor(id: TimeStamp): TxnActor = txns.getOrElseUpdate(id, new TxnActor(id.toString))
+  protected def getTxnActor(id: TimeStamp): TxnActor = codeBlock("Restm.getTxn") {
+    txns.getOrElseUpdate(id, codeBlock("Restm.newTxn"){ new TxnActor(id.toString) })
+  }
 
   protected val ptrs: TrieMap[PointerType, MemActor] = new scala.collection.concurrent.TrieMap[PointerType, MemActor]()
 
-  protected def getPtrActor(id: PointerType): MemActor = ptrs.getOrElseUpdate(id, {
-    val obj = new MemActor(id)
-    try {
-      val restored: Map[TimeStamp, ValueType] = coldStorage.read(id)
-      obj.history ++= restored.map(e=>{
-        val record = new HistoryRecord(e._1, e._2)
-        record.coldStorageTs = Option(System.currentTimeMillis())
-        record
-      })
-      if(restored.isEmpty) {
-        ActorLog.log(s"$obj Initialized new value")
-      } else {
-        ActorLog.log(s"$obj Initialized with ${restored.size} items restored")
+  protected def getPtrActor(id: PointerType): MemActor = codeBlock("Restm.getPtr") { ptrs.getOrElseUpdate(id,
+    codeBlock("Restm.newPtr") {
+      val obj = new MemActor(id)
+      try {
+        val restored: Map[TimeStamp, ValueType] = coldStorage.read(id)
+        obj.history ++= restored.map(e=>{
+          val record = new HistoryRecord(e._1, e._2)
+          record.coldStorageTs = Option(System.currentTimeMillis())
+          record
+        })
+        if(restored.isEmpty) {
+          ActorLog.log(s"$obj Initialized new value")
+        } else {
+          ActorLog.log(s"$obj Initialized with ${restored.size} items restored")
+        }
+      } catch {
+        case e : Throwable =>
+          ActorLog.log(s"$obj Error restoring: $e")
+          throw e
       }
-    } catch {
-      case e : Throwable =>
-        ActorLog.log(s"$obj Error restoring: $e")
-        throw e
+      obj
     }
-    obj
-  })
+  )}
 
   def clear() = {
     ptrs.clear()
@@ -80,7 +87,11 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
   }
 
   def _initValue(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean] = {
-    getPtrActor(id).init(time, value).andThen({case Success(true) => freezeQueue.add(id)})
+    getPtrActor(id).init(time, value).andThen({case Success(true) => queueStorage(id)})
+  }
+
+  def queueStorage(id: AnyRef): Boolean = codeBlock("RestmActors.queueStorage") {
+    freezeQueue.add(id)
   }
 
   override def _txnState(time: TimeStamp): Future[String] = {
@@ -96,7 +107,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
   }
 
   def _commitValue(id: PointerType, time: TimeStamp): Future[Unit] = {
-    getPtrActor(id).writeCommit(time).andThen({case Success(_) => freezeQueue.add(id)})
+    getPtrActor(id).writeCommit(time).andThen({case Success(_) => queueStorage(id)})
 
   }
 
