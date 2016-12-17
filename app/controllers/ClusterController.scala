@@ -13,18 +13,18 @@ import scala.concurrent.ExecutionContext
 class ClusterController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
 
-  def listPeers() = Action { request => Metrics.codeBlock("RestmController.listPeers") {
+  def listPeers() = Action { request => Metrics.codeBlock("ClusterController.listPeers") {
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
   }
   }
 
-  def addPeer(peer: String) = Action { request => Metrics.codeBlock("RestmController.addPeer") {
+  def addPeer(peer: String) = Action { request => Metrics.codeBlock("ClusterController.addPeer") {
     peers += peer
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
   }
   }
 
-  def delPeer(peer: String) = Action { request => Metrics.codeBlock("RestmController.delPeer") {
+  def delPeer(peer: String) = Action { request => Metrics.codeBlock("ClusterController.delPeer") {
     peers -= peer
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
   }

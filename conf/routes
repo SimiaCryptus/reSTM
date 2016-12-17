@@ -40,3 +40,6 @@ GET    /sys/threads                 controllers.SystemController.threadDump()
 GET    /sys/metrics                 controllers.SystemController.metrics()
 GET    /sys/about                   controllers.SystemController.about()
 
+GET    /sys/logs/                   controllers.SystemController.listLogs()
+GET    /sys/logs/*name              controllers.SystemController.listLog(name:String, search:Option[String])
+
