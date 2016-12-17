@@ -4,9 +4,9 @@
 
 GET     /                           controllers.HomeController.index
 
-GET     /peer                       controllers.RestmController.listPeers()
-POST    /peer/*id                   controllers.RestmController.addPeer(id: String)
-DELETE  /peer/*id                   controllers.RestmController.delPeer(id: String)
+GET     /peer                       controllers.ClusterController.listPeers()
+POST    /peer/*id                   controllers.ClusterController.addPeer(id: String)
+DELETE  /peer/*id                   controllers.ClusterController.delPeer(id: String)
 
 PUT     /mem                        controllers.RestmController.newValue(time: String)
 GET     /mem/*id                    controllers.RestmController.getValue(id: String, time: Option[String], ifModifiedSince: Option[String])
@@ -29,14 +29,14 @@ POST    /_txn/addLock/*time         controllers.RestmController._addLock(id:Stri
 POST    /_txn/reset/*time           controllers.RestmController._reset(time:String)
 POST    /_txn/commit/*time          controllers.RestmController._commit(time:String)
 
-GET    /task/result/*id             controllers.RestmController.taskResult(id:String)
-GET    /task/info/*id               controllers.RestmController.taskInfo(id:String)
+GET    /task/result/*id             controllers.ExecutionController.taskResult(id:String)
+GET    /task/info/*id               controllers.ExecutionController.taskInfo(id:String)
 
-GET    /demo/sort                   controllers.RestmController.demoSort(n:Int = 100)
+GET    /demo/sort                   controllers.DemoController.demoSort(n:Int = 100)
 
-GET    /sys/init                    controllers.RestmController.init()
-GET    /sys/shutdown                controllers.RestmController.shutdown()
-GET    /sys/threads                 controllers.RestmController.threadDump()
-GET    /sys/metrics                 controllers.RestmController.metrics()
-GET    /sys/about                   controllers.RestmController.about()
+GET    /sys/init                    controllers.SystemController.init()
+GET    /sys/shutdown                controllers.SystemController.shutdown()
+GET    /sys/threads                 controllers.SystemController.threadDump()
+GET    /sys/metrics                 controllers.SystemController.metrics()
+GET    /sys/about                   controllers.SystemController.about()
 

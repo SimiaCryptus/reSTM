@@ -1,58 +1,34 @@
 package controllers
 
-import java.io.File
 import java.net.InetAddress
-import java.util.UUID
 import java.util.concurrent.Executors
 import javax.inject._
 
+import _root_.util.Config._
 import _root_.util.Metrics
 import akka.actor.ActorSystem
-import org.apache.commons.io.FileUtils
 import play.api.mvc._
-import stm.collection.TreeCollection
-import stm.concurrent.{StmDaemons, StmExecutionQueue, Task}
 import storage.Restm._
 import storage._
-import storage.data.JacksonValue
 import storage.remote.{RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
 import storage.util.DynamoColdStorage
 
-import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 object RestmController {
-  val properties: Map[String, String] = System.getProperties.asScala.toMap
-  lazy val configFile: Map[String, String] = Option(new File("restm.config"))
-    .filter(_.exists())
-    .map(FileUtils.readLines(_, "UTF-8"))
-    .map(_.asScala.toList).getOrElse(List.empty)
-    .map(_.trim).filterNot(_.startsWith("//"))
-    .map(_.split("=").map(_.trim)).filter(2 == _.size)
-    .map(split => split(0) -> split(1)).toMap
-  def getConfig(key:String) = {
-    configFile.get(key).orElse(properties.get(key))
-  }
-}
-import controllers.RestmController._
-
-@Singleton
-class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
-
   val peers = new mutable.HashSet[String]()
-  val localName: String = InetAddress.getLocalHost.getHostAddress
   val table = getConfig("dynamoTable")
-  private lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
-  private val coldStorage: ColdStorage = dynamo.getOrElse(new HeapColdStorage)
-  private lazy val local: RestmActors = new RestmActors(coldStorage)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
   val peerPort = getConfig("peerPort").map(Integer.parseInt(_)).getOrElse(898)
-  val workers = getConfig("workers").map(Integer.parseInt(_)).getOrElse(8)
+
+  private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
+  private[this] lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
+  private[this] val coldStorage: ColdStorage = dynamo.getOrElse(new HeapColdStorage)
+  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
-
-  val storageService = new RestmImpl(new RestmInternalStaticListRouter {
+  def storageService(implicit exec: ExecutionContext) = new RestmImpl(new RestmInternalStaticListRouter {
     override def shards: List[RestmInternal] = {
       peerList.map(name => {
         if (name == localName) local
@@ -61,22 +37,14 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
     }
   })
 
-  def listPeers() = Action { request => Metrics.codeBlock("RestmController.listPeers") {
-    Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
-  }
-  }
+}
+import controllers.RestmController._
 
-  def addPeer(peer: String) = Action { request => Metrics.codeBlock("RestmController.addPeer") {
-    peers += peer
-    Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
-  }
-  }
 
-  def delPeer(peer: String) = Action { request => Metrics.codeBlock("RestmController.delPeer") {
-    peers -= peer
-    Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
-  }
-  }
+
+@Singleton
+class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
+
 
   def newValue(time: String) = Action.async { request => Metrics.codeFuture("RestmController.newValue") {
     storageService.newPtr(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(x => Ok(x.toString))
@@ -84,7 +52,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   }
 
   def getValue(id: String, time: Option[String], ifModifiedSince: Option[String]) = Action.async {
-    Metrics.codeFuture("RestmController.getValue"){
+    Metrics.codeFuture("RestmController.getValue") {
       val value = if (time.isDefined) {
         storageService.getPtr(new PointerType(id), new TimeStamp(time.get), ifModifiedSince.map(new TimeStamp(_)))
       } else {
@@ -109,11 +77,13 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
 
   def writeValue(id: String, time: String) = Action.async { request => Metrics.codeFuture("RestmController.writeValue") {
     storageService.queueValue(new PointerType(id), new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(x => Ok(""))
-  }}
+  }
+  }
 
   def delValue(id: String, time: String) = Action.async { request => Metrics.codeFuture("RestmController.delValue") {
     storageService.delete(new PointerType(id), new TimeStamp(time)).map(x => Ok(""))
-  }}
+  }
+  }
 
   def newTxn(priority: Int) = Action.async {
     Metrics.codeFuture("RestmController.newTxn") {
@@ -194,67 +164,10 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
       storageService.internal._commitTxn(new TimeStamp(time)).map(x => x.map(_.toString).reduceOption(_ + "\n" + _).map(Ok(_)).getOrElse(Ok("")))
     }
   }
-
-  def shutdown() = Action.async {
-    Metrics.codeFuture("RestmController.shutdown") {
-      StmDaemons.stop().map(_=>Ok("Node down"))
-    }
-  }
-
-  def taskResult(id: String) = Action.async {
-    Metrics.codeFuture("RestmController.taskResult") {
-      val task: Task[AnyRef] = Task[AnyRef](new PointerType(id))
-      val future: Future[AnyRef] = task.future(storageService, exec)
-      future.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
-    }
-  }
-
-  def taskInfo(id: String) = Action.async {
-    Metrics.codeFuture("RestmController.taskInfo") {
-      Task(new PointerType(id)).atomic(storageService,exec).getStatusTrace.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
-    }
-  }
-
-  def threadDump() = Action {
-    Metrics.codeBlock("RestmController.threadDump") {
-      import scala.collection.JavaConverters._
-      Ok(JacksonValue.simple(
-        Thread.getAllStackTraces().asScala.mapValues(_.map(s=>s"${s.getClass.getCanonicalName}.${s.getMethodName}(${s.getFileName}:${s.getLineNumber})"))
-      ).pretty).as("application/json")
-    }
-  }
-
-  def metrics() = Action {
-    Metrics.codeBlock("RestmController.metrics") {
-      Ok(JacksonValue.simple(Metrics.get()).pretty).as("application/json")
-    }
-  }
-
-  def about() = Action {
-    Metrics.codeBlock("RestmController.about") {
-      Ok(JacksonValue.simple(Map(
-        "peers" -> peers,
-        "table" -> table,
-        "peerPort" -> peerPort
-      )).pretty).as("application/json")
-    }
-  }
-
-  def init() = Action {
-    Metrics.codeBlock("RestmController.init") {
-      StmDaemons.start()(storageService,exec)
-      StmExecutionQueue.registerDaemons(workers)(storageService,exec)
-      Ok("Node started")
-    }
-  }
-
-  def demoSort(n: Int) = Action.async {
-    Metrics.codeFuture("RestmController.demoSort") {
-      val collection = TreeCollection.static[String](new PointerType)
-      Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x:String)=>collection.atomic(storageService,exec).sync.add(x))
-      collection.atomic(storageService, exec).sort()
-        .map(task=>Ok(s"""<html><body><a href="/task/result/${task.id}">Task ${task.id} started</a></body></html>""")
-          .as("text/html"))
-    }
-  }
 }
+
+
+
+
+
+
