@@ -6,6 +6,7 @@ import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFutur
 import com.fasterxml.jackson.annotation.JsonIgnore
 import stm._
 import stm.concurrent.Task.TaskResult
+import stm.concurrent.TaskStatus.Failed
 import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
@@ -35,15 +36,19 @@ import stm.concurrent.Task._
 object TaskStatus {
   object Blocked extends TaskStatus
   object Queued extends TaskStatus
-  object Running extends TaskStatus
+  case class Running(executor : String) extends TaskStatus
+    { override def toString: String = s"${getClass.getSimpleName}($executor)" }
   object Success extends TaskStatus
-  class Failed(val ex : String) extends TaskStatus
+  case class Failed(ex : String) extends TaskStatus
+  { override def toString: String = s"${getClass.getSimpleName}($ex)" }
   object Unknown extends TaskStatus
-  object Orphan extends TaskStatus
+  case class Orphan(ex : String) extends TaskStatus
+  { override def toString: String = s"${getClass.getSimpleName}($ex)" }
   object Ex_NotDefined extends TaskStatus
 }
 sealed class TaskStatus {
   def getName() = getClass.getSimpleName
+  override def toString: String = s"${getClass.getSimpleName}"
 }
 
 case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[TaskStatusTrace] = List.empty)
@@ -143,7 +148,12 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
 
   @JsonIgnore def getStatusTrace(queue: Option[StmExecutionQueue])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
     val queuedTasks = queue.map(_.workQueue.sync.stream().map(_.id).toSet).getOrElse(Set.empty)
+    //System.out.println(s"Current tasks: ${queuedTasks.size}")
     val threads: Iterable[Thread] = Thread.getAllStackTraces.asScala.keys
+    getStatusTrace(queuedTasks, threads)
+  }
+
+  def getStatusTrace(queuedTasks: Set[String], threads: Iterable[Thread])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskStatusTrace] = {
     def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
       val status: TaskStatus = if (currentState.result.isDefined) {
         TaskStatus.Success
@@ -151,9 +161,9 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
         new TaskStatus.Failed(currentState.exception.get.toString)
       } else if (currentState.executorId.isDefined) {
         if (checkExecutor(currentState.executorId.get, id, threads)) {
-          TaskStatus.Running
+          new TaskStatus.Running(currentState.executorId.get)
         } else {
-          TaskStatus.Orphan
+          new TaskStatus.Orphan("Thread Not Found")
         }
       } else {
         TaskStatus.Unknown
@@ -162,27 +172,27 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     }
     root.readOpt().flatMap(currentState => {
       val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id)).getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
-      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(None))).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
+      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(queuedTasks, threads))).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
       statusTrace.status match {
         case TaskStatus.Success => Future.successful(statusTrace)
-        case TaskStatus.Unknown => children.map(children=>{
+        case TaskStatus.Unknown => children.map(children => {
           val pending = children.filter(_.status match {
             case TaskStatus.Success => false
-            case _:TaskStatus.Failed => false
+            case _: Failed => false
             case _ => true
           })
-          if(pending.isEmpty) {
-            if(queuedTasks.contains(id)) {
+          if (pending.isEmpty) {
+            if (queuedTasks.contains(id)) {
               statusTrace.copy(status = TaskStatus.Queued)
             } else {
-              statusTrace.copy(status = TaskStatus.Orphan)
+              statusTrace.copy(status = new TaskStatus.Orphan("Not In Queue"))
             }
           }
           else statusTrace.copy(status = TaskStatus.Blocked, children = children)
         })
-        case _:TaskStatus.Failed => Future.successful(statusTrace)
+        case _: Failed => Future.successful(statusTrace)
         case TaskStatus.Ex_NotDefined => Future.successful(statusTrace)
-        case _ => children.map(x=>statusTrace.copy(children = x))
+        case _ => children.map(x => statusTrace.copy(children = x))
       }
     })
   }

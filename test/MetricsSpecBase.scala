@@ -49,26 +49,30 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
         var continueLoop = true
         while(!sortTask.future.isCompleted && continueLoop) {
           if(!timeout.after(now)) throw new RuntimeException("Time Out")
-          System.out.println("Checking Status...")
-          val statusTrace = sortTask.atomic(-200.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
-          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status.isInstanceOf[Orphan.type]) || node.children.contains(isOrphaned(_))
-          def statusSummary(node : TaskStatusTrace = statusTrace) : Map[String,Int] = (List(node.status.getName() -> 1) ++ node.children.flatMap(statusSummary(_).toList))
+
+          System.out.println(s"Checking Status at ${new Date()}...")
+          val statusTrace = sortTask.atomic(-50.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
+          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status.isInstanceOf[Orphan]) || node.children.exists(isOrphaned(_))
+          def statusSummary(node : TaskStatusTrace = statusTrace) : Map[String,Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
             .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_+_).getOrElse(0))
+
           val numQueued = StmExecutionQueue.workQueue.atomic().sync.size
           val numRunning = StmDaemons.currentStatus.size
+
           if(isOrphaned(statusTrace)) {
-            println(JacksonValue.simple(statusTrace).pretty)
-            System.err.println(s"Orphaned Tasks - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            //println(JacksonValue.simple(statusTrace).pretty)
+            System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            //continueLoop = false
           } else if(numQueued > 0 || numRunning > 0) {
-            System.out.println(s"Status OK - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
           } else {
-            System.out.println(s"Status Idle - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
-            continueLoop = false
+            System.out.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            //continueLoop = false
           }
-          if(continueLoop) Try{Await.ready(sortTask.future, 15.seconds)}
+          if(continueLoop) Try{Await.ready(sortTask.future, 5.seconds)}
         }
         System.out.println(s"Colleting Result at ${new Date()}")
-        val sortResult = Await.result(sortTask.future, 0.seconds)
+        val sortResult = Await.result(sortTask.future, 5.seconds)
         val output = sortResult.atomic().sync.stream().toList
         output mustBe input.toList.sorted
       } finally {
