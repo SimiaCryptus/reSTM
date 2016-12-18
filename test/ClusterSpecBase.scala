@@ -12,10 +12,10 @@ import scala.concurrent.{Await, ExecutionContext}
 abstract class ClusterSpecBase extends WordSpec with MustMatchers {
   def cluster: Restm
 
-  "Application" should {
+  "reSTM Storage Layer" should {
 
-    val ptrId = new PointerType
     "commit new data" in {
+      val ptrId = new PointerType
       val txnA = Await.result(cluster.newTxn(), 30.seconds)
       require(txnA > new TimeStamp(0))
 
@@ -29,6 +29,7 @@ abstract class ClusterSpecBase extends WordSpec with MustMatchers {
     }
 
     "revert data" in {
+      val ptrId = new PointerType
       val txnA = Await.result(cluster.newTxn(), 30.seconds)
       require(txnA > new TimeStamp(0))
 

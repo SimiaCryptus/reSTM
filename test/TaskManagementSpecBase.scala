@@ -12,41 +12,62 @@ import storage.data.JacksonValue
 import storage.remote.RestmCluster
 import storage.{RestmActors, _}
 
+import scala.collection.mutable
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
+import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 import scala.util.Try
 
 
-abstract class MetricsSpecBase extends WordSpec with MustMatchers {
+abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
-  "Metrics" should {
+  "Task management" should {
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
-    "work" in {
+    "monitor ongoing work" in {
       ActorLog.enabled = true
       StmExecutionQueue.verbose = false
 
-      val taskTimeout = 3.minutes
-      val insertTimeout = 90.seconds
-      val taskSize = 100
+      val taskTimeout = 90.minutes
+      val insertTimeout = 5.minutes
+      val taskSize = 1000
 
+      System.out.println(s"Starting Test at ${new Date()}")
       val input = randomUUIDs.take(taskSize).toSet
       val collection = TreeCollection.static[String](new PointerType)
-      Await.result(Future.sequence(input.map(collection.atomic.add(_))), insertTimeout)
-      System.out.println("Input Prepared")
 
-      val sortTask: Task[LinkedList[String]] = collection.atomic.sync.sort()
-      System.out.println("Task Started")
+      val inputBuffer = new mutable.HashSet[String]()
+      inputBuffer ++= input
+      val threads = (0 to 20).map(_ => new Thread(new Runnable {
+        override def run(): Unit = {
+          input.filter(x=>inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
+            collection.atomic(maxRetries = 1000).sync(1.minutes).add(input)
+          })
+        }
+      }))
+      threads.foreach(_.start())
+      def now = new Date()
+      val timeout = new Date(now.getTime + insertTimeout.toMillis)
+      while(threads.exists(_.isAlive))  {
+        if(!timeout.after(now)) throw new RuntimeException("Time Out")
+        Thread.sleep(100)
+      }
+      System.out.println(s"Input Prepared at ${new Date()}")
+      println(JacksonValue.simple(Util.getMetrics()).pretty)
+      Util.clearMetrics()
 
+      val sortTask: Task[LinkedList[String]] = collection.atomic().sync.sort()
+      System.out.println(s"Task Started at ${new Date()}")
       StmDaemons.start()
       StmExecutionQueue.registerDaemons(8)
-      System.out.println("Execution Engine Started")
+      System.out.println(s"Execution Engine Started at ${new Date()}")
+
       try {
         def now = new Date()
         val timeout = new Date(now.getTime + taskTimeout.toMillis)
         var continueLoop = true
+        var lastSummary = ""
         while(!sortTask.future.isCompleted && continueLoop) {
           if(!timeout.after(now)) throw new RuntimeException("Time Out")
 
@@ -60,7 +81,9 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
           val numRunning = ExecutionStatusManager.currentlyRunning()
 
           val summary = JacksonValue.simple(statusSummary()).pretty
-          if(isOrphaned(statusTrace)) {
+          if(lastSummary == summary) {
+            System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
+          } else if(isOrphaned(statusTrace)) {
             //println(JacksonValue.simple(statusTrace).pretty)
             System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
             //continueLoop = false
@@ -70,7 +93,8 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
             System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
             //continueLoop = false
           }
-          if(continueLoop) Try{Await.ready(sortTask.future, 5.seconds)}
+          lastSummary = summary
+          if(continueLoop) Try{Await.ready(sortTask.future, 15.seconds)}
         }
         System.out.println(s"Colleting Result at ${new Date()}")
         val sortResult = Await.result(sortTask.future, 5.seconds)
@@ -78,7 +102,7 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
         output mustBe input.toList.sorted
       } finally {
         System.out.println(s"Final Data at ${new Date()}")
-        println(JacksonValue.simple(Util.get()).pretty)
+        println(JacksonValue.simple(Util.getMetrics()).pretty)
         println(JacksonValue.simple(sortTask.atomic().sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))).pretty)
 
         System.out.println("Stopping Execution Engine")
@@ -89,7 +113,7 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
 }
 
 
-class LocalClusterMetricsSpec extends MetricsSpecBase with BeforeAndAfterEach {
+class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach {
   private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
 

@@ -36,7 +36,7 @@ object StmCollectionSpecBase {
 abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with BeforeAndAfterEach {
 
   override def afterEach() {
-    Util.clear()
+    Util.clearMetrics()
   }
 
   implicit def cluster: Restm
@@ -51,7 +51,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
       }
-      println(JacksonValue.simple(Util.get()).pretty)
+      println(JacksonValue.simple(Util.getMetrics()).pretty)
     }
     "support concurrent operations" in {
       val collection = TreeSet.static[String](new PointerType)
@@ -76,7 +76,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         }
       }
       Await.result(Future.sequence(futures), 1.minutes)
-      println(JacksonValue.simple(Util.get()).pretty)
+      println(JacksonValue.simple(Util.getMetrics()).pretty)
     }
   }
 
@@ -86,8 +86,8 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     def randomUUIDs = Stream.continually(randomStr)
     "support basic operations" in {
       val input = randomUUIDs.take(50).toSet
-      input.foreach(collection.atomic.sync.add(_))
-      val output = Stream.continually(collection.atomic.sync.get()).takeWhile(_.isDefined).map(_.get).toSet
+      input.foreach(collection.atomic().sync.add(_))
+      val output = Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).map(_.get).toSet
       output mustBe input
     }
   }
@@ -172,11 +172,11 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
       input mustBe output
     }
     "support concurrency" in {
-      val threadCount = 100
+      val threadCount = 20
       val syncTimeout = 60.seconds
       val maxRetries = 1000
       val strictness = 0.2
-      val size = 5000
+      val size = 1000
       val totalTimeout = 5.minutes
 
       val input = randomUUIDs.take(size).toSet
@@ -199,7 +199,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         if(!timeout.after(now)) throw new RuntimeException("Time Out")
         Thread.sleep(100)
       }
-      println(JacksonValue.simple(Util.get()).pretty)
+      println(JacksonValue.simple(Util.getMetrics()).pretty)
       input.size mustBe output.size
       input mustBe output
     }

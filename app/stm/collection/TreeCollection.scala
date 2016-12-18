@@ -141,7 +141,7 @@ object TreeCollection {
 
 class TreeCollection[T](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(key: T) = sync { AtomicApi.this.add(key) }
@@ -155,7 +155,7 @@ class TreeCollection[T](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
     def get() = atomic { TreeCollection.this.get()(_,executionContext) }
     def sort()(implicit ordering: Ordering[T]) = atomic { TreeCollection.this.sort()(_,executionContext, ordering) }
   }
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+  def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeCollection.this.add(key) }

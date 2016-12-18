@@ -34,7 +34,7 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
 
   def metrics() = Action {
     Util.monitorBlock("SystemController.metrics") {
-      Ok(JacksonValue.simple(Util.get()).pretty).as("application/json")
+      Ok(JacksonValue.simple(Util.getMetrics()).pretty).as("application/json")
     }
   }
 

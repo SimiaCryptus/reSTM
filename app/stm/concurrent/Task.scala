@@ -171,8 +171,10 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
       new TaskStatusTrace(id, status, List.empty)
     }
     root.readOpt().flatMap(currentState => {
-      val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id)).getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
-      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(queuedTasks, threads))).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
+      val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id))
+        .getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
+      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(queuedTasks, threads)))
+        .map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
       statusTrace.status match {
         case TaskStatus.Success => Future.successful(statusTrace)
         case TaskStatus.Unknown => children.map(children => {
@@ -198,10 +200,8 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   }
 
   def checkExecutor(executorId: String, id: PointerType, threads: Iterable[Thread]): Boolean = {
-    def isExecutorAlive = {
-      threads.filter(_.isAlive)
-        .exists(_.getName == executorId.split(":")(1))
-    }
+    val threadName = executorId.split(":")(1)
+    def isExecutorAlive = threads.filter(_.isAlive).exists(_.getName == threadName)
     def isCurrentTask = ExecutionStatusManager.check(executorId, id)
     isCurrentTask && isExecutorAlive
   }

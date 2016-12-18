@@ -13,7 +13,7 @@ import scala.util.{Failure, Success, Try}
 
 
 object Util {
-  def clear(): Unit = {
+  def clearMetrics(): Unit = {
     codeMetricsData.clear()
   }
 
@@ -38,7 +38,7 @@ object Util {
   }
 
 
-  def get() = Map(
+  def getMetrics() = Map(
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )
   private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())

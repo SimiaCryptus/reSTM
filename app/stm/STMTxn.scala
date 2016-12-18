@@ -33,9 +33,8 @@ trait STMTxn[+R] {
     val opId = UUID.randomUUID().toString
     def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = monitorFuture("STMTxn.txnRun.attempt") {
       val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
-      Future {
-        txnLogic()(ctx, executionContext)
-      }.flatMap(x => x)
+      Future { txnLogic()(ctx, executionContext) }
+        .flatMap(x => x)
         .flatMap(result => {
           if (allowCompletion) {
             ActorLog.log(s"Committing $ctx for operation $opId retry $retryNumber/$maxRetry")
@@ -51,7 +50,8 @@ trait STMTxn[+R] {
             ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
             ctx.revert()
             Thread.sleep(Random.nextInt(5+10*retryNumber))
-            _txnRun(retryNumber + 1, Option(ctx))
+            //_txnRun(retryNumber + 1, Option(ctx))
+            _txnRun(retryNumber + 1, None)
           case e: Throwable =>
             if (allowCompletion) {
               ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
