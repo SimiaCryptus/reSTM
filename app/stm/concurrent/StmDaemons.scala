@@ -68,7 +68,7 @@ object StmDaemons {
 
   private[this] def startAll()(implicit cluster: Restm, executionContext: ExecutionContext) = {
     daemonThreads.filter(!_._2.isAlive).forall(t=>daemonThreads.remove(t._1, t._2))
-    config.atomic.stream().foreach(item=>{
+    config.atomic.sync.stream().foreach(item=>{
       daemonThreads.getOrElseUpdate(item.name, {
         val task: (Restm, ExecutionContext) => Unit = item.deserialize().get
         val thread: Thread = new Thread(new Runnable {

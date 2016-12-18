@@ -4,7 +4,7 @@ import java.util.{Date, UUID}
 import _root_.util.Metrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection.{LinkedList, TreeCollection}
-import stm.concurrent.TaskStatus.Queued
+import stm.concurrent.TaskStatus.Orphan
 import stm.concurrent.{StmDaemons, StmExecutionQueue, Task, TaskStatusTrace}
 import storage.Restm._
 import storage.actors.ActorLog
@@ -14,7 +14,7 @@ import storage.{RestmActors, _}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
-import scala.util.Random
+import scala.util.Try
 
 
 abstract class MetricsSpecBase extends WordSpec with MustMatchers {
@@ -28,9 +28,9 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
       ActorLog.enabled = true
       StmExecutionQueue.verbose = true
 
-      val taskTimeout = 10.minutes
+      val taskTimeout = 5.minutes
       val insertTimeout = 90.seconds
-      val taskSize = 2000
+      val taskSize = 1000
 
       val input = randomUUIDs.take(taskSize).toSet
       val collection = TreeCollection.static[String](new PointerType)
@@ -46,22 +46,26 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
       try {
         def now = new Date()
         val timeout = new Date(now.getTime + taskTimeout.toMillis)
-        while(!sortTask.future.isCompleted && timeout.after(now)) {
+        while(!sortTask.future.isCompleted) {
+          if(!timeout.after(now)) throw new RuntimeException("Time Out")
           System.out.println("Checking Status...")
-          val statusTrace: TaskStatusTrace = sortTask.atomic(-1.seconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
-          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status == Queued) || node.children.contains(isOrphaned(_))
+          val statusTrace = sortTask.atomic(-200.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
+          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status == Orphan) || node.children.contains(isOrphaned(_))
+          val numQueued = StmExecutionQueue.workQueue.atomic.sync.size
+          val numRunning = StmDaemons.currentStatus.size
           if(isOrphaned(statusTrace)) {
             println(JacksonValue.simple(statusTrace).pretty)
-            System.err.println("Orphaned Tasks")
-            Thread.sleep(15000)
+            System.err.println(s"Orphaned Tasks - $numQueued tasks queued, $numRunning runnung")
+          } else if(numQueued > 0 || numRunning > 0) {
+            System.out.println(s"Status OK - $numQueued tasks queued, $numRunning runnung")
           } else {
-            System.out.println("Status OK")
-            Thread.sleep(60.seconds.toMillis)
+            System.out.println(s"Status Idle - $numQueued tasks queued, $numRunning runnung")
           }
+          Try{Await.ready(sortTask.future, 15.seconds)}
         }
         System.out.println(s"Colleting Result at ${new Date()}")
-        val sortResult = Await.result(sortTask.future, 5.seconds)
-        val output = sortResult.atomic.stream().toList
+        val sortResult = Await.result(sortTask.future, 0.seconds)
+        val output = sortResult.atomic.sync.stream().toList
         output mustBe input.toList.sorted
       } finally {
         System.out.println(s"Final Data at ${new Date()}")

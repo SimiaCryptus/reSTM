@@ -172,7 +172,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
       val collection = LinkedList.static[String](new PointerType)
       val input: List[String] = randomUUIDs.take(50).toList
       input.foreach(collection.atomic.sync.add(_))
-      val output = collection.atomic.stream().toList
+      val output = collection.atomic.sync.stream().toList
       input mustBe output
     }
   }

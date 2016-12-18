@@ -36,8 +36,7 @@ class CodeMetrics {
     val start = now
     invokeCount.incrementAndGet()
     val result: Try[T] = Try { f }
-    val end = now
-    totalTime.addAndGet((start-end).toUnit(TimeUnit.SECONDS))
+    totalTime.addAndGet((now-start).toUnit(TimeUnit.SECONDS))
     if(result.isFailure) errorCount.incrementAndGet()
     else successCount.incrementAndGet()
     result.get
@@ -47,7 +46,7 @@ class CodeMetrics {
     val start = now
     invokeCount.incrementAndGet()
     val result = f
-    totalTime.addAndGet((now - start).toUnit(TimeUnit.SECONDS))
+    totalTime.addAndGet((now-start).toUnit(TimeUnit.SECONDS))
     result.onComplete({
       case Success(_) => successCount.incrementAndGet()
       case Failure(_) => errorCount.incrementAndGet()

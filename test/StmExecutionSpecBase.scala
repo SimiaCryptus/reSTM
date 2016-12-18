@@ -45,7 +45,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
       input.foreach(collection.atomic.sync.add(_))
       val sortTask = collection.atomic.sort().flatMap(_.future)
       val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
-      val output = sortResult.atomic.stream().toList
+      val output = sortResult.atomic.sync.stream().toList
       output mustBe input.toList.sorted
       Await.result(StmDaemons.stop(), 30.seconds)
     }

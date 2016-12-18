@@ -10,11 +10,11 @@ import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
 
+import scala.collection.JavaConverters._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.util.{Failure, Success, Try}
-import scala.collection.JavaConverters._
+import scala.util.Try
 
 object Task {
   def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -22,12 +22,13 @@ object Task {
 
   def apply[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]()))
 
-  sealed trait TaskResult[T]
+  sealed trait TaskResult[T] {
+  }
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
   final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers:List[Task[T]] = List.empty) extends TaskResult[T]
 
-  private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
-  private[Task] val futureCache = new TrieMap[(Restm, Task[_]), Future[_]]()
+  private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(5)
+  private[Task] val futureCache = new TrieMap[AnyRef, Future[_]]()
 }
 import stm.concurrent.Task._
 
@@ -41,7 +42,9 @@ object TaskStatus {
   object Orphan extends TaskStatus
   object Ex_NotDefined extends TaskStatus
 }
-sealed class TaskStatus {}
+sealed class TaskStatus {
+  def getName() = getClass.getSimpleName
+}
 
 case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[TaskStatusTrace] = List.empty)
 
@@ -93,22 +96,13 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     root.readOpt().map(_.map(currentState => currentState.result.isDefined || currentState.exception.isDefined).getOrElse(false))
   }
 
-  def future(implicit cluster: Restm, executionContext: ExecutionContext) = futureCache.getOrElseUpdate((cluster,this),{
+  def future(implicit cluster: Restm, executionContext: ExecutionContext) = futureCache.getOrElseUpdate((cluster,this,executionContext),{
     val promise = Promise[T]()
     val schedule: ScheduledFuture[_] = scheduledThreadPool.scheduleAtFixedRate(new Runnable {
-      override def run(): Unit = {
-        for(isComplete <- Task.this.atomic().isComplete()) {
-          if(isComplete && !promise.isCompleted) {
-            Task.this.atomic().result().onComplete({
-              case Success(x) =>
-                promise.success(x)
-              case Failure(x) =>
-                promise.failure(x)
-            })
-          }
-        }
-      }
-    }, 1, 1, TimeUnit.SECONDS)
+      override def run(): Unit = Task.this.atomic().isComplete().map(isComplete=> {
+        //System.out.println(s"Checked ${Task.this.id} - isComplete = $isComplete")
+        if(isComplete) { promise.completeWith(Task.this.atomic().result()) }
+      })}, 1, 1, TimeUnit.SECONDS)
     promise.future.onComplete({case _ => schedule.cancel(false)})
     promise.future
   }).asInstanceOf[Future[T]]
@@ -148,7 +142,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   }
 
   @JsonIgnore def getStatusTrace(queue: Option[StmExecutionQueue])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
-    val queuedTasks = queue.map(_.workQueue.stream().map(_.id).toSet).getOrElse(Set.empty)
+    val queuedTasks = queue.map(_.workQueue.sync.stream().map(_.id).toSet).getOrElse(Set.empty)
     val threads: Iterable[Thread] = Thread.getAllStackTraces.asScala.keys
     def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
       val status: TaskStatus = if (currentState.result.isDefined) {

@@ -23,19 +23,22 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(value: T, strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
     def remove(strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
-    def stream()(implicit cluster: Restm, executionContext: ExecutionContext) : Stream[T] = {
-      rootPtr.atomic.sync.readOpt.flatten.flatMap(_.tail)
+    def size() = atomic { (ctx: STMTxnCtx) => LinkedList.this.size()(ctx, executionContext) }
+    def stream()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+      rootPtr.atomic.readOpt.map(_.flatten.flatMap(_.tail)
         .map(tail=>tail.atomic.sync.readOpt.map(node => node.value -> node.next))
         .map(seed=>Stream.iterate(seed)(prev=>{
           val next: Option[(T, Option[STMPtr[LinkedListNode[T]]])] =
             prev.get._2.flatMap(_.atomic.sync.readOpt.map(node => node.value -> node.next))
           next
         }).takeWhile(_.isDefined).map(_.get._1))
-        .getOrElse(Stream.empty)
+        .getOrElse(Stream.empty))
     }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(value: T, strictness:Double = 1.0) = sync { AtomicApi.this.add(value) }
       def remove(strictness:Double = 1.0) = sync { AtomicApi.this.remove() }
+      def stream() = sync { AtomicApi.this.stream() }
+      def size() = sync { AtomicApi.this.size() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
@@ -44,17 +47,22 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
     def add(value: T, strictness:Double = 1.0)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.add(value) }
     def remove(strictness:Double = 1.0)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.remove() }
+    def stream()(implicit ctx: STMTxnCtx) = sync { LinkedList.this.stream() }
+    def size()(implicit ctx: STMTxnCtx) = sync { LinkedList.this.size() }
   }
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
 
-  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Stream[T] = {
-    rootPtr.sync.readOpt.flatten.flatMap(_.tail)
-      .map(tail=>tail.sync.readOpt.map(node => node.value -> node.next))
-      .map(seed=>Stream.iterate(seed)(prev=>{
-        prev.get._2.flatMap(_.sync.readOpt.map(node => node.value -> node.next))
-      }).takeWhile(_.isDefined).map(_.get._1))
-      .getOrElse(Stream.empty)
+  def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    stream().map(_.size)
+  }
+
+  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    rootPtr.read.map(_.flatMap(_.tail)
+      .map(_.sync.readOpt.map(node => node.value -> node.next))
+      .map(seed=>Stream.iterate(seed)(_.get._2.flatMap(_.sync.readOpt.map(node => node.value -> node.next)))
+        .takeWhile(_.isDefined).map(_.get._1))
+      .getOrElse(Stream.empty))
   }
 
   def add(value: T, strictness:Double = 1.0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
