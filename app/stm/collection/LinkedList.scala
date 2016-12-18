@@ -23,6 +23,16 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(value: T, strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
     def remove(strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
+    def stream()(implicit cluster: Restm, executionContext: ExecutionContext) : Stream[T] = {
+      rootPtr.atomic.sync.readOpt.flatten.flatMap(_.tail)
+        .map(tail=>tail.atomic.sync.readOpt.map(node => node.value -> node.next))
+        .map(seed=>Stream.iterate(seed)(prev=>{
+          val next: Option[(T, Option[STMPtr[LinkedListNode[T]]])] =
+            prev.get._2.flatMap(_.atomic.sync.readOpt.map(node => node.value -> node.next))
+          next
+        }).takeWhile(_.isDefined).map(_.get._1))
+        .getOrElse(Stream.empty)
+    }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(value: T, strictness:Double = 1.0) = sync { AtomicApi.this.add(value) }
       def remove(strictness:Double = 1.0) = sync { AtomicApi.this.remove() }
@@ -38,13 +48,11 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
 
-  def stream()(implicit cluster: Restm, executionContext: ExecutionContext) : Stream[T] = {
-    rootPtr.atomic.sync.readOpt.flatten.flatMap(_.tail)
-      .map(tail=>tail.atomic.sync.readOpt.map(node => node.value -> node.next))
+  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Stream[T] = {
+    rootPtr.sync.readOpt.flatten.flatMap(_.tail)
+      .map(tail=>tail.sync.readOpt.map(node => node.value -> node.next))
       .map(seed=>Stream.iterate(seed)(prev=>{
-        val next: Option[(T, Option[STMPtr[LinkedListNode[T]]])] =
-          prev.get._2.flatMap(_.atomic.sync.readOpt.map(node => node.value -> node.next))
-        next
+        prev.get._2.flatMap(_.sync.readOpt.map(node => node.value -> node.next))
       }).takeWhile(_.isDefined).map(_.get._1))
       .getOrElse(Stream.empty)
   }

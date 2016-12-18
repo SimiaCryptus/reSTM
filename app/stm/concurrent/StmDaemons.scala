@@ -1,12 +1,15 @@
 package stm.concurrent
 
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import stm.collection.LinkedList
 import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
 
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 
@@ -21,6 +24,8 @@ case class DaemonConfig(name: String, impl: KryoValue) {
 
 object StmDaemons {
 
+  @JsonIgnore val localName: String = InetAddress.getLocalHost.getHostAddress
+  @JsonIgnore val currentStatus = new TrieMap[String,Task[_]]()
 
   val config = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]
@@ -63,7 +68,7 @@ object StmDaemons {
 
   private[this] def startAll()(implicit cluster: Restm, executionContext: ExecutionContext) = {
     daemonThreads.filter(!_._2.isAlive).forall(t=>daemonThreads.remove(t._1, t._2))
-    config.stream().foreach(item=>{
+    config.atomic.stream().foreach(item=>{
       daemonThreads.getOrElseUpdate(item.name, {
         val task: (Restm, ExecutionContext) => Unit = item.deserialize().get
         val thread: Thread = new Thread(new Runnable {

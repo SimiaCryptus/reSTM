@@ -45,7 +45,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
       input.foreach(collection.atomic.sync.add(_))
       val sortTask = collection.atomic.sort().flatMap(_.future)
       val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
-      val output = sortResult.stream().toList
+      val output = sortResult.atomic.stream().toList
       output mustBe input.toList.sorted
       Await.result(StmDaemons.stop(), 30.seconds)
     }
@@ -60,7 +60,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
       Await.result(StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
         hasRun.atomic(cluster, executionContext).sync.write(1)
         new Task.TaskSuccess("foo")
-      }).atomic.sync.map(StmExecutionQueue, (value, cluster, executionContext) => {
+      }).atomic().sync.map(StmExecutionQueue, (value, cluster, executionContext) => {
         require(value=="foo")
         hasRun.atomic(cluster, executionContext).sync.write(2)
         new Task.TaskSuccess("bar")

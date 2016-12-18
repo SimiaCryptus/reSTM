@@ -28,7 +28,7 @@ class ServletUtilitySpec extends WordSpec with MustMatchers with OneServerPerTes
 
       //Thread.sleep(600.seconds.toMillis)
       //Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/shutdown"))
-      Await.result(StmDaemons.join(), 30.minutes)
+      Await.result(StmDaemons.join(), 300.minutes)
       Thread.sleep(1000) // Allow rest of processes to complete
     }
   }

@@ -6,6 +6,7 @@ import java.util.UUID
 import com.google.common.annotations.VisibleForTesting
 import storage.Restm
 import storage.actors.ActorLog
+import _root_.util.Metrics._
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -28,9 +29,9 @@ trait STMTxn[+R] {
     out.toString
   }
 
-  final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = {
+  final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = codeFuture("STMTxn.txnRun") {
     val opId = UUID.randomUUID().toString
-    def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = {
+    def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = codeFuture("STMTxn.txnRun.attempt") {
       val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
       txnLogic()(ctx, executionContext)
         .flatMap(result => {

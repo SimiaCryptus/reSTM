@@ -44,9 +44,18 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     .recover({ case e => throw new RuntimeException(s"failed lock to $id", e) })
 
   def default() : Future[Option[T]] = Future.successful(None)
-  def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = ctx.readOpt[T](id)
-    .flatMap(_.map(value=>Future.successful(Option(value))).getOrElse(default))
-    .recover({ case e => throw new RuntimeException(s"failed readOpt to $id", e) })
+
+  def futureEx[T](str: =>String)(f: =>Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
+    val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
+    f.recover({ case e =>
+      val runtimeException: RuntimeException = new RuntimeException(str, e)
+      runtimeException.setStackTrace(stackTrace)
+      throw runtimeException
+    })
+  }
+
+  def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = futureEx(s"failed readOpt to $id") {
+    ctx.readOpt[T](id).flatMap(_.map(value=>Future.successful(Option(value))).getOrElse(default)) }
 
   def read()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)
 
@@ -90,6 +99,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def read(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.read())
+    def readOpt(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.readOpt())
     def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.init(default))
     def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this.write(value))
     def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync(STMPtr.this <= value)

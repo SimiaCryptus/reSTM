@@ -3,6 +3,7 @@ package stm.concurrent
 import java.util.UUID
 import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import stm._
 import stm.concurrent.Task.TaskResult
 import storage.Restm
@@ -13,6 +14,7 @@ import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters._
 
 object Task {
   def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -36,6 +38,7 @@ object TaskStatus {
   object Success extends TaskStatus
   class Failed(val ex : String) extends TaskStatus
   object Unknown extends TaskStatus
+  object Orphan extends TaskStatus
   object Ex_NotDefined extends TaskStatus
 }
 sealed class TaskStatus {}
@@ -45,26 +48,32 @@ case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[Ta
 class Task[T](val root : STMPtr[TaskData[T]]) {
 
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+  class AtomicApi(priority: Duration = 0.seconds)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority) {
     def result() = atomic { Task.this.result()(_,executionContext) }
     def isComplete() = atomic { Task.this.isComplete()(_,executionContext) }
-    def getStatusTrace() = atomic { Task.this.getStatusTrace()(_,executionContext) }
+    def complete(result:Try[TaskResult[T]]) = atomic { Task.this.complete(result)(_,executionContext) }
+    def getStatusTrace(queue: Option[StmExecutionQueue] = None) = atomic { Task.this.getStatusTrace(queue)(_,executionContext) }
+    def obtainTask(executorId: String = UUID.randomUUID().toString) = atomic { Task.this.obtainTask(executorId)(_,executionContext) }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = atomic { Task.this.map(queue, function)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def result() = sync { AtomicApi.this.result() }
       def isComplete() = sync { AtomicApi.this.isComplete() }
-      def getStatusTrace() = sync { AtomicApi.this.getStatusTrace() }
+      def complete(result:Try[TaskResult[T]]) = sync { AtomicApi.this.complete(result) }
+      def getStatusTrace(queue: Option[StmExecutionQueue] = None) = sync { AtomicApi.this.getStatusTrace(queue) }
+      def obtainTask(executorId: String = UUID.randomUUID().toString) = sync { AtomicApi.this.obtainTask(executorId) }
       def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = sync { AtomicApi.this.map(queue, function) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
   }
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+  def atomic(priority: Duration = 0.seconds)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority)
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.result() }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
     def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.isComplete() }
-    def getStatusTrace()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.getStatusTrace() }
+    def complete(result:Try[TaskResult[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.complete(result) }
+    def getStatusTrace(queue: Option[StmExecutionQueue] = None)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.getStatusTrace(queue) }
+    def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.obtainTask(executorId) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -77,7 +86,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   }
 
   def wrapMap[U](function: (T, Restm, ExecutionContext) => U): (Restm, ExecutionContext) => U = {
-    (c, e) => function(Task.this.atomic(c, e).sync.result(), c, e)
+    (c, e) => function(Task.this.atomic()(c, e).sync.result(), c, e)
   }
 
   def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
@@ -88,9 +97,9 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     val promise = Promise[T]()
     val schedule: ScheduledFuture[_] = scheduledThreadPool.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = {
-        for(isComplete <- Task.this.atomic.isComplete()) {
+        for(isComplete <- Task.this.atomic().isComplete()) {
           if(isComplete && !promise.isCompleted) {
-            Task.this.atomic.result().onComplete({
+            Task.this.atomic().result().onComplete({
               case Success(x) =>
                 promise.success(x)
               case Failure(x) =>
@@ -104,16 +113,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     promise.future
   }).asInstanceOf[Future[T]]
 
-  def atomicObtainTask(executorId: String = UUID.randomUUID().toString)(implicit cluster: Restm, executionContext: ExecutionContext) = {
-    require(null != root)
-    new STMTxn[Option[(Restm, ExecutionContext) => TaskResult[T]]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-        obtainTask(executorId)
-      }
-    }.txnRun(cluster)(executionContext)
-  }
-
-  def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Option[(Restm, ExecutionContext) => TaskResult[T]]] = {
     require(null != root)
     root.read().flatMap(currentState => {
       val task: Option[(Restm, ExecutionContext) => TaskResult[T]] = currentState.kryoTask.flatMap(x=>x.deserialize())
@@ -130,9 +130,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
       val newSubscribers: Map[Task[_], StmExecutionQueue] = Map[Task[_], StmExecutionQueue](task -> queue)
       val prevSubscribers: List[TaskSubscription] = prev.subscribers
       root.write(prev.copy(subscribers = prevSubscribers ++ newSubscribers.map(e=>new TaskSubscription(e._1, e._2)).toList)).map(_ => prev)
-    }).map(currentState=>{
-      (currentState.result.isDefined || currentState.exception.isDefined)
-    })
+    }).map(currentState=>currentState.result.isDefined || currentState.exception.isDefined)
   }
 
   def initTriggers(queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
@@ -149,14 +147,20 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     })
   }
 
-  def getStatusTrace()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
+  @JsonIgnore def getStatusTrace(queue: Option[StmExecutionQueue])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
+    val queuedTasks = queue.map(_.workQueue.stream().map(_.id).toSet).getOrElse(Set.empty)
+    val threads: Iterable[Thread] = Thread.getAllStackTraces.asScala.keys
     def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
       val status: TaskStatus = if (currentState.result.isDefined) {
         TaskStatus.Success
       } else if (currentState.exception.isDefined) {
         new TaskStatus.Failed(currentState.exception.get.toString)
       } else if (currentState.executorId.isDefined) {
-        TaskStatus.Running
+        if (checkExecutor(currentState.executorId.get, id, threads)) {
+          TaskStatus.Running
+        } else {
+          TaskStatus.Orphan
+        }
       } else {
         TaskStatus.Unknown
       }
@@ -164,7 +168,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     }
     root.readOpt().flatMap(currentState => {
       val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id)).getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
-      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace())).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
+      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(None))).map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
       statusTrace.status match {
         case TaskStatus.Success => Future.successful(statusTrace)
         case TaskStatus.Unknown => children.map(children=>{
@@ -173,7 +177,13 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
             case _:TaskStatus.Failed => false
             case _ => true
           })
-          if(pending.isEmpty) statusTrace.copy(status = TaskStatus.Queued)
+          if(pending.isEmpty) {
+            if(queuedTasks.contains(id)) {
+              statusTrace.copy(status = TaskStatus.Queued)
+            } else {
+              statusTrace.copy(status = TaskStatus.Orphan)
+            }
+          }
           else statusTrace.copy(status = TaskStatus.Blocked, children = children)
         })
         case _:TaskStatus.Failed => Future.successful(statusTrace)
@@ -183,57 +193,44 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     })
   }
 
-  def atomicCanRun()(implicit cluster: Restm, executionContext: ExecutionContext) = {
-    new STMTxn[Boolean] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-        canRun()(ctx,executionContext)
-      }
-    }.txnRun(cluster)(executionContext)
+  def checkExecutor(executorId: String, id: PointerType, threads: Iterable[Thread]): Boolean = {
+    def isExecutorAlive = {
+      threads.filter(_.isAlive)
+        .exists(_.getName == executorId.split(":")(1))
+    }
+    def isCurrentTask = StmDaemons.currentStatus.get(executorId).map(_.id).getOrElse("") == id
+    isCurrentTask && isExecutorAlive
   }
 
-  def complete(result:Try[TaskResult[T]])(implicit cluster: Restm, executionContext: ExecutionContext): Future[Unit] = {
-    new STMTxn[List[TaskSubscription]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-        root.read().flatMap(currentState => {
-          result.transform[Future[TaskData[T]]](
-            taskResult => Try {
-              taskResult match {
-                case TaskSuccess(result) =>
-                  Future.successful(currentState.copy(result = Option(result)))
-                case TaskContinue(queue, next, newTriggers) =>
-                  currentState
-                    .copy(triggers = newTriggers, executorId = None)
-                    .newTask(next)
-                    .initTriggers(Task.this, queue)
-              }
-            },
-            exception => Try {
-              Future.successful(currentState.copy(exception = Option(exception)))
-            }
-          ).get.flatMap(update=>root.write(update)).map(_=>currentState.subscribers)
-        })
-      }
-    }.txnRun(cluster)(executionContext).flatMap(subscribers => {
+  def complete(result:Try[TaskResult[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+    root.read().flatMap(currentState => {
+      result.transform[Future[TaskData[T]]](
+        taskResult => Try {
+          taskResult match {
+            case TaskSuccess(result) =>
+              Future.successful(currentState.copy(result = Option(result)))
+            case TaskContinue(queue, next, newTriggers) =>
+              currentState
+                .copy(triggers = newTriggers, executorId = None)
+                .newTask(next)
+                .initTriggers(Task.this, queue)
+          }
+        },
+        exception => Try {
+          Future.successful(currentState.copy(exception = Option(exception)))
+        }
+      ).get.flatMap(update=>root.write(update)).map(_=>currentState.subscribers)
+    }).flatMap(subscribers => {
       Future.sequence(subscribers.map(subscription => {
-        subscription.task.atomicCanRun().flatMap(complete => {
+        subscription.task.canRun().flatMap(complete => {
           if (complete) {
-            subscription.queue.atomic.add(subscription.task)
+            subscription.queue.add(subscription.task)
           } else {
             Future.successful(Unit)
           }
         })
       })).map(_ => Unit)
     })
-  }
-
-  def run(cluster: Restm, executionContext: ExecutionContext) : Future[Unit] = {
-    implicit val _cluster = cluster
-    implicit val _executionContext = executionContext
-    atomicObtainTask().flatMap(_
-      .map(task => Try { task(cluster, executionContext) })
-      .map(_.recoverWith({case e => e.printStackTrace();Failure(e)}))
-      .map(result => complete( result ))
-      .getOrElse(Future.successful(Unit)))
   }
 
   override def equals(other: Any): Boolean = other match {

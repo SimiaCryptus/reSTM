@@ -25,7 +25,7 @@ class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: Exe
 
   def taskInfo(id: String) = Action.async {
     Metrics.codeFuture("ExecutionController.taskInfo") {
-      Task(new PointerType(id)).atomic(storageService,exec).getStatusTrace.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
+      Task(new PointerType(id)).atomic()(storageService,exec).getStatusTrace().map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
     }
   }
 
