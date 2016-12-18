@@ -45,7 +45,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
       input.foreach(collection.atomic.sync.add(_))
       val sortTask = collection.atomic.sort().flatMap(_.future)
       val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
-      val output = sortResult.atomic.sync.stream().toList
+      val output = sortResult.atomic().sync.stream().toList
       output mustBe input.toList.sorted
       Await.result(StmDaemons.stop(), 30.seconds)
     }
@@ -99,7 +99,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
       StmDaemons.start()
       val counter = STMPtr.static[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
-      StmDaemons.config.atomic.sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
+      StmDaemons.config.atomic().sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
         while(!Thread.interrupted()) {
           new STMTxn[Integer] {
             override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Integer] = {

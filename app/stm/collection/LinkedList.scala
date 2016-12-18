@@ -20,7 +20,7 @@ object LinkedList {
 
 class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
   def id = rootPtr.id.toString
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries){
     def add(value: T, strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
     def remove(strictness:Double = 1.0) = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
     def size() = atomic { (ctx: STMTxnCtx) => LinkedList.this.size()(ctx, executionContext) }
@@ -43,7 +43,7 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
   }
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+  def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
   class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
     def add(value: T, strictness:Double = 1.0)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.add(value) }
     def remove(strictness:Double = 1.0)(implicit ctx: STMTxnCtx) = sync { LinkedList.this.remove() }

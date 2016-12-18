@@ -1,22 +1,18 @@
 package stm.concurrent
 
-import java.net.InetAddress
 import java.util.Date
 
-import com.fasterxml.jackson.annotation.JsonIgnore
+import _root_.util.Metrics._
 import stm.collection.LinkedList
+import stm.concurrent.StmDaemons._
 import stm.concurrent.Task._
 import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
 import storage.Restm.PointerType
 
-import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Try}
-import StmDaemons._
-
-import _root_.util.Metrics._
 
 
 object StmExecutionQueue extends StmExecutionQueue(LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))) {
@@ -115,7 +111,7 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
     (1 to count).map(i=>{
       val f: (Restm, ExecutionContext) => Unit = task() _
       DaemonConfig(s"Queue-${workQueue.id}-$i", f)
-    }).foreach(daemon=>StmDaemons.config.atomic.sync.add(daemon))
+    }).foreach(daemon=>StmDaemons.config.atomic().sync.add(daemon))
   }
 
 }

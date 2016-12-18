@@ -1,6 +1,7 @@
-import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.{Date, UUID}
 
+import _root_.util.Metrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.collection.{LinkedList, TreeCollection, TreeMap, TreeSet}
@@ -8,9 +9,11 @@ import stm.concurrent.Task.TaskResult
 import stm.concurrent.{StmExecutionQueue, Task}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
+import storage.data.JacksonValue
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
 import storage.{RestmActors, _}
 
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 
@@ -30,7 +33,12 @@ object StmCollectionSpecBase {
   }
 }
 
-abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
+abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with BeforeAndAfterEach {
+
+  override def afterEach() {
+    Metrics.clear()
+  }
+
   implicit def cluster: Restm
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
@@ -43,6 +51,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
       }
+      println(JacksonValue.simple(Metrics.get()).pretty)
     }
     "support concurrent operations" in {
       val collection = TreeSet.static[String](new PointerType)
@@ -67,6 +76,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
         }
       }
       Await.result(Future.sequence(futures), 1.minutes)
+      println(JacksonValue.simple(Metrics.get()).pretty)
     }
   }
 
@@ -157,22 +167,47 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
     "support basic operations" in {
       val collection = LinkedList.static[String](new PointerType)
       val input: List[String] = randomUUIDs.take(50).toList
-      input.foreach(collection.atomic.sync.add(_))
-      val output = Stream.continually(collection.atomic.sync.remove()).takeWhile(_.isDefined).map(_.get).toList
+      input.foreach(collection.atomic().sync.add(_))
+      val output = Stream.continually(collection.atomic().sync.remove()).takeWhile(_.isDefined).map(_.get).toList
       input mustBe output
     }
     "support concurrency" in {
+      val threadCount = 100
+      val syncTimeout = 60.seconds
+      val maxRetries = 1000
+      val strictness = 0.2
+      val size = 5000
+      val totalTimeout = 5.minutes
+
+      val input = randomUUIDs.take(size).toSet
+      val output = new mutable.HashSet[String]()
+      val inputBuffer = new mutable.HashSet[String]()
+      inputBuffer ++= input
       val collection = LinkedList.static[String](new PointerType)
-      val input: List[String] = randomUUIDs.take(50).toList
-      val inserts: List[Future[String]] = input.par.map(input => collection.atomic.add(input,0.3).flatMap(_ => collection.atomic.remove(0.3)).map(_.get)).toList
-      val output = Await.result(Future.sequence(inserts), 60.seconds)
-      input.sorted mustBe output.sorted
+      val threads = (0 to threadCount).map(_ => new Thread(new Runnable {
+        override def run(): Unit = {
+          input.filter(x=>inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
+            collection.atomic(maxRetries = maxRetries).sync(syncTimeout).add(input, strictness)
+            collection.atomic(maxRetries = maxRetries).sync(syncTimeout).remove(strictness).map(x=>output.synchronized(output += x))
+          })
+        }
+      }))
+      threads.foreach(_.start())
+      def now = new Date()
+      val timeout = new Date(now.getTime + totalTimeout.toMillis)
+      while(threads.exists(_.isAlive))  {
+        if(!timeout.after(now)) throw new RuntimeException("Time Out")
+        Thread.sleep(100)
+      }
+      println(JacksonValue.simple(Metrics.get()).pretty)
+      input.size mustBe output.size
+      input mustBe output
     }
     "support stream iteration" in {
       val collection = LinkedList.static[String](new PointerType)
-      val input: List[String] = randomUUIDs.take(50).toList
-      input.foreach(collection.atomic.sync.add(_))
-      val output = collection.atomic.sync.stream().toList
+      val input: List[String] = randomUUIDs.take(10).toList
+      input.foreach(collection.atomic().sync.add(_))
+      val output = collection.atomic().sync.stream().toList
       input mustBe output
     }
   }
@@ -181,6 +216,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers {
 
 class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
   override def beforeEach() {
+    super.beforeEach()
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
 
@@ -192,6 +228,7 @@ class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAnd
   val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
 
   override def beforeEach() {
+    super.beforeEach()
     shards.foreach(_.clear())
   }
 

@@ -5,7 +5,7 @@ import _root_.util.Metrics
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection.{LinkedList, TreeCollection}
 import stm.concurrent.TaskStatus.Orphan
-import stm.concurrent.{StmDaemons, StmExecutionQueue, Task, TaskStatusTrace}
+import stm.concurrent._
 import storage.Restm._
 import storage.actors.ActorLog
 import storage.data.JacksonValue
@@ -26,7 +26,7 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
     def randomUUIDs = Stream.continually(randomStr)
     "work" in {
       ActorLog.enabled = true
-      StmExecutionQueue.verbose = true
+      StmExecutionQueue.verbose = false
 
       val taskTimeout = 5.minutes
       val insertTimeout = 90.seconds
@@ -46,26 +46,30 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
       try {
         def now = new Date()
         val timeout = new Date(now.getTime + taskTimeout.toMillis)
-        while(!sortTask.future.isCompleted) {
+        var continueLoop = true
+        while(!sortTask.future.isCompleted && continueLoop) {
           if(!timeout.after(now)) throw new RuntimeException("Time Out")
           System.out.println("Checking Status...")
           val statusTrace = sortTask.atomic(-200.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
-          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status == Orphan) || node.children.contains(isOrphaned(_))
-          val numQueued = StmExecutionQueue.workQueue.atomic.sync.size
+          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status.isInstanceOf[Orphan.type]) || node.children.contains(isOrphaned(_))
+          def statusSummary(node : TaskStatusTrace = statusTrace) : Map[String,Int] = (List(node.status.getName() -> 1) ++ node.children.flatMap(statusSummary(_).toList))
+            .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_+_).getOrElse(0))
+          val numQueued = StmExecutionQueue.workQueue.atomic().sync.size
           val numRunning = StmDaemons.currentStatus.size
           if(isOrphaned(statusTrace)) {
             println(JacksonValue.simple(statusTrace).pretty)
-            System.err.println(s"Orphaned Tasks - $numQueued tasks queued, $numRunning runnung")
+            System.err.println(s"Orphaned Tasks - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
           } else if(numQueued > 0 || numRunning > 0) {
-            System.out.println(s"Status OK - $numQueued tasks queued, $numRunning runnung")
+            System.out.println(s"Status OK - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
           } else {
-            System.out.println(s"Status Idle - $numQueued tasks queued, $numRunning runnung")
+            System.out.println(s"Status Idle - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            continueLoop = false
           }
-          Try{Await.ready(sortTask.future, 15.seconds)}
+          if(continueLoop) Try{Await.ready(sortTask.future, 15.seconds)}
         }
         System.out.println(s"Colleting Result at ${new Date()}")
         val sortResult = Await.result(sortTask.future, 0.seconds)
-        val output = sortResult.atomic.sync.stream().toList
+        val output = sortResult.atomic().sync.stream().toList
         output mustBe input.toList.sorted
       } finally {
         System.out.println(s"Final Data at ${new Date()}")

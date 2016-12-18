@@ -123,12 +123,12 @@ object TreeCollection {
         implicit val _cluster = cluster
         implicit val _executionContext = executionContext
         val sources = tasks.map(_.atomic().sync.result())
-        def read(list: LinkedList[T]): Option[(T, Option[LinkedList[T]])] = list.atomic.sync.remove().map(_ -> Option(list))
+        def read(list: LinkedList[T]): Option[(T, Option[LinkedList[T]])] = list.atomic().sync.remove().map(_ -> Option(list))
         var cursors = (sources.map(list => read(list)).filter(_.isDefined).map(_.get) ++ List(value->None))
         val result = LinkedList.static[T](new PointerType)
         while(!cursors.isEmpty) {
           val (nextValue, optList) = cursors.minBy(_._1)
-          result.atomic.sync.add(nextValue)
+          result.atomic().sync.add(nextValue)
           cursors = cursors.filterNot(_._2 == optList)
           cursors = optList.flatMap(list=>read(list)).map(cursors++List(_)).getOrElse(cursors)
         }

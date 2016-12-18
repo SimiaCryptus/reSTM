@@ -12,6 +12,10 @@ import scala.util.{Failure, Success, Try}
 
 
 object Metrics {
+  def clear(): Unit = {
+    codeMetricsData.clear()
+  }
+
   def now = System.nanoTime().nanoseconds
   val codeMetricsData = new TrieMap[String, CodeMetrics]()
 
