@@ -80,6 +80,7 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
         .filter(line=>searchR.isEmpty || searchR.get.findFirstIn(line).isDefined )
         .map(_.replaceAll("([01-9a-f]{8,8}-[01-9a-f]{4,4}-[01-9a-f]{4,4}-[01-9a-f]{4,4}-[01-9a-f]{12,12})", """<a href="?search=$1">$1</a>"""))
         .map(_.replaceAll("([01-9]{2,},[01-9]{1,2})", """<a href="?search=$1">$1</a>"""))
+        .map(_.replaceAll("([01-9a-zA-Z\\+]{32,}={0,2})", """..."""))
         .map(line =>s"""<p>$line</p>""")
       val segments = List(
         Stream("<html><body>"),
