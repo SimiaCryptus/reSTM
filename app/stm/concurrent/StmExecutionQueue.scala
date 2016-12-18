@@ -2,9 +2,8 @@ package stm.concurrent
 
 import java.util.Date
 
-import _root_.util.Metrics._
+import _root_.util.Util._
 import stm.collection.LinkedList
-import stm.concurrent.StmDaemons._
 import stm.concurrent.Task._
 import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
@@ -71,14 +70,14 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
   }
 
   private[this] def runTask(implicit cluster: Restm, executionContext: ExecutionContext): Future[Boolean] = {
-    val executorName: String = localName + ":" + Thread.currentThread().getName
-    val taskFuture = codeFuture("StmExecutionQueue.getTask") {
+    val executorName: String = ExecutionStatusManager.getName()
+    val taskFuture = monitorFuture("StmExecutionQueue.getTask") {
       new STMTxn[Option[(Task[_], (Restm, ExecutionContext) => TaskResult[_])]] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           workQueue.remove(0.2).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap(task => {
             task.map(task => {
               task.obtainTask(executorName).map(_.map(function => {
-                currentStatus.put(executorName, task)
+                ExecutionStatusManager.start(executorName, task)
                 task -> function
               }))
             }).getOrElse(Future.successful(None))
@@ -90,16 +89,16 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
       taskTuple.map(tuple => {
         val (task: Task[AnyRef], function) = tuple
         if (verbose) println(s"Starting task ${task.id} at ${new Date()}")
-        val result = codeBlock("StmExecutionQueue.runTask") { Try { function(cluster, executionContext) } }
+        val result = monitorBlock("StmExecutionQueue.runTask") { Try { function(cluster, executionContext) } }
           .recoverWith({ case e =>
             if (verbose) e.printStackTrace();
             Failure(e)
           }).asInstanceOf[Try[TaskResult[AnyRef]]]
-        codeFuture("StmExecutionQueue.completeTask") {
+        monitorFuture("StmExecutionQueue.completeTask") {
           task.atomic()(cluster, executionContext).complete(result)
         }.map(_ => {
           if (verbose) println(s"Completed task ${task.id} at ${new Date()}")
-          currentStatus.remove(executorName);
+          ExecutionStatusManager.end(executorName, task)
           true
         })
       }).getOrElse(Future.successful(false))

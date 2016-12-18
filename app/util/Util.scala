@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.google.common.util.concurrent.AtomicDouble
+import storage.LockedException
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
@@ -11,7 +12,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 
-object Metrics {
+object Util {
   def clear(): Unit = {
     codeMetricsData.clear()
   }
@@ -19,15 +20,30 @@ object Metrics {
   def now = System.nanoTime().nanoseconds
   val codeMetricsData = new TrieMap[String, CodeMetrics]()
 
-  def codeBlock[T](name:String)(f: =>T):T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
-  def codeFuture[T](name:String)(f: =>Future[T]):Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
+  def monitorBlock[T](name:String)(f: =>T):T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
+  def monitorFuture[T](name:String)(f: =>Future[T]):Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
+
+  def chainEx[T](str: =>String, verbose:Boolean = true)(f: =>Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
+    val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
+    f.recover({
+      case e : LockedException =>
+        val wrappedEx = new LockedException(e.conflitingTxn, e)
+        wrappedEx.setStackTrace(stackTrace)
+        throw wrappedEx
+      case e =>
+        val wrappedEx = new RuntimeException(str, e)
+        wrappedEx.setStackTrace(stackTrace)
+        throw wrappedEx
+    })
+  }
+
 
   def get() = Map(
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )
   private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 }
-import util.Metrics._
+import util.Util._
 
 class CodeMetrics {
 

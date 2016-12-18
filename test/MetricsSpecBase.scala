@@ -1,7 +1,7 @@
 import java.util.concurrent.Executors
 import java.util.{Date, UUID}
 
-import _root_.util.Metrics
+import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection.{LinkedList, TreeCollection}
 import stm.concurrent.TaskStatus.Orphan
@@ -28,9 +28,9 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
       ActorLog.enabled = true
       StmExecutionQueue.verbose = false
 
-      val taskTimeout = 5.minutes
+      val taskTimeout = 3.minutes
       val insertTimeout = 90.seconds
-      val taskSize = 1000
+      val taskSize = 100
 
       val input = randomUUIDs.take(taskSize).toSet
       val collection = TreeCollection.static[String](new PointerType)
@@ -51,22 +51,23 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
           if(!timeout.after(now)) throw new RuntimeException("Time Out")
 
           System.out.println(s"Checking Status at ${new Date()}...")
-          val statusTrace = sortTask.atomic(-50.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
+          val statusTrace = sortTask.atomic(-0.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
           def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status.isInstanceOf[Orphan]) || node.children.exists(isOrphaned(_))
           def statusSummary(node : TaskStatusTrace = statusTrace) : Map[String,Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
             .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_+_).getOrElse(0))
 
           val numQueued = StmExecutionQueue.workQueue.atomic().sync.size
-          val numRunning = StmDaemons.currentStatus.size
+          val numRunning = ExecutionStatusManager.currentlyRunning()
 
+          val summary = JacksonValue.simple(statusSummary()).pretty
           if(isOrphaned(statusTrace)) {
             //println(JacksonValue.simple(statusTrace).pretty)
-            System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
             //continueLoop = false
           } else if(numQueued > 0 || numRunning > 0) {
-            System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
           } else {
-            System.out.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${statusSummary()}")
+            System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
             //continueLoop = false
           }
           if(continueLoop) Try{Await.ready(sortTask.future, 5.seconds)}
@@ -77,7 +78,7 @@ abstract class MetricsSpecBase extends WordSpec with MustMatchers {
         output mustBe input.toList.sorted
       } finally {
         System.out.println(s"Final Data at ${new Date()}")
-        println(JacksonValue.simple(Metrics.get()).pretty)
+        println(JacksonValue.simple(Util.get()).pretty)
         println(JacksonValue.simple(sortTask.atomic().sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))).pretty)
 
         System.out.println("Stopping Execution Engine")

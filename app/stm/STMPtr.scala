@@ -2,6 +2,7 @@ package stm
 
 import storage.Restm
 import storage.Restm.PointerType
+import util.Util
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -45,16 +46,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
   def default() : Future[Option[T]] = Future.successful(None)
 
-  def futureEx[T](str: =>String)(f: =>Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
-    val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
-    f.recover({ case e =>
-      val runtimeException: RuntimeException = new RuntimeException(str, e)
-      runtimeException.setStackTrace(stackTrace)
-      throw runtimeException
-    })
-  }
-
-  def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = futureEx(s"failed readOpt to $id") {
+  def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = Util.chainEx(s"failed readOpt to $id") {
     ctx.readOpt[T](id).flatMap(_.map(value=>Future.successful(Option(value))).getOrElse(default)) }
 
   def read()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)

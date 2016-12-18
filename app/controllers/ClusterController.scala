@@ -2,7 +2,7 @@ package controllers
 
 import javax.inject._
 
-import _root_.util.Metrics
+import _root_.util.Util
 import akka.actor.ActorSystem
 import controllers.RestmController._
 import play.api.mvc._
@@ -13,18 +13,18 @@ import scala.concurrent.ExecutionContext
 class ClusterController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
 
-  def listPeers() = Action { request => Metrics.codeBlock("ClusterController.listPeers") {
+  def listPeers() = Action { request => Util.monitorBlock("ClusterController.listPeers") {
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
   }
   }
 
-  def addPeer(peer: String) = Action { request => Metrics.codeBlock("ClusterController.addPeer") {
+  def addPeer(peer: String) = Action { request => Util.monitorBlock("ClusterController.addPeer") {
     peers += peer
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
   }
   }
 
-  def delPeer(peer: String) = Action { request => Metrics.codeBlock("ClusterController.delPeer") {
+  def delPeer(peer: String) = Action { request => Util.monitorBlock("ClusterController.delPeer") {
     peers -= peer
     Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
   }

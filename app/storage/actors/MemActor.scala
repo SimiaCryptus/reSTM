@@ -2,7 +2,7 @@ package storage.actors
 
 import storage.LockedException
 import storage.Restm._
-import util.Metrics
+import util.Util
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
@@ -24,7 +24,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
   override def toString = s"ptr@$objId:$name#${history.size}#$messageNumber"
 
-  def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = Metrics.codeFuture("MemActor.getCurrentValue") {
+  def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = Util.monitorFuture("MemActor.getCurrentValue") {
     {
       withActor {
         Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_.time))
@@ -37,7 +37,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = Metrics.codeFuture("MemActor.getValue") {
+  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = Util.monitorFuture("MemActor.getValue") {
     {
       withActor {
         writeLock.foreach(writeLock => if (writeLock < time) throw new LockedException(writeLock))
@@ -53,7 +53,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def init(time: TimeStamp, value: ValueType) = Metrics.codeFuture("MemActor.init") {
+  def init(time: TimeStamp, value: ValueType) = Util.monitorFuture("MemActor.init") {
     {
       withActor {
         if (history.nonEmpty) {
@@ -74,7 +74,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = Metrics.codeFuture("MemActor.writeLock") {
+  def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = Util.monitorFuture("MemActor.writeLock") {
     {
       withActor {
         if (writeLock.isDefined) {
@@ -100,7 +100,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def writeBlob(time: TimeStamp, value: ValueType): Future[Unit] = Metrics.codeFuture("MemActor.writeBlob") {
+  def writeBlob(time: TimeStamp, value: ValueType): Future[Unit] = Util.monitorFuture("MemActor.writeBlob") {
     {
       withActor {
         require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
@@ -127,7 +127,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def delete(time: TimeStamp): Future[Unit] = Metrics.codeFuture("MemActor.delete") {
+  def delete(time: TimeStamp): Future[Unit] = Util.monitorFuture("MemActor.delete") {
     {
       withActor {
         require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
@@ -154,7 +154,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def writeCommit(time: TimeStamp): Future[Unit] = Metrics.codeFuture("MemActor.writeCommit") {
+  def writeCommit(time: TimeStamp): Future[Unit] = Util.monitorFuture("MemActor.writeCommit") {
     {
       withActor {
         require(writeLock.contains(time), "Lock mismatch")
@@ -180,7 +180,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def writeReset(time: TimeStamp = writeLock.get): Future[Unit] = Metrics.codeFuture("MemActor.writeReset") {
+  def writeReset(time: TimeStamp = writeLock.get): Future[Unit] = Util.monitorFuture("MemActor.writeReset") {
     {
       withActor {
         require(writeLock.contains(time), "Lock mismatch")

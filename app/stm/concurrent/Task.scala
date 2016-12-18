@@ -86,7 +86,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
-  def id = root.id.toString
+  def id = root.id
 
   def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[U]] = {
     val func: (Restm, ExecutionContext) => TaskResult[U] = wrapMap(function)
@@ -153,7 +153,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     getStatusTrace(queuedTasks, threads)
   }
 
-  def getStatusTrace(queuedTasks: Set[String], threads: Iterable[Thread])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskStatusTrace] = {
+  def getStatusTrace(queuedTasks: Set[PointerType], threads: Iterable[Thread])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskStatusTrace] = {
     def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
       val status: TaskStatus = if (currentState.result.isDefined) {
         TaskStatus.Success
@@ -163,7 +163,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
         if (checkExecutor(currentState.executorId.get, id, threads)) {
           new TaskStatus.Running(currentState.executorId.get)
         } else {
-          new TaskStatus.Orphan("Thread Not Found")
+          new TaskStatus.Orphan("Not Found: " + currentState.executorId.get)
         }
       } else {
         TaskStatus.Unknown
@@ -202,7 +202,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
       threads.filter(_.isAlive)
         .exists(_.getName == executorId.split(":")(1))
     }
-    def isCurrentTask = StmDaemons.currentStatus.get(executorId).map(_.id).getOrElse("") == id
+    def isCurrentTask = ExecutionStatusManager.check(executorId, id)
     isCurrentTask && isExecutorAlive
   }
 

@@ -14,7 +14,7 @@ object Restm {
   type PointerType = StringPtr
 }
 
-class LockedException(val conflitingTxn: TimeStamp) extends Exception("Already locked by " + conflitingTxn)
+class LockedException(val conflitingTxn: TimeStamp, cause : Throwable = null) extends Exception("Already locked by " + conflitingTxn, cause)
 
 trait Restm {
   def newPtr(time: TimeStamp, value: ValueType): Future[PointerType]

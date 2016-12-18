@@ -2,6 +2,8 @@ package storage.actors
 
 import java.util.concurrent.atomic.AtomicBoolean
 
+import util.Util
+
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try
 
@@ -11,7 +13,7 @@ trait ActorQueue {
   protected def messageNumber() = processedMessages
   private[this] var processedMessages = 0
 
-  def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = {
+  def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {
     val promise = Promise[T]()
     queue.add(() => {
       val result: Try[T] = Try {

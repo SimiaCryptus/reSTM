@@ -1,7 +1,7 @@
 import java.util.concurrent.Executors
 import java.util.{Date, UUID}
 
-import _root_.util.Metrics
+import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.collection.{LinkedList, TreeCollection, TreeMap, TreeSet}
@@ -36,7 +36,7 @@ object StmCollectionSpecBase {
 abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with BeforeAndAfterEach {
 
   override def afterEach() {
-    Metrics.clear()
+    Util.clear()
   }
 
   implicit def cluster: Restm
@@ -51,7 +51,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
       }
-      println(JacksonValue.simple(Metrics.get()).pretty)
+      println(JacksonValue.simple(Util.get()).pretty)
     }
     "support concurrent operations" in {
       val collection = TreeSet.static[String](new PointerType)
@@ -76,7 +76,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         }
       }
       Await.result(Future.sequence(futures), 1.minutes)
-      println(JacksonValue.simple(Metrics.get()).pretty)
+      println(JacksonValue.simple(Util.get()).pretty)
     }
   }
 
@@ -199,7 +199,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         if(!timeout.after(now)) throw new RuntimeException("Time Out")
         Thread.sleep(100)
       }
-      println(JacksonValue.simple(Metrics.get()).pretty)
+      println(JacksonValue.simple(Util.get()).pretty)
       input.size mustBe output.size
       input mustBe output
     }

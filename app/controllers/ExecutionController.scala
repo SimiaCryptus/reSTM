@@ -2,7 +2,7 @@ package controllers
 
 import javax.inject._
 
-import _root_.util.Metrics
+import _root_.util.Util
 import akka.actor.ActorSystem
 import controllers.RestmController._
 import play.api.mvc._
@@ -16,7 +16,7 @@ import scala.concurrent.{ExecutionContext, Future}
 class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
   def taskResult(id: String) = Action.async {
-    Metrics.codeFuture("ExecutionController.taskResult") {
+    Util.monitorFuture("ExecutionController.taskResult") {
       val task: Task[AnyRef] = Task[AnyRef](new PointerType(id))
       val future: Future[AnyRef] = task.future(storageService, exec)
       future.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
@@ -24,7 +24,7 @@ class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: Exe
   }
 
   def taskInfo(id: String) = Action.async {
-    Metrics.codeFuture("ExecutionController.taskInfo") {
+    Util.monitorFuture("ExecutionController.taskInfo") {
       Task(new PointerType(id)).atomic()(storageService,exec).getStatusTrace().map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
     }
   }

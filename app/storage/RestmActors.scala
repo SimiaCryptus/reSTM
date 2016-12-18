@@ -1,6 +1,6 @@
 package storage
 
-import _root_.util.Metrics._
+import _root_.util.Util._
 import storage.Restm._
 import storage.actors._
 
@@ -15,12 +15,12 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
     val thread: Thread = new Thread(new Runnable {
       override def run(): Unit = {
         while(!Thread.interrupted()) {
-          for(item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) codeBlock("RestmActors.dequeueStorage") {
+          for(item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) monitorBlock("RestmActors.dequeueStorage") {
             item match {
               case id : PointerType =>
                 val actor = getPtrActor(id)
                 val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
-                if(!recordsToUpload.isEmpty) codeBlock("Restm.coldStorage.store") {
+                if(!recordsToUpload.isEmpty) monitorBlock("Restm.coldStorage.store") {
                   coldStorage.store(id, recordsToUpload.map(record=>record.time->record.value).toMap)
                   recordsToUpload.foreach(_.coldStorageTs = Option(System.currentTimeMillis()))
                   ActorLog.log(s"$actor Persisted")
@@ -46,14 +46,14 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
 
   protected val txns: TrieMap[TimeStamp, TxnActor] = new scala.collection.concurrent.TrieMap[TimeStamp, TxnActor]()
 
-  protected def getTxnActor(id: TimeStamp): TxnActor = codeBlock("Restm.getTxn") {
-    txns.getOrElseUpdate(id, codeBlock("Restm.newTxn"){ new TxnActor(id.toString) })
+  protected def getTxnActor(id: TimeStamp): TxnActor = monitorBlock("Restm.getTxn") {
+    txns.getOrElseUpdate(id, monitorBlock("Restm.newTxn"){ new TxnActor(id.toString) })
   }
 
   protected val ptrs: TrieMap[PointerType, MemActor] = new scala.collection.concurrent.TrieMap[PointerType, MemActor]()
 
-  protected def getPtrActor(id: PointerType): MemActor = codeBlock("Restm.getPtr") { ptrs.getOrElseUpdate(id,
-    codeBlock("Restm.newPtr") {
+  protected def getPtrActor(id: PointerType): MemActor = monitorBlock("Restm.getPtr") { ptrs.getOrElseUpdate(id,
+    monitorBlock("Restm.newPtr") {
       val obj = new MemActor(id)
       try {
         val restored: Map[TimeStamp, ValueType] = coldStorage.read(id)
@@ -90,7 +90,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage)(implicit exec
     getPtrActor(id).init(time, value).andThen({case Success(true) => queueStorage(id)})
   }
 
-  def queueStorage(id: AnyRef): Boolean = codeBlock("RestmActors.queueStorage") {
+  def queueStorage(id: AnyRef): Boolean = monitorBlock("RestmActors.queueStorage") {
     freezeQueue.add(id)
   }
 

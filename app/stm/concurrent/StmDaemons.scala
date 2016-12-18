@@ -1,17 +1,13 @@
 package stm.concurrent
 
-import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
-import com.fasterxml.jackson.annotation.JsonIgnore
 import stm.collection.LinkedList
 import storage.Restm
 import storage.Restm.PointerType
 import storage.data.KryoValue
 
-import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future, Promise}
-
 
 object DaemonConfig {
   def apply(name:String, f:(Restm, ExecutionContext)=>Unit) = {
@@ -23,9 +19,6 @@ case class DaemonConfig(name: String, impl: KryoValue) {
 }
 
 object StmDaemons {
-
-  @JsonIgnore val localName: String = InetAddress.getLocalHost.getHostAddress
-  @JsonIgnore val currentStatus = new TrieMap[String,Task[_]]()
 
   val config = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]

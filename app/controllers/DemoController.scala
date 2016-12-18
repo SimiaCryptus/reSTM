@@ -3,7 +3,7 @@ package controllers
 import java.util.UUID
 import javax.inject._
 
-import _root_.util.Metrics
+import _root_.util.Util
 import akka.actor.ActorSystem
 import controllers.RestmController._
 import play.api.mvc._
@@ -16,7 +16,7 @@ import scala.concurrent.ExecutionContext
 class DemoController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
   def demoSort(n: Int) = Action.async {
-    Metrics.codeFuture("DemoController.demoSort") {
+    Util.monitorFuture("DemoController.demoSort") {
       val collection = TreeCollection.static[String](new PointerType)
       Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x:String)=>collection.atomic(storageService,exec).sync.add(x))
       collection.atomic(storageService, exec).sort()
