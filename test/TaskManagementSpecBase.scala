@@ -7,7 +7,6 @@ import stm.collection.{LinkedList, TreeCollection}
 import stm.concurrent.TaskStatus.Orphan
 import stm.concurrent._
 import storage.Restm._
-import storage.actors.ActorLog
 import storage.data.JacksonValue
 import storage.remote.RestmCluster
 import storage.{RestmActors, _}
@@ -26,12 +25,13 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
     "monitor ongoing work" in {
-      ActorLog.enabled = true
+      //ActorLog.enabled = true
       StmExecutionQueue.verbose = false
 
       val taskTimeout = 90.minutes
       val insertTimeout = 5.minutes
-      val taskSize = 1000
+      val taskSize = 20000
+      val diagnosticsOperationTimeout = 1.minute
 
       System.out.println(s"Starting Test at ${new Date()}")
       val input = randomUUIDs.take(taskSize).toSet
@@ -72,12 +72,12 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
           if(!timeout.after(now)) throw new RuntimeException("Time Out")
 
           System.out.println(s"Checking Status at ${new Date()}...")
-          val statusTrace = sortTask.atomic(-0.milliseconds).sync(60.seconds).getStatusTrace(Option(StmExecutionQueue))
+          val statusTrace = sortTask.atomic(-0.milliseconds).sync(diagnosticsOperationTimeout).getStatusTrace(Option(StmExecutionQueue))
           def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status.isInstanceOf[Orphan]) || node.children.exists(isOrphaned(_))
           def statusSummary(node : TaskStatusTrace = statusTrace) : Map[String,Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
             .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_+_).getOrElse(0))
 
-          val numQueued = StmExecutionQueue.workQueue.atomic().sync.size
+          val numQueued = StmExecutionQueue.workQueue.atomic().sync(diagnosticsOperationTimeout).size
           val numRunning = ExecutionStatusManager.currentlyRunning()
 
           val summary = JacksonValue.simple(statusSummary()).pretty
