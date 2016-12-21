@@ -1,7 +1,6 @@
 package controllers
 
 import java.net.InetAddress
-import java.util.concurrent.Executors
 import javax.inject._
 
 import _root_.util.Config._
@@ -25,7 +24,7 @@ object RestmController {
   private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
   private[this] lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
   private[this] val coldStorage: ColdStorage = dynamo.getOrElse(new HeapColdStorage)
-  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)
 
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
   def storageService(implicit exec: ExecutionContext) = new RestmImpl(new RestmInternalStaticListRouter {

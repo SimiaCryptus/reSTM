@@ -50,8 +50,7 @@ trait STMTxn[+R] {
             ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
             ctx.revert()
             Thread.sleep(Random.nextInt(5+10*retryNumber))
-            //_txnRun(retryNumber + 1, Option(ctx))
-            _txnRun(retryNumber + 1, None)
+            _txnRun(retryNumber + 1, Option(ctx).filter(_=>false)) // TODO: Seems to be a problem enabling this
           case e: Throwable =>
             if (allowCompletion) {
               ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")

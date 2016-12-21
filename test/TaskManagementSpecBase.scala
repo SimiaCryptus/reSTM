@@ -28,10 +28,10 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
       //ActorLog.enabled = true
       StmExecutionQueue.verbose = false
 
-      val taskTimeout = 90.minutes
+      val taskTimeout = 120.minutes
       val insertTimeout = 5.minutes
-      val taskSize = 20000
-      val diagnosticsOperationTimeout = 1.minute
+      val taskSize = 5000
+      val diagnosticsOperationTimeout = 3.minutes
 
       System.out.println(s"Starting Test at ${new Date()}")
       val input = randomUUIDs.take(taskSize).toSet
@@ -115,7 +115,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
 class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach {
   private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
+  val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())

@@ -13,10 +13,15 @@ trait ActorQueue {
   protected def messageNumber() = processedMessages
   private[this] var processedMessages = 0
 
+  private[this] var closed = false
+  def close() = closed = true
+
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {
+    require(!closed)
     val promise = Promise[T]()
     queue.add(() => {
       val result: Try[T] = Try {
+        require(!closed)
         val result = f
         processedMessages += 1
         result

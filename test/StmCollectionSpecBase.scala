@@ -225,7 +225,7 @@ class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEa
 
 class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
   private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
+  val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     super.beforeEach()

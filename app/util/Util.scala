@@ -19,6 +19,9 @@ object Util {
 
   def now = System.nanoTime().nanoseconds
   val codeMetricsData = new TrieMap[String, CodeMetrics]()
+  val scalarData = new TrieMap[String, AtomicDouble]()
+  def delta(name:String, delta:Double) = scalarData.getOrElseUpdate(name,new AtomicDouble(0)).addAndGet(delta)
+
 
   def monitorBlock[T](name:String)(f: =>T):T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
   def monitorFuture[T](name:String)(f: =>Future[T]):Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
@@ -39,7 +42,8 @@ object Util {
 
 
   def getMetrics() = Map(
-    "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
+    "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
+    "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )
   private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 }

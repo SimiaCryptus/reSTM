@@ -14,6 +14,7 @@ class HistoryRecord(val time : TimeStamp, val value : ValueType) {
 
 class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
+
   val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]
   private[this] var lastRead: Option[TimeStamp] = None
   private[this] var writeLock: Option[TimeStamp] = None

@@ -131,7 +131,7 @@ class LocalStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
 
 class LocalClusterStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
   private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val shards = (0 until 8).map(_ => new RestmActors()(pool)).toList
+  val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())

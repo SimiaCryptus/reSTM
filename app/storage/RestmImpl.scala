@@ -19,7 +19,8 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
     case e: LockedException =>
       Future.failed(e)
     case e: Throwable =>
-      e.printStackTrace(System.err); Future.failed(e)
+      //e.printStackTrace(System.err);
+      Future.failed(e)
   })
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
@@ -29,7 +30,8 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
       case e: LockedException =>
         Future.failed(e)
       case e: Throwable =>
-        e.printStackTrace(System.err); Future.failed(e)
+        //e.printStackTrace(System.err);
+        Future.failed(e)
     })
 
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = {
