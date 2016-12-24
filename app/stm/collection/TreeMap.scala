@@ -6,7 +6,6 @@ import storage.Restm.PointerType
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.reflect.ClassTag
 
 object TreeMap {
   def empty[T <: Comparable[T],V] = new STMTxn[TreeMap[T,V]] {
@@ -19,8 +18,8 @@ object TreeMap {
 
 class TreeMap[T <: Comparable[T],V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T,V]]]) {
 
-  def this()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = this(STMPtr.dynamicSync[Option[BinaryTreeMapNode[T,V]]](None))
   def this(ptr:PointerType) = this(new STMPtr[Option[BinaryTreeMapNode[T,V]]](ptr))
+  private def this() = this(new PointerType)
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
 
