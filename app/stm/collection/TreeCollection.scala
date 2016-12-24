@@ -223,7 +223,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
   }
 
   def apxSize()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatten).map(prev => {
+    rootPtr.readOpt().map(_.flatten).flatMap(prev => {
       prev.map(_.apxSize).get
     })
   }
