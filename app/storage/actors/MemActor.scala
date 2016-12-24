@@ -160,6 +160,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       withActor {
         require(writeLock.contains(time), "Lock mismatch")
         if (queuedValue.isDefined) {
+          history --= history.filter(_.time==time).toList // Remove duplicate times caused by init
           history += new HistoryRecord(writeLock.get, queuedValue.get)
           writeLock = None
           queuedValue = None
