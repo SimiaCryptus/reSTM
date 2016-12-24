@@ -28,10 +28,10 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
     def randomUUIDs = Stream.continually(randomStr)
     "support basic operations" in {
       val collection = new ClassificationTree[String](new PointerType)
-      collection.atomic().sync.iterateClusterMembers() // BUG: Need to initialize the collection with *any* call
-      val input = randomUUIDs.take(10).toSet
+      collection.atomic().sync.init() // BUG: Need to initialize the collection with *any* call
+      val input = randomUUIDs.take(2).toSet
       input.foreach(collection.atomic().sync.add("data", _))
-      val output: Set[String] = collection.atomic().sync.iterateClusterMembers()._1.toSet
+      val output: Set[String] = collection.atomic().sync.iterateClusterMembers()._2.toSet
       output.size mustBe input.size
       output mustBe input
     }
