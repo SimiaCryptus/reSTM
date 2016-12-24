@@ -15,7 +15,7 @@ import scala.util.Success
 class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends RestmInternal {
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
-  protected val expireQueue = Executors.newScheduledThreadPool(1)
+  protected var expireQueue = Executors.newScheduledThreadPool(1)
   protected val freezeQueue = new java.util.concurrent.LinkedBlockingDeque[AnyRef]()
   private val freezeThread: Thread = {
     val thread: Thread = new Thread(new Runnable {
@@ -105,6 +105,8 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends Restm
   )}
 
   def clear() = {
+    expireQueue.shutdownNow()
+    expireQueue = Executors.newScheduledThreadPool(1)
     ptrs2.clear()
     ptrs1.clear()
     txns.clear()

@@ -9,7 +9,7 @@ import storage.{Restm, RestmActors}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
 
-abstract class ClusterSpecBase extends WordSpec with MustMatchers {
+abstract class RestmSpecBase extends WordSpec with MustMatchers {
   def cluster: Restm
 
   "reSTM Storage Layer" should {
@@ -43,7 +43,7 @@ abstract class ClusterSpecBase extends WordSpec with MustMatchers {
     }
   }
 }
-class LocalClusterSpec extends ClusterSpecBase with BeforeAndAfterEach {
+class LocalRestmSpec extends RestmSpecBase with BeforeAndAfterEach {
 
   override def beforeEach() {
     cluster.internal.asInstanceOf[RestmActors].clear()
@@ -51,7 +51,7 @@ class LocalClusterSpec extends ClusterSpecBase with BeforeAndAfterEach {
 
   val cluster = LocalRestmDb
 }
-class IntegrationSpec extends ClusterSpecBase with OneServerPerTest {
+class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 
   private val pool = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)

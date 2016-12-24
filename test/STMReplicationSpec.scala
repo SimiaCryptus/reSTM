@@ -29,7 +29,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
   }
 
   def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
-  val collection = TreeSet.static[String](new PointerType("test/ColdStorageIntegrationSpec/" + UUID.randomUUID().toString))
+  val collection = new TreeSet[String](new PointerType("test/ColdStorageIntegrationSpec/" + UUID.randomUUID().toString))
 
   def addItems(nodes : Seq[RestmInternal], items : Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext) = {
     implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))

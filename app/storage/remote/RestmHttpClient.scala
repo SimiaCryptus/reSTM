@@ -3,12 +3,13 @@ package storage.remote
 import java.nio.charset.Charset
 
 import dispatch.{as, url, _}
-import storage.Restm
 import storage.Restm._
+import storage.{LockedException, Restm}
 import util.Util._
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success}
 
 
 class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionContext) extends Restm {
@@ -40,13 +41,15 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
   }
 
   override def getPtr(id: PointerType): Future[Option[ValueType]] = monitorFuture("RestmHttpClient.getPtr") {
-    Http(url(baseUrl) / "mem" / id.toString > { response => {
+    val req: Req = url(baseUrl) / "mem" / id.toString
+    Http(req > { response => {
       response.getStatusCode match {
-        case 200 => Option(new ValueType(response.getResponseBody))
-        case 404 => None
+        case 200 => Success(Option(new ValueType(response.getResponseBody)))
+        case 304 => Success(None)
+        case 404 => Success(None)
+        case 409 => Failure(new LockedException(response.getResponseBody))
       }
-    }
-    })
+    }}).map(_.get)
   }
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = monitorFuture("RestmHttpClient.getPtr") {
@@ -54,12 +57,12 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
     req = ifModifiedSince.map(ifModifiedSince => req.addQueryParameter("ifModifiedSince", ifModifiedSince.toString)).getOrElse(req)
     Http(req > { response => {
       response.getStatusCode match {
-        case 200 => Option(new ValueType(response.getResponseBody))
-        case 304 => None
-        case 404 => None
+        case 200 => Success(Option(new ValueType(response.getResponseBody)))
+        case 304 => Success(None)
+        case 404 => Success(None)
+        case 409 => Failure(new LockedException(response.getResponseBody))
       }
-    }
-    })
+    }}).map(_.get)
   }
 
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = monitorFuture("RestmHttpClient.newPtr") {

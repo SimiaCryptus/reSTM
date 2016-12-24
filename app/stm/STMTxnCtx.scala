@@ -12,7 +12,11 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
 
   private[stm] val defaultTimeout: Duration = 5.seconds
 
-  def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] = txnId.flatMap(cluster.newPtr(_, Restm.value(value)))
+  def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] =
+    txnId.flatMap(cluster.newPtr(_, Restm.value(value)).map(ptr=>{
+      initCache.put(ptr, Option(value))
+      ptr
+    }))
 
   var isClosed = false
 
@@ -38,6 +42,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   private lazy val txnId = cluster.newTxn(priority)
   private[this] val writeLocks = new TrieMap[PointerType,Future[_]]()
   private[stm] val readCache: TrieMap[PointerType, Future[Option[_]]] = new TrieMap()
+  private[stm] val initCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   private[stm] val writeCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
 
   private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
@@ -80,7 +85,8 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
 
   private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)(implicit executionContext: ExecutionContext): Future[Option[T]] = {
     require(!isClosed)
-    writeCache.get(id).map(x => Future.successful(x.map(_.asInstanceOf[T]))).getOrElse(
+    writeCache.get(id).orElse(initCache.get(id))
+    .map(x => Future.successful(x.map(_.asInstanceOf[T]))).getOrElse(
       readCache.getOrElseUpdate(id,
         txnId.flatMap(txnId => {
           def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)

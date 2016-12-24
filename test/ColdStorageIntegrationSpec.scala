@@ -41,7 +41,7 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
   }
 
   def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
-  val collection = TreeSet.static[String](new PointerType)
+  val collection = new TreeSet[String](new PointerType)
 
   def addItems(items : List[String] = randomUUIDs.take(5).toList)(implicit coldStorage: ColdStorage, executor: ExecutionContext) = {
     val internal: RestmActors = new RestmActors(coldStorage)

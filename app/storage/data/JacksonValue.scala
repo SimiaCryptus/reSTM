@@ -41,11 +41,15 @@ import storage.data.JacksonValue._
 class JacksonValue(val data: String) {
 
   def deserialize[T <: AnyRef : ClassTag](): Option[T] = {
-    Option(this.toString).filterNot(_.isEmpty).map[T](json => {
-      //def prototype = new TypeReference[T]() {}
-      def prototype = classTag[T].runtimeClass.asInstanceOf[Class[T]]
-      mapper.readValue[T](json, prototype)
-    })
+    if(classOf[String] == classTag[T].runtimeClass) {
+      Option(data).asInstanceOf[Option[T]]
+    } else {
+      Option(this.toString).filterNot(_.isEmpty).map[T](json => {
+        //def prototype = new TypeReference[T]() {}
+        def prototype = classTag[T].runtimeClass.asInstanceOf[Class[T]]
+        mapper.readValue[T](json, prototype)
+      })
+    }
   }
 
   def pretty: String = {

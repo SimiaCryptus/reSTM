@@ -15,13 +15,12 @@ import scala.collection.JavaConverters._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.reflect.ClassTag
 import scala.util.Try
 
 object Task {
   def create[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     STMPtr.dynamic[TaskData[T]](new TaskData[T](Option(KryoValue(f)), triggers = ancestors)).map(new Task(_))
-
-  def apply[T](id: PointerType) = new Task(STMPtr.static[TaskData[T]](id, new TaskData[T]()))
 
   sealed trait TaskResult[T] {
   }
@@ -55,6 +54,8 @@ case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[Ta
 
 class Task[T](val root : STMPtr[TaskData[T]]) {
 
+  def this()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = this(STMPtr.dynamicSync(new TaskData[T]()))
+  def this(ptr:PointerType)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) = this(new STMPtr[TaskData[T]](ptr))
 
   class AtomicApi(priority: Duration = 0.seconds)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority) {
     def result() = atomic { Task.this.result()(_,executionContext) }

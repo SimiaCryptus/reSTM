@@ -45,7 +45,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
   "TreeSet" should {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
     "support basic operations" in {
-      val collection = TreeSet.static[String](new PointerType)
+      val collection = new TreeSet[String](new PointerType)
       for (item <- randomUUIDs.take(5)) {
         collection.atomic.sync.contains(item) mustBe false
         collection.atomic.sync.add(item)
@@ -54,7 +54,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
       println(JacksonValue.simple(Util.getMetrics()).pretty)
     }
     "support concurrent operations" in {
-      val collection = TreeSet.static[String](new PointerType)
+      val collection = new TreeSet[String](new PointerType)
       // Bootstrap collection synchronously to control contention
       for (item <- randomUUIDs.take(5)) {
         collection.atomic.sync.contains(item) mustBe false
@@ -81,19 +81,25 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
   }
 
   "TreeCollection" should {
-    val collection = TreeCollection.static[String](new PointerType)
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
     "support basic operations" in {
-      val input = randomUUIDs.take(50).toSet
+      val collection = new TreeCollection[String](new PointerType)
+      val input = randomUUIDs.take(10).toSet
       input.foreach(collection.atomic().sync.add(_))
       val output = Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).map(_.get).toSet
       output mustBe input
     }
+    "support list collection" in {
+      val collection = new TreeCollection[String](new PointerType)
+      val input = randomUUIDs.take(10).toSet
+      input.foreach(collection.atomic().sync.add(_))
+      collection.atomic().sync.toList().toSet mustBe input
+    }
   }
 
   "TreeMap" should {
-    val collection = TreeMap.static[String,String](new PointerType)
+    val collection = new TreeMap[String,String](new PointerType)
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs: Stream[(String,String)] = Stream.continually((randomStr, randomStr))
     "support basic operations" in {

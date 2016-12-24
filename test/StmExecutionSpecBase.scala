@@ -35,7 +35,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   "TreeCollection" should {
-    val collection = TreeCollection.static[String](new PointerType)
+    val collection = new TreeCollection[String](new PointerType)
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
     "support sorting" in {
@@ -55,7 +55,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support queued and chained operations" in {
       StmDaemons.start()
       StmExecutionQueue.registerDaemons(1)
-      val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
+      val hasRun = new STMPtr[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
       Await.result(StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
         hasRun.atomic(cluster, executionContext).sync.write(1)
@@ -71,7 +71,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support futures" in {
       StmDaemons.start()
       StmExecutionQueue.registerDaemons(1)
-      val hasRun = STMPtr.static[java.lang.Integer](new PointerType)
+      val hasRun = new STMPtr[java.lang.Integer](new PointerType)
       hasRun.atomic.sync.init(0)
       val task: Task[String] = StmExecutionQueue.atomic.sync.add((cluster, executionContext) => {
         hasRun.atomic(cluster, executionContext).sync.write(1)
@@ -84,7 +84,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support continued operations" in {
       StmDaemons.start()
       StmExecutionQueue.registerDaemons(1)
-      val counter = STMPtr.static[java.lang.Integer](new PointerType)
+      val counter = new STMPtr[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
       val count = 20
       val task = StmExecutionQueue.atomic.sync.add(StmExecutionSpecBase.recursiveTask(counter,count) _)
@@ -97,7 +97,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
   "StmDaemons" should {
     "support named daemons" in {
       StmDaemons.start()
-      val counter = STMPtr.static[java.lang.Integer](new PointerType)
+      val counter = new STMPtr[java.lang.Integer](new PointerType)
       counter.atomic.sync.init(0)
       StmDaemons.config.atomic().sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
         while(!Thread.interrupted()) {

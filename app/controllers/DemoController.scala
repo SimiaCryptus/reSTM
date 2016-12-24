@@ -17,7 +17,7 @@ class DemoController @Inject()(actorSystem: ActorSystem)(implicit exec: Executio
 
   def demoSort(n: Int) = Action.async {
     Util.monitorFuture("DemoController.demoSort") {
-      val collection = TreeCollection.static[String](new PointerType)
+      val collection = new TreeCollection[String](new PointerType)
       Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x:String)=>collection.atomic()(storageService,exec).sync.add(x))
       collection.atomic()(storageService, exec).sort()
         .map(task=>Ok(s"""<html><body><a href="/task/result/${task.id}">Task ${task.id} started</a></body></html>""")

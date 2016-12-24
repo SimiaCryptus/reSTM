@@ -37,7 +37,7 @@ abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
 
   "Transactional Pointers" should {
     "basic writes" in {
-      val ptr = STMPtr.static[String](new PointerType)
+      val ptr = new STMPtr[String](new PointerType)
       Await.result(new STMTxn[Option[String]] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
           ptr.readOpt()
@@ -59,7 +59,7 @@ abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
   "Transactional History" should {
     "recover orphaned trasactions" in {
 
-      val collection = TreeSet.static[String](new PointerType)
+      val collection = new TreeSet[String](new PointerType)
 
       // Bootstrap collection to reduce contention at root nodes via serial inserts
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {
@@ -90,7 +90,7 @@ abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
 
     "recover orphaned pointers" in {
 
-      val collection = TreeSet.static[String](new PointerType)
+      val collection = new TreeSet[String](new PointerType)
 
       // Bootstrap collection to reduce contention at root nodes via serial inserts
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(10).toList) {

@@ -7,6 +7,7 @@ import storage.Restm.PointerType
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.reflect.ClassTag
 
 
 object TreeSet {
@@ -15,8 +16,6 @@ object TreeSet {
   }
 
   def create[T <: Comparable[T]](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[BinaryTreeNode[T]]](None).map(new TreeSet(_))
-
-  def static[T <: Comparable[T]](id: PointerType) = new TreeSet(STMPtr.static[Option[BinaryTreeNode[T]]](id, None))
 
 
   private case class BinaryTreeNode[T <: Comparable[T]]
@@ -122,6 +121,9 @@ object TreeSet {
 }
 
 class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
+
+  def this()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = this(STMPtr.dynamicSync[Option[BinaryTreeNode[T]]](None))
+  def this(ptr:PointerType) = this(new STMPtr[Option[BinaryTreeNode[T]]](ptr))
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
 

@@ -5,8 +5,8 @@ import java.util.UUID
 
 import _root_.util.Util._
 import com.google.common.annotations.VisibleForTesting
-import storage.Restm
 import storage.actors.ActorLog
+import storage.{LockedException, Restm}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -45,13 +45,16 @@ trait STMTxn[+R] {
           }
         })
         .recoverWith({
-          case e: Throwable if retryNumber < maxRetry =>
-            //e.printStackTrace(System.out)
+          case e: LockedException if retryNumber < maxRetry =>
             ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
+            //if(!e.isInstanceOf[LockedException]) e.printStackTrace()
             ctx.revert()
             Thread.sleep(Random.nextInt(5+10*retryNumber))
             _txnRun(retryNumber + 1, Option(ctx).filter(_=>false)) // TODO: Seems to be a problem enabling this
           case e: Throwable =>
+            if(!e.isInstanceOf[LockedException]) {
+              e.printStackTrace()
+            }
             if (allowCompletion) {
               ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
               ctx.revert()

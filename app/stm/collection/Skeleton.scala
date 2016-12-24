@@ -4,54 +4,45 @@ import stm._
 import storage.Restm
 import storage.Restm.PointerType
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
-
+import scala.reflect.ClassTag
 
 object Skeleton {
-  def empty[T] = new STMTxn[Skeleton[T]] {
-    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Skeleton[T]] = create[T]
-  }
-
-  def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[InternalData[T]]](None).map(new Skeleton(_))
-
-  def static[T](id: PointerType) = new Skeleton(STMPtr.static[Option[Skeleton.InternalData[T]]](id, None))
-
-
-  private case class InternalData[T]
+  case class SkeletonData[T]
   (
-    // Primary mutable intranl data here
+    // Primary mutable internal data here
   ) {
     // In-txn operations
   }
-
 }
 
-class Skeleton[T](rootPtr: STMPtr[Option[Skeleton.InternalData[T]]]) {
+class Skeleton[T](rootPtr: STMPtr[Skeleton.SkeletonData[T]]) {
+
+  def this()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = this(STMPtr.dynamicSync(new Skeleton.SkeletonData[T]()))
+  def this(ptr:PointerType) = this(new STMPtr[Skeleton.SkeletonData[T]](ptr))
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
-
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def sampleOperation() = sync { AtomicApi.this.sampleOperation() }
+      def sampleOperation()(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.sampleOperation() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
-
-    def sampleOperation() = atomic { Skeleton.this.sampleOperation()(_,executionContext).map(_ => Unit) }
+    def sampleOperation()(implicit classTag: ClassTag[T]) = atomic { Skeleton.this.sampleOperation()(_,executionContext,classTag).map(_ => Unit) }
   }
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
-
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def sampleOperation()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Skeleton.this.sampleOperation() }
+    def sampleOperation()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { Skeleton.this.sampleOperation() }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
-
-  def sampleOperation()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatten).map(prev => {
-      prev.map(r => r).getOrElse(new Skeleton.InternalData[T]())
-    }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
+  def sampleOperation()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
+    rootPtr.readOpt().map(prev => {
+      prev.orElse(Option(new Skeleton.SkeletonData[T]()))
+        .map(state=>state->state) // Invoke mutable internal method here
+        .get
+    }).flatMap(newRootData => rootPtr.write(newRootData._1).map(_=>newRootData._2))
   }
 }
 

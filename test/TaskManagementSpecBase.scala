@@ -35,7 +35,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
       System.out.println(s"Starting Test at ${new Date()}")
       val input = randomUUIDs.take(taskSize).toSet
-      val collection = TreeCollection.static[String](new PointerType)
+      val collection = new TreeCollection[String](new PointerType)
 
       val inputBuffer = new mutable.HashSet[String]()
       inputBuffer ++= input

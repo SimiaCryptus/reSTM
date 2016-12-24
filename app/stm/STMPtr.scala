@@ -1,7 +1,7 @@
 package stm
 
-import storage.Restm
 import storage.Restm.PointerType
+import storage.{LockedException, Restm}
 import util.Util
 
 import scala.concurrent.duration._
@@ -10,18 +10,16 @@ import scala.reflect._
 
 object STMPtr {
 
-  def dynamic[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = {
-    ctx.newPtr(value).map(new STMPtr[T](_))
+  def dynamic[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[T]] = {
+    require(null != ctx)
+    val future: Future[PointerType] = ctx.newPtr(value)
+    require(null != future)
+    future.map(new STMPtr[T](_))
   }
 
-  def dynamicSync[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): STMPtr[T] = {
+  def dynamicSync[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): STMPtr[T] = {
+    require(null != ctx)
     Await.result(dynamic[T](value), ctx.defaultTimeout)
-  }
-
-  def static[T <: AnyRef](id: PointerType)(implicit classTag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id)
-
-  def static[T <: AnyRef](id: PointerType, _default: => T)(implicit classTag: ClassTag[T]): STMPtr[T] = new STMPtr[T](id) {
-    override def default() = Future.successful(Option(_default))
   }
 
 }
@@ -54,10 +52,10 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
   def read(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.getOrElse(default))
 
   def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
-    .recover({ case e => throw new RuntimeException(s"failed write to $id", e) })
+    .recover({ case e => throw new LockedException(s"failed write to $id", e) })
 
   def delete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.delete(id)
-    .recover({ case e => throw new RuntimeException(s"failed write to $id", e) })
+    .recover({ case e => throw new LockedException(s"failed write to $id", e) })
 
   def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
     STMPtr.this.write(value)
