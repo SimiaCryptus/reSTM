@@ -7,7 +7,7 @@ import stm.collection.TreeSet
 import storage.Restm._
 import storage._
 import storage.actors.RestmActors
-import storage.cold.{ColdStorage, DynamoColdStorage, HeapColdStorage}
+import storage.cold.{BdbColdStorage, ColdStorage, DynamoColdStorage, HeapColdStorage}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
@@ -18,6 +18,16 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
   "HeapColdStorage" should {
     "persist and restore data" in {
       implicit val coldStorage: ColdStorage = new HeapColdStorage
+      val ids = randomUUIDs.take(5).toList
+      addItems(ids)
+      deleteItems(ids)
+      addItems(ids)
+    }
+  }
+
+  "BdbColdStorage" should {
+    "persist and restore data" in {
+      implicit val coldStorage: ColdStorage = new BdbColdStorage(path = "testDb", dbname = UUID.randomUUID().toString)
       val ids = randomUUIDs.take(5).toList
       addItems(ids)
       deleteItems(ids)
@@ -61,7 +71,7 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
     implicit val cluster = new RestmImpl(internal)
     for (item <- items) {
       collection.atomic.sync.contains(item) mustBe true
-      collection.atomic.sync.remove(item)
+      collection.atomic.sync.remove(item) mustBe true
       collection.atomic.sync.contains(item) mustBe false
     }
     Await.result(internal.flushColdStorage(), 1.minutes)

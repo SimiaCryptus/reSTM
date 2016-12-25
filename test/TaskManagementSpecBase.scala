@@ -9,6 +9,7 @@ import stm.task._
 import storage.Restm._
 import storage._
 import storage.actors.RestmActors
+import storage.cold.BdbColdStorage
 import storage.remote.RestmCluster
 import storage.types.JacksonValue
 
@@ -118,10 +119,10 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
 class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach {
   private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val shards = (0 until 8).map(_ => new RestmActors()).toList
+  val shards = (0 until 8).map(_ => new RestmActors(new BdbColdStorage(path = "testDb", dbname = UUID.randomUUID().toString))).toList
 
   override def beforeEach() {
-    shards.foreach(_.clear())
+    //shards.foreach(_.clear())
   }
 
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
