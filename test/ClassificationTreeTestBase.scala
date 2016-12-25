@@ -3,8 +3,11 @@ import java.util.concurrent.Executors
 import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
+import stm.STMPtr
+import stm.collection.ClassificationTree.ClassificationTreeNode
 import stm.collection._
 import storage.Restm._
+import storage.data.JacksonValue
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
 import storage.{RestmActors, _}
 
@@ -24,14 +27,30 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   "ClassificationTree" should {
-    List(10,100,1000).foreach(items=> {
+    List(10,100).foreach(items=> {
       s"support insert and iterate over $items items" in {
         val collection = new ClassificationTree(new PointerType)
         val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
         input.foreach(collection.atomic().sync.add("data", _))
-        val output = collection.atomic().sync.iterateClusterMembers(max = items)._2.toSet
+        val output = collection.atomic().sync.iterateTree(max = items)._2.toSet
         output.size mustBe input.size
         output mustBe input
+      }
+    })
+    List(10).foreach(items=> {
+      s"support query and describe operations for $items items" in {
+        val collection = new ClassificationTree(new PointerType)
+        val toSet: Set[ClassificationTreeItem] = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
+        toSet.foreach(x=>collection.atomic().sync.add("data", x))
+        val toSet1 = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(3).toSet
+        toSet1.map(x => {
+          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
+          println(s"$x routed to node "+JacksonValue.simple(id))
+          println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
+          println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
+          println(s"Node Counts: "+JacksonValue.simple(collection.atomic().sync.getClusterCount(id.id)))
+          println()
+        })
       }
     })
   }

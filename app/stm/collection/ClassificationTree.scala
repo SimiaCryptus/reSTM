@@ -79,24 +79,9 @@ object ClassificationTree {
       read.flatMap(_.add(label, value, root).map(_.getOrElse(root)))
     }
 
-    def iterateClusterMembers(max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-      def result(cursor : Int): (Int, List[ClassificationTreeItem]) = Await.result(root.readOpt().flatMap(rootNode => rootNode.get.iterateClusterMembers(cursor, max, root)), 10.seconds)
-      val stream: Seq[(Int, List[ClassificationTreeItem])] = Stream.iterate((cursor, List.empty[ClassificationTreeItem]))(t => {
-        val (prevCursor, prevList) = t
-        if(prevCursor < 0) t else {
-          val (nextCursor, thisList) = result(prevCursor)
-          //println(s"Fetch cursor $prevCursor - ${thisList.size} items")
-          nextCursor -> (prevList ++ thisList)
-        }
-      })
-      stream.find(t=>{
-        val (cursor, cummulativeList) = t
-        cursor < 0 || cummulativeList.size >= max
-      }).getOrElse(stream.last)
-    }
   }
-  private def newClassificationTreeNode()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-    new ClassificationTreeNode(None, itemBuffer = Option(TreeCollection[TreeItem]()))
+  private def newClassificationTreeNode(parent : Option[STMPtr[ClassificationTreeNode]] = None)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+    new ClassificationTreeNode(parent, itemBuffer = Option(TreeCollection[TreeItem]()))
 
   case class TreeItem(label : String, value:ClassificationTreeItem)
 
@@ -116,11 +101,11 @@ object ClassificationTree {
 
     def apply = rule.get.deserialize[(ClassificationTreeItem)=>Boolean]().get
 
-    def iterateClusterMembers(cursor: Int, max: Int, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[ClassificationTreeItem])] = {
+    def getNextClusterMembers(cursor: Int, max: Int, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[TreeItem])] = {
       require(0 <= cursor)
       if(itemBuffer.isDefined) {
         require(0 == cursor)
-        itemBuffer.get.stream().map(_.map(_.value)).map(stream=>{
+        itemBuffer.get.stream().map(stream=>{
           val list = stream.toList
           //println(s"Returning ${list.size} items from ${self.id}")
           -1 -> list
@@ -128,13 +113,13 @@ object ClassificationTree {
       } else {
         val childCursor: Int = Math.floorDiv(cursor, 3)
         val cursorBit: Int = cursor % 3
-        val childResult: Future[(Int, List[ClassificationTreeItem])] = cursorBit match {
+        val childResult: Future[(Int, List[TreeItem])] = cursorBit match {
           case 0 =>
-            pass.get.read().flatMap(_.iterateClusterMembers(childCursor, max, pass.get))
+            pass.get.read().flatMap(_.getNextClusterMembers(childCursor, max, pass.get))
           case 1 =>
-            fail.get.read().flatMap(_.iterateClusterMembers(childCursor, max, fail.get))
+            fail.get.read().flatMap(_.getNextClusterMembers(childCursor, max, fail.get))
           case 2 =>
-            exception.get.read().flatMap(_.iterateClusterMembers(childCursor, max, exception.get))
+            exception.get.read().flatMap(_.getNextClusterMembers(childCursor, max, exception.get))
         }
         childResult.map(childResult=> {
           val nextChildCursor: Int = childResult._1
@@ -181,9 +166,9 @@ object ClassificationTree {
             val nextValue: ClassificationTreeNode = copy(
               itemBuffer = None,
               rule = Option(KryoValue(ClassificationStrategy.getRule(bufferedValues.asInstanceOf[List[ClassificationTree.TreeItem]]))),
-              pass = Option(STMPtr.dynamicSync(newClassificationTreeNode())),
-              fail = Option(STMPtr.dynamicSync(newClassificationTreeNode())),
-              exception = Option(STMPtr.dynamicSync(newClassificationTreeNode()))
+              pass = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
+              fail = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
+              exception = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self))))
             )
             self.write(nextValue).flatMap(_=>{
               Future.sequence(bufferedValues.map(item=>{
@@ -211,6 +196,22 @@ object ClassificationTree {
       }
     }
 
+    def iterateClusterMembers(max: Int = 100, cursor : Int = 0, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+      def result(cursor : Int): (Int, List[TreeItem]) = Await.result(getNextClusterMembers(cursor, max, self), 10.seconds)
+      val stream: Seq[(Int, List[TreeItem])] = Stream.iterate((cursor, List.empty[TreeItem]))(t => {
+        val (prevCursor, prevList) = t
+        if(prevCursor < 0) t else {
+          val (nextCursor, thisList) = result(prevCursor)
+          //println(s"Fetch cursor $prevCursor - ${thisList.size} items")
+          nextCursor -> (prevList ++ thisList)
+        }
+      })
+      stream.find(t=>{
+        val (cursor, cummulativeList) = t
+        cursor < 0 || cummulativeList.size >= max
+      }).getOrElse(stream.last)
+    }
+
   }
 
   case class NodeInfo
@@ -234,28 +235,32 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(label:String, value: ClassificationTreeItem) = sync { AtomicApi.this.add(label, value) }
       def getClusterId(value: ClassificationTreeItem) = sync { AtomicApi.this.getClusterId(value) }
-      def getClusterInfo(value: PointerType) = sync { AtomicApi.this.getClusterInfo(value) }
-      def iterateClusterMembers(max: Int = 100, cursor : Int = 0) = sync { AtomicApi.this.iterateClusterMembers(max, cursor) }
+      def getClusterPath(value: PointerType) = sync { AtomicApi.this.getClusterPath(value) }
+      def getClusterCount(value: PointerType) = sync { AtomicApi.this.getClusterCount(value) }
+      def iterateCluster(node : STMPtr[ClassificationTreeNode], max: Int = 100, cursor : Int = 0) = sync { AtomicApi.this.iterateCluster(node, max, cursor) }
+      def iterateTree(max: Int = 100, cursor : Int = 0) = sync { AtomicApi.this.iterateTree(max, cursor) }
       def predictLabel(value: ClassificationTreeItem) = sync { AtomicApi.this.predictLabel(value) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
 
-    def add(label:String, value: ClassificationTreeItem) = atomic { ClassificationTree.this.add(label, value)(_,executionContext).map(_ => Unit) }
-    def getClusterId(value: ClassificationTreeItem) = atomic { ClassificationTree.this.getClusterId(value)(_,executionContext).map(_ => Unit) }
-    def getClusterInfo(value: PointerType) = atomic { ClassificationTree.this.getClusterInfo(value)(_,executionContext) }
-    def iterateClusterMembers(max: Int = 100, cursor : Int = 0) =
-      atomic { ClassificationTree.this.iterateClusterMembers(max, cursor)(_,executionContext) }
-    def predictLabel(value: ClassificationTreeItem) = atomic { ClassificationTree.this.predictLabel(value)(_,executionContext).map(_ => Unit) }
+    def add(label:String, value: ClassificationTreeItem) = atomic { ClassificationTree.this.add(label, value)(_,executionContext) }
+    def getClusterId(value: ClassificationTreeItem) = atomic { ClassificationTree.this.getClusterId(value)(_,executionContext) }
+    def getClusterPath(value: PointerType) = atomic { ClassificationTree.this.getClusterPath(value)(_,executionContext) }
+    def getClusterCount(value: PointerType) = atomic { ClassificationTree.this.getClusterCount(value)(_,executionContext) }
+    def iterateCluster(node : STMPtr[ClassificationTreeNode], max: Int = 100, cursor : Int = 0) = atomic { ClassificationTree.this.iterateCluster(node, max, cursor)(_,executionContext) }
+    def iterateTree(max: Int = 100, cursor : Int = 0) = atomic { ClassificationTree.this.iterateTree(max, cursor)(_,executionContext) }
+    def predictLabel(value: ClassificationTreeItem) = atomic { ClassificationTree.this.predictLabel(value)(_,executionContext) }
   }
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def add(label:String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.add(label, value) }
     def getClusterId(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterId(value) }
-    def getClusterInfo(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterInfo(value) }
-    def iterateClusterMembers(value: PointerType, max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-      sync { ClassificationTree.this.iterateClusterMembers(max, cursor) }
+    def getClusterPath(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterPath(value) }
+    def getClusterCount(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterCount(value) }
+    def iterateCluster(node : STMPtr[ClassificationTreeNode], value: PointerType, max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.iterateCluster(node, max, cursor) }
+    def iterateTree(value: PointerType, max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.iterateTree(max, cursor) }
     def predictLabel(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
       sync { ClassificationTree.this.predictLabel(value) }
   }
@@ -270,25 +275,35 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>newRootData._2))
   }
 
-  def getClusterId(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def getClusterId(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[ClassificationTreeNode]] = {
     rootPtr.readOpt().flatMap(prev => {
       prev.orElse(Option(ClassificationTree.newClassificationTreeData())).map(state=>
         state.find(value).map(state -> _)).get
     }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>newRootData._2))
   }
 
-  def getClusterInfo(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().flatMap(prev => {
-      prev.orElse(Option(ClassificationTree.newClassificationTreeData())).map(state=>{
-        val ptr: STMPtr[ClassificationTreeNode] = new STMPtr[ClassificationTreeNode](value)
-        ptr.read().flatMap(_.getInfo(ptr)).map(state -> _)
-      }).get
-    }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>newRootData._2))
+  def getClusterPath(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    val ptr: STMPtr[ClassificationTreeNode] = new STMPtr[ClassificationTreeNode](value)
+    ptr.read().flatMap(_.getInfo(ptr))
   }
 
-  def iterateClusterMembers(max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.orElse(Option(ClassificationTree.newClassificationTreeData()))).map(innerData => {
-      innerData.get.iterateClusterMembers(max, cursor)
+  def getClusterCount(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    val ptr: STMPtr[ClassificationTreeNode] = new STMPtr[ClassificationTreeNode](value)
+    ptr.read().map(_.iterateClusterMembers(max=100,cursor=0,ptr)).map(r=>{
+      require(-1 == r._1)
+      r._2.groupBy(_.label).mapValues(_.size)
+    })
+  }
+
+  def iterateCluster(node : STMPtr[ClassificationTreeNode], max: Int = 100, cursor : Int = 0)
+                           (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[ClassificationTreeItem])]= {
+    node.read().map(_.iterateClusterMembers(max, cursor, node)).map(x=>x._1->x._2.map(_.value))
+  }
+
+  def iterateTree(max: Int = 100, cursor : Int = 0)
+                           (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[ClassificationTreeItem])] = {
+    rootPtr.readOpt().map(_.orElse(Option(ClassificationTree.newClassificationTreeData()))).flatMap(innerData => {
+      iterateCluster(innerData.get.root, max = max, cursor = cursor)
     })
   }
 
