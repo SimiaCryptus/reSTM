@@ -1,7 +1,7 @@
 package storage
 
 import storage.Restm._
-import storage.data._
+import storage.types._
 
 import scala.concurrent.Future
 import scala.concurrent.duration._

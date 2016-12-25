@@ -1,4 +1,4 @@
-package storage.data
+package storage.types
 
 import java.io.ByteArrayOutputStream
 import java.util.Base64

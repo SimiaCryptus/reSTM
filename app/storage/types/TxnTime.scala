@@ -1,4 +1,4 @@
-package storage.data
+package storage.types
 
 import java.util.UUID
 import java.util.concurrent.TimeUnit

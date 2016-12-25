@@ -1,5 +1,5 @@
 import org.scalatest.{MustMatchers, WordSpec}
-import storage.data.{JacksonValue, KryoValue}
+import storage.types.{JacksonValue, KryoValue}
 
 import scala.reflect.ClassTag
 

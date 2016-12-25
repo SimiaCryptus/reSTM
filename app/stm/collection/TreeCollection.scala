@@ -2,8 +2,8 @@ package stm.collection
 
 import stm._
 import stm.collection.TreeCollection.TreeCollectionNode
-import stm.concurrent.Task.{TaskResult, TaskSuccess}
-import stm.concurrent.{StmExecutionQueue, Task}
+import stm.task.Task.{TaskResult, TaskSuccess}
+import stm.task.{StmExecutionQueue, Task}
 import storage.Restm
 import storage.Restm.PointerType
 

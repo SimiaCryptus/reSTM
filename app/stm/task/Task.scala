@@ -1,15 +1,15 @@
-package stm.concurrent
+package stm.task
 
 import java.util.UUID
 import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import stm._
-import stm.concurrent.Task.TaskResult
-import stm.concurrent.TaskStatus.Failed
+import stm.task.Task.TaskResult
+import stm.task.TaskStatus.Failed
 import storage.Restm
 import storage.Restm.PointerType
-import storage.data.KryoValue
+import storage.types.KryoValue
 
 import scala.collection.JavaConverters._
 import scala.collection.concurrent.TrieMap
@@ -29,7 +29,7 @@ object Task {
   private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(5)
   private[Task] val futureCache = new TrieMap[AnyRef, Future[_]]()
 }
-import stm.concurrent.Task._
+import stm.task.Task._
 
 object TaskStatus {
   object Blocked extends TaskStatus

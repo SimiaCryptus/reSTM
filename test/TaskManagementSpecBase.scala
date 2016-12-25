@@ -4,12 +4,13 @@ import java.util.{Date, UUID}
 import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection.{LinkedList, TreeCollection}
-import stm.concurrent.TaskStatus.Orphan
-import stm.concurrent._
+import stm.task.TaskStatus.Orphan
+import stm.task._
 import storage.Restm._
-import storage.data.JacksonValue
+import storage._
+import storage.actors.RestmActors
 import storage.remote.RestmCluster
-import storage.{RestmActors, _}
+import storage.types.JacksonValue
 
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -30,7 +31,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
       val taskTimeout = 120.minutes
       val insertTimeout = 5.minutes
-      val taskSize = 15000
+      val taskSize = 5000
       val diagnosticsOperationTimeout = 3.minutes
 
       System.out.println(s"Starting Test at ${new Date()}")

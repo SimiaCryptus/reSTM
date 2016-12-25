@@ -1,6 +1,7 @@
 import java.util.concurrent.Executors
 
-import storage.{RestmActors, RestmImpl}
+import storage.RestmImpl
+import storage.actors.RestmActors
 
 import scala.concurrent.ExecutionContext
 

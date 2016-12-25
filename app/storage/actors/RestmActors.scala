@@ -1,11 +1,12 @@
-package storage
+package storage.actors
 
 import java.util.concurrent.{Executors, TimeUnit}
 
 import _root_.util.Util
 import _root_.util.Util._
 import storage.Restm._
-import storage.actors._
+import storage.RestmInternal
+import storage.cold.{ColdStorage, HeapColdStorage}
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
@@ -44,7 +45,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends Restm
                           }
                         }
                       }
-                    }, 5, TimeUnit.MINUTES)
+                    }, 5, TimeUnit.SECONDS)
                 }})
                 Await.result(task, 10.second)
               case p : Promise[Unit] => p.success(Unit)

@@ -10,8 +10,8 @@ import akka.util.ByteString
 import controllers.RestmController._
 import play.api.http.HttpEntity
 import play.api.mvc._
-import stm.concurrent.{StmDaemons, StmExecutionQueue}
-import storage.data.JacksonValue
+import stm.task.{StmDaemons, StmExecutionQueue}
+import storage.types.JacksonValue
 
 import scala.concurrent.ExecutionContext
 

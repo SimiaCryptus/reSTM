@@ -1,15 +1,8 @@
-package storage
+package storage.cold
 
 import storage.Restm._
 
 import scala.collection.concurrent.TrieMap
-
-trait ColdStorage {
-  def clear() : Unit = {}
-
-  def store(id: PointerType, data: Map[TimeStamp, ValueType]) : Unit
-  def read(id: PointerType) : Map[TimeStamp, ValueType]
-}
 
 class HeapColdStorage extends ColdStorage {
   val mem = new TrieMap[PointerType, TrieMap[TimeStamp, ValueType]]()
@@ -21,5 +14,3 @@ class HeapColdStorage extends ColdStorage {
   }
   override def clear() = mem.clear()
 }
-
-

@@ -4,7 +4,7 @@ import stm.collection.ClassificationTree.ClassificationTreeNode
 import stm.{STMPtr, _}
 import storage.Restm
 import storage.Restm._
-import storage.data.KryoValue
+import storage.types.KryoValue
 
 import scala.collection.immutable.Seq
 import scala.collection.mutable
@@ -47,8 +47,8 @@ object ClassificationStrategy extends ClassificationStrategy {
   }
 
   def split(buffer : TreeCollection[ClassificationTree.TreeItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
-    //itemBuffer.get.sync.apxSize() > 1
-    buffer.sync.stream().size > 3
+    buffer.sync.apxSize() > 4
+    //buffer.sync.stream().size > 3
   }
 
 }

@@ -4,8 +4,9 @@ import java.util.concurrent.Executors
 import org.scalatest.{MustMatchers, WordSpec}
 import stm.collection.TreeSet
 import storage.Restm._
+import storage._
+import storage.actors.RestmActors
 import storage.remote.RestmInternalStaticListReplicator
-import storage.{RestmActors, _}
 
 import scala.concurrent.ExecutionContext
 

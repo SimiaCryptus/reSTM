@@ -1,10 +1,9 @@
-package storage.util
+package storage.cold
 
 import com.amazonaws.auth.{AWSCredentialsProvider, DefaultAWSCredentialsProviderChain}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document._
 import com.amazonaws.services.dynamodbv2.model._
-import storage.ColdStorage
 import storage.Restm._
 
 import scala.collection.JavaConverters._

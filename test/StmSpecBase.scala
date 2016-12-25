@@ -6,8 +6,9 @@ import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm.PointerType
+import storage._
+import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
-import storage.{RestmActors, _}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}

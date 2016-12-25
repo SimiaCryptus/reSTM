@@ -1,4 +1,4 @@
-package storage.data
+package storage.types
 
 import java.io.StringWriter
 import java.nio.charset.Charset
@@ -36,7 +36,7 @@ object JacksonValue {
   })
 }
 
-import storage.data.JacksonValue._
+import storage.types.JacksonValue._
 
 class JacksonValue(val data: String) {
 

@@ -5,13 +5,14 @@ import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.collection.{LinkedList, TreeCollection, TreeMap, TreeSet}
-import stm.concurrent.Task.TaskResult
-import stm.concurrent.{StmExecutionQueue, Task}
+import stm.task.Task.TaskResult
+import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
-import storage.data.JacksonValue
+import storage._
+import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
-import storage.{RestmActors, _}
+import storage.types.JacksonValue
 
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -43,7 +44,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   s"TreeSet via ${getClass.getSimpleName}" should {
-    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
+    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
     List(1,10,100,500).foreach(items=>s"synchronous insert and verify with $items items" in {
       val collection = new TreeSet[String](new PointerType)
       for (item <- randomUUIDs.take(items)) {
@@ -53,8 +54,9 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
       }
       println(JacksonValue.simple(Util.getMetrics()).pretty)
     })
-    List(1,10,50,200).foreach(items=>
+    List(1,10,20,50,100,200).foreach(items=>
       s"concurrent add, verify, and remove with $items items" in {
+        //require(false)
         val collection = new TreeSet[String](new PointerType)
         // Bootstrap collection synchronously to control contention
         val sync: collection.AtomicApi#SyncApi = collection.atomic.sync(30.seconds)
@@ -64,6 +66,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
           sync.contains(item) mustBe true
         }
         // Run concurrent add/delete tests
+        val executionContext2 = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(50))
         val futures = for (item <- randomUUIDs.take(items)) yield Future {
           try {
             for (i <- 0 until 10) {
@@ -76,7 +79,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
           } catch {
             case e => throw new RuntimeException(s"Error in item $item", e)
           }
-        }
+        }(executionContext2)
         Await.result(Future.sequence(futures), 1.minutes)
         println(JacksonValue.simple(Util.getMetrics()).pretty)
       }

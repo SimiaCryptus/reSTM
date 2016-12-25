@@ -1,20 +1,17 @@
-package storage.data
+package storage.types
 
 import java.util.UUID
 
-class UUIDPtr(val id: UUID) {
-  def this(str: String) = this({
-    UUID.fromString(str)
-  })
+class StringPtr(val id: String) {
 
-  def this() = this(UUID.randomUUID())
+  def this() = this(UUID.randomUUID().toString)
 
   override def toString: String = id.toString
 
   override def hashCode(): Int = id.hashCode()
 
   override def equals(obj: scala.Any): Boolean = obj match {
-    case x: UUIDPtr => id == x.id
+    case x: StringPtr => id == x.id
     case _ => false
   }
 

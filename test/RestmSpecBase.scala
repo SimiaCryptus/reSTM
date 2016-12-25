@@ -2,9 +2,10 @@ import java.util.concurrent.Executors
 
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
+import storage.Restm
 import storage.Restm._
+import storage.actors.RestmActors
 import storage.remote.RestmHttpClient
-import storage.{Restm, RestmActors}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}

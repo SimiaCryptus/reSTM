@@ -1,7 +1,7 @@
 package stm.collection
 
 import stm._
-import stm.collection.TreeSet.BinaryTreeNode
+import stm.collection.TreeSet.TreeSetNode
 import storage.Restm
 import storage.Restm.PointerType
 
@@ -14,14 +14,14 @@ object TreeSet {
     override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeSet[T]] = create[T]
   }
 
-  def create[T <: Comparable[T]](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[BinaryTreeNode[T]]](None).map(new TreeSet(_))
+  def create[T <: Comparable[T]](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[TreeSetNode[T]]](None).map(new TreeSet(_))
 
 
-  private case class BinaryTreeNode[T <: Comparable[T]]
+  private case class TreeSetNode[T <: Comparable[T]]
   (
     value: T,
-    left: Option[STMPtr[BinaryTreeNode[T]]] = None,
-    right: Option[STMPtr[BinaryTreeNode[T]]] = None
+    left: Option[STMPtr[TreeSetNode[T]]] = None,
+    right: Option[STMPtr[TreeSetNode[T]]] = None
   ) {
 
     def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
@@ -32,38 +32,38 @@ object TreeSet {
       left.map(_.sync.read.min).getOrElse(value)
     }
 
-    def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeNode[T]] = {
+    def -=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[TreeSetNode[T]] = {
       val compare: Int = value.compareTo(newValue)
       if (compare == 0) {
         if (left.isEmpty && right.isEmpty) {
           None
         } else if (left.isDefined) {
           left.map(leftPtr => {
-            val prevNode: BinaryTreeNode[T] = leftPtr.sync.read
+            val prevNode: TreeSetNode[T] = leftPtr.sync.read
             val newValue: T = prevNode.min()
-            val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
+            val maybeNode: Option[TreeSetNode[T]] = prevNode -= newValue
             maybeNode.map(newNode => {
               leftPtr.sync <= newNode
-              BinaryTreeNode.this.copy(value = newValue)
-            }).getOrElse(BinaryTreeNode.this.copy(left = None, value = newValue))
+              TreeSetNode.this.copy(value = newValue)
+            }).getOrElse(TreeSetNode.this.copy(left = None, value = newValue))
           })
         } else {
           right.map(rightPtr => {
-            val prevNode: BinaryTreeNode[T] = rightPtr.sync.read
+            val prevNode: TreeSetNode[T] = rightPtr.sync.read
             val newValue: T = prevNode.max()
-            val maybeNode: Option[BinaryTreeNode[T]] = prevNode -= newValue
+            val maybeNode: Option[TreeSetNode[T]] = prevNode -= newValue
             maybeNode.map(newNode => {
               rightPtr.sync <= newNode
-              BinaryTreeNode.this.copy(value = newValue)
-            }).getOrElse(BinaryTreeNode.this.copy(right = None, value = newValue))
+              TreeSetNode.this.copy(value = newValue)
+            }).getOrElse(TreeSetNode.this.copy(right = None, value = newValue))
           })
         }
       } else if (compare < 0) {
         left.map(leftPtr => {
           Option((leftPtr.sync.read -= newValue).map(newLeft => {
             leftPtr.sync <= newLeft
-            BinaryTreeNode.this
-          }).getOrElse(BinaryTreeNode.this.copy(left = None)))
+            TreeSetNode.this
+          }).getOrElse(TreeSetNode.this.copy(left = None)))
         }).getOrElse({
           throw new NoSuchElementException
         })
@@ -71,28 +71,28 @@ object TreeSet {
         right.map(rightPtr => {
           Option((rightPtr.sync.read -= newValue).map(newRight => {
             rightPtr.sync <= newRight
-            BinaryTreeNode.this
-          }).getOrElse(BinaryTreeNode.this.copy(right = None)))
+            TreeSetNode.this
+          }).getOrElse(TreeSetNode.this.copy(right = None)))
         }).getOrElse({
           throw new NoSuchElementException
         })
       }
     }
 
-    def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeNode[T] = {
+    def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): TreeSetNode[T] = {
       if (value.compareTo(newValue) < 0) {
         left.map(leftPtr => {
           leftPtr.sync <= (leftPtr.sync.read += newValue)
-          BinaryTreeNode.this
+          TreeSetNode.this
         }).getOrElse({
-          this.copy(left = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
+          this.copy(left = Option(STMPtr.dynamicSync(TreeSetNode(newValue))))
         })
       } else {
         right.map(rightPtr => {
           rightPtr.sync <= (rightPtr.sync.read += newValue)
-          BinaryTreeNode.this
+          TreeSetNode.this
         }).getOrElse({
-          this.copy(right = Option(STMPtr.dynamicSync(BinaryTreeNode(newValue))))
+          this.copy(right = Option(STMPtr.dynamicSync(TreeSetNode(newValue))))
         })
       }
     }
@@ -112,16 +112,16 @@ object TreeSet {
     override def hashCode(): Int = equalityFields.hashCode()
 
     override def equals(obj: scala.Any): Boolean = obj match {
-      case x: BinaryTreeNode[_] => x.equalityFields == equalityFields
+      case x: TreeSetNode[_] => x.equalityFields == equalityFields
       case _ => false
     }
   }
 
 }
 
-class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
+class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[TreeSetNode[T]]]) {
 
-  def this(ptr:PointerType) = this(new STMPtr[Option[BinaryTreeNode[T]]](ptr))
+  def this(ptr:PointerType) = this(new STMPtr[Option[TreeSetNode[T]]](ptr))
   private def this() = this(new PointerType)
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
@@ -151,7 +151,7 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[Option[BinaryTreeNode[T]]]) {
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
-      prev.map(r => r += value).getOrElse(new BinaryTreeNode[T](value))
+      prev.map(r => r += value).getOrElse(new TreeSetNode[T](value))
     }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 

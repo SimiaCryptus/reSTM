@@ -1,10 +1,10 @@
-package stm.concurrent
+package stm.task
 
 import java.util.Date
 
 import _root_.util.Util._
 import stm.collection.LinkedList
-import stm.concurrent.Task._
+import stm.task.Task._
 import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
 import storage.Restm.PointerType

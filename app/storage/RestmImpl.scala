@@ -2,7 +2,7 @@ package storage
 
 import storage.Restm._
 import storage.actors.ActorLog
-import storage.data.TxnTime
+import storage.types.TxnTime
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}

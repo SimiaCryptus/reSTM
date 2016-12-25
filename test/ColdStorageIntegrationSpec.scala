@@ -5,8 +5,9 @@ import com.amazonaws.auth.{AWSCredentials, AWSStaticCredentialsProvider, BasicAW
 import org.scalatest.{MustMatchers, WordSpec}
 import stm.collection.TreeSet
 import storage.Restm._
-import storage.util._
-import storage.{RestmActors, _}
+import storage._
+import storage.actors.RestmActors
+import storage.cold.{ColdStorage, DynamoColdStorage, HeapColdStorage}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}

@@ -7,9 +7,10 @@ import stm.STMPtr
 import stm.collection.ClassificationTree.ClassificationTreeNode
 import stm.collection._
 import storage.Restm._
-import storage.data.JacksonValue
+import storage._
+import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
-import storage.{RestmActors, _}
+import storage.types.JacksonValue
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import scala.util.Random
@@ -37,13 +38,13 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         output mustBe input
       }
     })
-    List(10).foreach(items=> {
+    List(100).foreach(items=> {
       s"support query and describe operations for $items items" in {
         val collection = new ClassificationTree(new PointerType)
-        val toSet: Set[ClassificationTreeItem] = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
-        toSet.foreach(x=>collection.atomic().sync.add("data", x))
-        val toSet1 = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(3).toSet
-        toSet1.map(x => {
+        def randomItems(center:Double=0.0,scale:Double=1.0) = Stream.continually(new ClassificationTreeItem(Map("value" -> (center + scale * Random.nextGaussian()))))
+        randomItems(center = -2).take(items).foreach(x=>collection.atomic().sync.add("foo", x))
+        randomItems(center = 1).take(items).foreach(x=>collection.atomic().sync.add("bar", x))
+        randomItems().take(10).foreach(x => {
           val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
           println(s"$x routed to node "+JacksonValue.simple(id))
           println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))

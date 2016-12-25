@@ -9,8 +9,9 @@ import akka.actor.ActorSystem
 import play.api.mvc._
 import storage.Restm._
 import storage._
+import storage.actors.RestmActors
+import storage.cold.{ColdStorage, DynamoColdStorage, HeapColdStorage}
 import storage.remote.{RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
-import storage.util.DynamoColdStorage
 
 import scala.collection.mutable
 import scala.concurrent.duration._

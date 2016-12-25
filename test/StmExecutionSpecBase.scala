@@ -4,12 +4,13 @@ import java.util.concurrent.Executors
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.collection.{LinkedList, TreeCollection}
-import stm.concurrent.Task.TaskResult
-import stm.concurrent.{DaemonConfig, StmDaemons, StmExecutionQueue, Task}
+import stm.task.Task.TaskResult
+import stm.task.{DaemonConfig, StmDaemons, StmExecutionQueue, Task}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
+import storage._
+import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
-import storage.{RestmActors, _}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}

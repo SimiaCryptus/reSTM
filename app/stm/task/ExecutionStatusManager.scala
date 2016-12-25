@@ -1,4 +1,4 @@
-package stm.concurrent
+package stm.task
 
 import java.net.InetAddress
 import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}

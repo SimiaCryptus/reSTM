@@ -1,11 +1,11 @@
-package stm.concurrent
+package stm.task
 
 import java.util.concurrent.TimeUnit
 
 import stm.collection.LinkedList
 import storage.Restm
 import storage.Restm.PointerType
-import storage.data.KryoValue
+import storage.types.KryoValue
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 

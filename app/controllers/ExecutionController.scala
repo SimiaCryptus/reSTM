@@ -6,9 +6,9 @@ import _root_.util.Util
 import akka.actor.ActorSystem
 import controllers.RestmController._
 import play.api.mvc._
-import stm.concurrent.{Task, TaskStatusTrace}
+import stm.task.{Task, TaskStatusTrace}
 import storage.Restm._
-import storage.data.JacksonValue
+import storage.types.JacksonValue
 
 import scala.concurrent.{ExecutionContext, Future}
 
