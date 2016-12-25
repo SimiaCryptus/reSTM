@@ -30,7 +30,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
       val taskTimeout = 120.minutes
       val insertTimeout = 5.minutes
-      val taskSize = 5000
+      val taskSize = 15000
       val diagnosticsOperationTimeout = 3.minutes
 
       System.out.println(s"Starting Test at ${new Date()}")

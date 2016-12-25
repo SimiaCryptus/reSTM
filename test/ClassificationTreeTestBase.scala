@@ -1,4 +1,3 @@
-import java.util.UUID
 import java.util.concurrent.Executors
 
 import _root_.util.Util
@@ -10,6 +9,7 @@ import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClie
 import storage.{RestmActors, _}
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
+import scala.util.Random
 
 object ClassificationTreeTestBase {
 }
@@ -24,18 +24,17 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   "ClassificationTree" should {
-    def randomStr = UUID.randomUUID().toString.take(8)
-    def randomUUIDs = Stream.continually(randomStr)
-    "support basic operations" in {
-      val collection = new ClassificationTree[String](new PointerType)
-      val input = randomUUIDs.take(10).toSet
-      input.foreach(collection.atomic().sync.add("data", _))
-      val output: Set[String] = collection.atomic().sync.iterateClusterMembers()._2.toSet
-      output.size mustBe input.size
-      output mustBe input
-    }
+    List(10,100,1000).foreach(items=> {
+      s"support insert and iterate over $items items" in {
+        val collection = new ClassificationTree(new PointerType)
+        val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
+        input.foreach(collection.atomic().sync.add("data", _))
+        val output = collection.atomic().sync.iterateClusterMembers(max = items)._2.toSet
+        output.size mustBe input.size
+        output mustBe input
+      }
+    })
   }
-
 
 }
 
