@@ -14,9 +14,9 @@ object RestmImpl {
 class RestmImpl(val internal: RestmInternal)(implicit executionContext: ExecutionContext) extends Restm {
 
   override def getPtr(id: PointerType): Future[Option[ValueType]] = internal._getValue(id).recoverWith({
-    case e: LockedException if e.conflitingTxn.age > 5.seconds =>
+    case e: TransactionConflict if e.conflitingTxn.age > 5.seconds =>
       cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
-    case e: LockedException =>
+    case e: TransactionConflict =>
       Future.failed(e)
     case e: Throwable =>
       //e.printStackTrace(System.err);
@@ -25,9 +25,9 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
     internal._getValue(id, time, ifModifiedSince).recoverWith({
-      case e: LockedException if e.conflitingTxn.age > 5.seconds =>
+      case e: TransactionConflict if null != e.conflitingTxn && e.conflitingTxn.age > 5.seconds =>
         cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
-      case e: LockedException =>
+      case e: TransactionConflict =>
         Future.failed(e)
       case e: Throwable =>
         //e.printStackTrace(System.err);

@@ -4,7 +4,7 @@ import java.nio.charset.Charset
 
 import dispatch.{as, url, _}
 import storage.Restm._
-import storage.{LockedException, Restm}
+import storage.{Restm, TransactionConflict}
 import util.Util._
 
 import scala.concurrent.duration.Duration
@@ -47,7 +47,7 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
         case 200 => Success(Option(new ValueType(response.getResponseBody)))
         case 304 => Success(None)
         case 404 => Success(None)
-        case 409 => Failure(new LockedException(response.getResponseBody))
+        case 409 => Failure(new TransactionConflict(response.getResponseBody))
       }
     }}).map(_.get)
   }
@@ -60,7 +60,7 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
         case 200 => Success(Option(new ValueType(response.getResponseBody)))
         case 304 => Success(None)
         case 404 => Success(None)
-        case 409 => Failure(new LockedException(response.getResponseBody))
+        case 409 => Failure(new TransactionConflict(response.getResponseBody))
       }
     }}).map(_.get)
   }

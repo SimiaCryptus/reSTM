@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.google.common.util.concurrent.AtomicDouble
-import storage.LockedException
+import storage.TransactionConflict
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
@@ -29,8 +29,8 @@ object Util {
   def chainEx[T](str: =>String, verbose:Boolean = true)(f: =>Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
     val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
     f.recover({
-      case e : LockedException =>
-        val wrappedEx = new LockedException(e.conflitingTxn, e)
+      case e : TransactionConflict =>
+        val wrappedEx = new TransactionConflict(e.conflitingTxn, e)
         wrappedEx.setStackTrace(stackTrace)
         throw wrappedEx
       case e =>

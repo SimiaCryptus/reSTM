@@ -54,8 +54,8 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
       }
       println(JacksonValue.simple(Util.getMetrics()).pretty)
     })
-    List(1,10,20,50,100,200).foreach(items=>
-      s"concurrent add, verify, and remove with $items items" in {
+    List(1,2,5,10,20).foreach(threads=>
+      s"concurrent add, verify, and remove with $threads threads" in {
         //require(false)
         val collection = new TreeSet[String](new PointerType)
         // Bootstrap collection synchronously to control contention
@@ -66,14 +66,14 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
           sync.contains(item) mustBe true
         }
         // Run concurrent add/delete tests
-        val executionContext2 = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(50))
-        val futures = for (item <- randomUUIDs.take(items)) yield Future {
+        val executionContext2 = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(threads))
+        val futures = for (item <- randomUUIDs.take(200).distinct) yield Future {
           try {
+            sync.contains(item) mustBe false
             for (i <- 0 until 10) {
-              sync.contains(item) mustBe false
               sync.add(item)
               sync.contains(item) mustBe true
-              sync.remove(item)
+              sync.remove(item) mustBe true
               sync.contains(item) mustBe false
             }
           } catch {

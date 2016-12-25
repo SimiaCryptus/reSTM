@@ -10,6 +10,7 @@ import stm.task.TaskStatus.Failed
 import storage.Restm
 import storage.Restm.PointerType
 import storage.types.KryoValue
+import util.Util
 
 import scala.collection.JavaConverters._
 import scala.collection.concurrent.TrieMap
@@ -138,7 +139,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     root.read.flatMap(_.initTriggers(Task.this, queue)).map(_=>Unit)
   }
 
-  def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[T] = {
+  def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[T] = Util.chainEx("Error getting result") {
     root.read().map(currentState => currentState.exception.map(throw _).orElse(currentState.result).get)
   }
 

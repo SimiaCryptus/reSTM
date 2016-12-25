@@ -1,7 +1,7 @@
 package storage.actors
 
-import storage.LockedException
 import storage.Restm._
+import storage.TransactionConflict
 import util.Util
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -17,7 +17,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
 
   val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]
   private[this] var lastRead: Option[TimeStamp] = None
-  private[this] var writeLock: Option[TimeStamp] = None
+  private[actors] var writeLock: Option[TimeStamp] = None
   private[this] var committed: Boolean = false
   private[this] var queuedValue: Option[ValueType] = None
 
@@ -41,7 +41,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = Util.monitorFuture("MemActor.getValue") {
     {
       withActor {
-        writeLock.foreach(writeLock => if (writeLock < time) throw new LockedException(writeLock))
+        writeLock.foreach(writeLock => if (writeLock < time) throw new TransactionConflict(writeLock))
         lastRead = lastRead.filter(_ > time).orElse(Option(time))
         Option(history.toArray.filter(_.time <= time)
           .filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))))
@@ -104,7 +104,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   def writeBlob(time: TimeStamp, value: ValueType): Future[Unit] = Util.monitorFuture("MemActor.writeBlob") {
     {
       withActor {
-        require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
+        if(!writeLock.contains(time)) throw new TransactionConflict(s"Lock mismatch: $writeLock != $time")
         require(queuedValue.isEmpty, "Value already queued")
         if (committed) {
           history += new HistoryRecord(writeLock.get, value)

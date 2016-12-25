@@ -2,6 +2,7 @@ package storage.actors
 
 import java.util.concurrent.atomic.AtomicBoolean
 
+import storage.TransactionConflict
 import util.Util
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -17,11 +18,11 @@ trait ActorQueue {
   def close() = closed = true
 
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {
-    require(!closed)
+    if(closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
     val promise = Promise[T]()
     queue.add(() => {
       val result: Try[T] = Try {
-        require(!closed)
+        if(closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
         val result = f
         processedMessages += 1
         result

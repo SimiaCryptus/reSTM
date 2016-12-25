@@ -14,21 +14,21 @@ object Restm {
   type PointerType = StringPtr
 }
 
-class LockedException(val msg:String, val cause : Throwable, val conflitingTxn: TimeStamp)
+class TransactionConflict(val msg:String, val cause : Throwable, val conflitingTxn: TimeStamp)
   extends RuntimeException(msg, cause) {
   def this(conflitingTxn: TimeStamp, cause:Throwable = null) = this("Already locked by " + conflitingTxn, cause, conflitingTxn)
   def this(msg:String) = this(msg, null, null)
   def this(msg:String, cause:Throwable) = this(msg, cause, {
-    Option(cause).filter(_.isInstanceOf[LockedException]).map(_.asInstanceOf[LockedException].conflitingTxn).orNull
+    Option(cause).filter(_.isInstanceOf[TransactionConflict]).map(_.asInstanceOf[TransactionConflict].conflitingTxn).orNull
   })
 }
 
 trait Restm {
   def newPtr(time: TimeStamp, value: ValueType): Future[PointerType]
 
-  @throws[LockedException] def getPtr(id: PointerType): Future[Option[ValueType]]
+  @throws[TransactionConflict] def getPtr(id: PointerType): Future[Option[ValueType]]
 
-  @throws[LockedException] def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp] = None): Future[Option[ValueType]]
+  @throws[TransactionConflict] def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp] = None): Future[Option[ValueType]]
 
   def newTxn(priority: Duration = 0.seconds): Future[TimeStamp]
 

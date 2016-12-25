@@ -1,7 +1,7 @@
 package stm
 
 import storage.Restm.PointerType
-import storage.{LockedException, Restm}
+import storage.{Restm, TransactionConflict}
 import util.Util
 
 import scala.concurrent.duration._
@@ -52,10 +52,10 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
   def read(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.getOrElse(default))
 
   def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
-    .recover({ case e => throw new LockedException(s"failed write to $id", e) })
+    .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
 
   def delete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.delete(id)
-    .recover({ case e => throw new LockedException(s"failed write to $id", e) })
+    .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
 
   def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
     STMPtr.this.write(value)

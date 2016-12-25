@@ -2,7 +2,7 @@ package storage.remote
 
 import dispatch.{as, url, _}
 import storage.Restm._
-import storage.{LockedException, RestmInternal}
+import storage.{RestmInternal, TransactionConflict}
 import util.Util._
 
 import scala.concurrent.{ExecutionContext, ExecutionException, Future}
@@ -33,7 +33,7 @@ class RestmInternalRestmHttpClient(val baseUrl: String)(implicit executionContex
     Http((url(baseUrl) / "_mem" / "get" / id.toString) > { response => {
       response.getStatusCode match {
         case 200 => Option(new ValueType(response.getResponseBody))
-        case 409 => throw new LockedException(new TimeStamp(response.getResponseBody))
+        case 409 => throw new TransactionConflict(new TimeStamp(response.getResponseBody))
       }
     }
     }).recoverWith({
@@ -48,7 +48,7 @@ class RestmInternalRestmHttpClient(val baseUrl: String)(implicit executionContex
     Http(req > { response => {
       response.getStatusCode match {
         case 200 => Option(new ValueType(response.getResponseBody))
-        case 409 => throw new LockedException(new TimeStamp(response.getResponseBody))
+        case 409 => throw new TransactionConflict(new TimeStamp(response.getResponseBody))
       }
     }
     }).recoverWith({

@@ -60,7 +60,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
       }
       val map: Future[Result] = value.map(opt => opt.map(v => Ok(v.toString)).getOrElse(if (ifModifiedSince.isDefined) NotModified else NotFound(id)))
       map.recover({
-        case e: LockedException => Conflict(e.conflitingTxn.toString)
+        case e: TransactionConflict => Conflict(e.conflitingTxn.toString)
         case e: Throwable if e.toString.contains("Write locked") => Conflict("Write locked")
         case e: Throwable => throw e
       })
@@ -138,7 +138,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
       if (time.isDefined) {
         storageService.internal._getValue(new PointerType(id), new TimeStamp(time.get), ifModifiedSince.map(new TimeStamp(_)))
           .map(x => Ok(x.map(_.toString).getOrElse(""))).recover({
-          case e: LockedException => Conflict(e.conflitingTxn.toString)
+          case e: TransactionConflict => Conflict(e.conflitingTxn.toString)
           case e: Throwable => throw e
         })
       } else {

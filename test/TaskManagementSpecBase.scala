@@ -28,10 +28,11 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
     "monitor ongoing work" in {
       //ActorLog.enabled = true
       StmExecutionQueue.verbose = false
+      RestmActors.IDLE_PTR_TIME = 1 // Stress test pointer expiration and restoration
 
       val taskTimeout = 120.minutes
       val insertTimeout = 5.minutes
-      val taskSize = 5000
+      val taskSize = 1000
       val diagnosticsOperationTimeout = 3.minutes
 
       System.out.println(s"Starting Test at ${new Date()}")
@@ -100,6 +101,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
         System.out.println(s"Colleting Result at ${new Date()}")
         val sortResult = Await.result(sortTask.future, 5.seconds)
         val output = sortResult.atomic().sync.stream().toList
+        output.size mustBe input.size
         output mustBe input.toList.sorted
       } finally {
         System.out.println(s"Final Data at ${new Date()}")

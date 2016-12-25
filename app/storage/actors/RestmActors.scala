@@ -13,6 +13,10 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.util.Success
 
+object RestmActors {
+  var IDLE_PTR_TIME = 90
+}
+
 class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends RestmInternal {
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
@@ -29,23 +33,29 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends Restm
                   val prevTxns: Set[TimeStamp] = actor.history.map(_.time).toArray.toSet
                   val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
                   // TODO: Seems to be a problem enabling this
-                  if(!recordsToUpload.isEmpty && false) monitorBlock("Restm.coldStorage.store") {
+                  if(!recordsToUpload.isEmpty) monitorBlock("Restm.coldStorage.store") {
                     coldStorage.store(id, recordsToUpload.map(record=>record.time->record.value).toMap)
                     recordsToUpload.foreach(_.coldStorageTs = Option(System.currentTimeMillis()))
                     ActorLog.log(s"$actor Persisted")
                     expireQueue.schedule(new Runnable {
                       override def run(): Unit = {
                         actor.withActor {
-                          if(!actor.history.map(_.time).exists(!prevTxns.contains(_))) {
-                            ActorLog.log(s"Removed $id from active memory")
-                            ptrs2.remove(id)
-                            ptrs1.remove(id)
-                            actor.close()
-                            Util.delta("RestmActors.activeMemActors", -1.0)
+                          val hasNewCommit = actor.history.map(_.time).exists(!prevTxns.contains(_))
+                          val isWriteLocked = actor.writeLock.isDefined
+                          if(!hasNewCommit) {
+                            if(isWriteLocked) {
+                              expireQueue.schedule(this, 1, TimeUnit.SECONDS)
+                            } else {
+                              ActorLog.log(s"Removed $id from active memory")
+                              ptrs2.remove(id)
+                              ptrs1.remove(id)
+                              actor.close()
+                              Util.delta("RestmActors.activeMemActors", -1.0)
+                            }
                           }
                         }
                       }
-                    }, 5, TimeUnit.SECONDS)
+                    }, RestmActors.IDLE_PTR_TIME, TimeUnit.SECONDS)
                 }})
                 Await.result(task, 10.second)
               case p : Promise[Unit] => p.success(Unit)
