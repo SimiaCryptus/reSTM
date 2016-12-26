@@ -17,7 +17,9 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.63",
   "com.google.code.gson" % "gson" % "2.8.0",
   "commons-io" % "commons-io" % "2.5",
-  "com.sleepycat" % "je" % "5.0.73"
+  "com.sleepycat" % "je" % "5.0.73",
+  //"org.apache.commons" % "commons-text" % "0.1-SNAPSHOT",
+  "de.unkrig.commons" % "commons-text" % "1.2.7"
 )
 
 

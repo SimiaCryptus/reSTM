@@ -21,6 +21,7 @@ object TreeCollection {
     left: Option[STMPtr[TreeCollectionNode[T]]] = None,
     right: Option[STMPtr[TreeCollectionNode[T]]] = None
   ) {
+
     def apxSize(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
       val child = if(Random.nextBoolean()) left.orElse(right) else right.orElse(left)
       child.map(_.read().flatMap(_.apxSize).map(_*2)).getOrElse(Future.successful(1))

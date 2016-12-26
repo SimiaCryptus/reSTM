@@ -4,7 +4,7 @@ import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.STMPtr
-import stm.collection.ClassificationTree.ClassificationTreeNode
+import stm.collection.ClassificationTree.{ClassificationTreeNode, _}
 import stm.collection._
 import storage.Restm._
 import storage._
