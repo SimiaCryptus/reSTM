@@ -141,13 +141,13 @@ object ClassificationTree {
 
     def apply = rule.get.deserialize[(ClassificationTreeItem)=>Boolean]().get
 
-    def getNextClusterMembers(cursor: Int, max: Int, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[LabeledItem])] = {
+    def getNextClusterMembers(cursor: Int, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[LabeledItem])] = {
       require(0 <= cursor)
       if(itemBuffer.isDefined) {
         require(0 == cursor)
         itemBuffer.get.stream().map(stream=>{
           val list = stream.toList
-          //println(s"Returning ${list.size} items from ${self.id}")
+          println(s"Returning ${list.size} items from ${self.id}")
           -1 -> list
         })
       } else {
@@ -155,11 +155,11 @@ object ClassificationTree {
         val cursorBit: Int = cursor % 3
         val childResult: Future[(Int, List[LabeledItem])] = cursorBit match {
           case 0 =>
-            pass.get.read().flatMap(_.getNextClusterMembers(childCursor, max, pass.get))
+            pass.get.read().flatMap(_.getNextClusterMembers(childCursor, pass.get))
           case 1 =>
-            fail.get.read().flatMap(_.getNextClusterMembers(childCursor, max, fail.get))
+            fail.get.read().flatMap(_.getNextClusterMembers(childCursor, fail.get))
           case 2 =>
-            exception.get.read().flatMap(_.getNextClusterMembers(childCursor, max, exception.get))
+            exception.get.read().flatMap(_.getNextClusterMembers(childCursor, exception.get))
         }
         childResult.map(childResult=> {
           val nextChildCursor: Int = childResult._1
@@ -168,6 +168,7 @@ object ClassificationTree {
           } else {
             nextChildCursor * 3 + cursorBit
           }
+          println(s"Returning ${childResult._2.size} items from ${self.id}; cursor $cursor -> $nextCursor")
           nextCursor -> childResult._2
         })
       }
@@ -198,25 +199,26 @@ object ClassificationTree {
 
     def add(label: String, value: ClassificationTreeItem, self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[STMPtr[ClassificationTreeNode]]] = {
       if(itemBuffer.isDefined) {
-        //println(s"Adding an item ${value} - current size ${itemBuffer.get.sync.stream().size} id=${self.id}")
+        println(s"Adding an item ${value} - current size ${itemBuffer.get.sync.stream().size} id=${self.id}")
         itemBuffer.get.add(new LabeledItem(label,value)).flatMap(_=>{
           if (strategy.split(itemBuffer.get.asInstanceOf[TreeCollection[ClassificationTree.LabeledItem]])) {
-            val bufferedValues: List[LabeledItem] = itemBuffer.get.sync.stream().toList
-            //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
-            val nextValue: ClassificationTreeNode = copy(
-              itemBuffer = None,
-              rule = Option(KryoValue(strategy.getRule(bufferedValues.asInstanceOf[List[ClassificationTree.LabeledItem]]))),
-              pass = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
-              fail = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
-              exception = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self))))
-            )
-            self.write(nextValue).flatMap(_=>{
-              Future.sequence(bufferedValues.map(item=>{
-                nextValue.add(item.label, item.value, self, strategy)
-              }))
-            }).map(_=>{
-              //println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})")
-              None
+            itemBuffer.get.stream().map(_.toList).flatMap(bufferedValues=>{
+              //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
+              val nextValue: ClassificationTreeNode = copy(
+                itemBuffer = None,
+                rule = Option(KryoValue(strategy.getRule(bufferedValues.asInstanceOf[List[ClassificationTree.LabeledItem]]))),
+                pass = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
+                fail = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
+                exception = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self))))
+              )
+              self.write(nextValue).flatMap(_=>{
+                Future.sequence(bufferedValues.map(item=>{
+                  nextValue.add(item.label, item.value, self, strategy)
+                }))
+              }).map(_=>{
+                println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})")
+                None
+              })
             })
           } else {
             Future.successful(None)
@@ -237,12 +239,12 @@ object ClassificationTree {
     }
 
     def iterateClusterMembers(max: Int = 100, cursor : Int = 0, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-      def result(cursor : Int): (Int, List[LabeledItem]) = Await.result(getNextClusterMembers(cursor, max, self), 10.seconds)
+      def result(cursor : Int): (Int, List[LabeledItem]) = Await.result(getNextClusterMembers(cursor, self), 10.seconds)
       val stream: Seq[(Int, List[LabeledItem])] = Stream.iterate((cursor, List.empty[LabeledItem]))(t => {
         val (prevCursor, prevList) = t
         if(prevCursor < 0) t else {
+          println(s"Fetch cursor $prevCursor")
           val (nextCursor, thisList) = result(prevCursor)
-          //println(s"Fetch cursor $prevCursor - ${thisList.size} items")
           nextCursor -> (prevList ++ thisList)
         }
       })
@@ -354,7 +356,7 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
   }
 
   def iterateCluster(node : STMPtr[ClassificationTreeNode], max: Int = 100, cursor : Int = 0)
-                           (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[ClassificationTreeItem])]= {
+                    (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[ClassificationTreeItem])]= {
     node.read().map(_.iterateClusterMembers(max, cursor, node)).map(x=>x._1->x._2.map(_.value))
   }
 

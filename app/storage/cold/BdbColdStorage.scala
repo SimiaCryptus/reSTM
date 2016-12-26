@@ -20,7 +20,7 @@ class BdbColdStorage(path:String = "db", dbname:String = "db") extends ColdStora
     env
   }
 
-  lazy val db = env.openDatabase(null, "stmdata", dbConfig)
+  lazy val db = env.openDatabase(null, dbname, dbConfig)
   lazy val dbConfig = {
     val dbConfig = new DatabaseConfig()
     dbConfig.setAllowCreate(true)
