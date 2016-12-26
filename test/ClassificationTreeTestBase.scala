@@ -44,19 +44,48 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       }
     })
     List(100).foreach(items=> {
-      s"operations on $items scalar items" in {
+      s"model and classify against $items scalar items" in {
+        val scale = 3.0
+        val verify = 5
+        val minCorrectPct = .5
+
+        val minCorrect: Int = (verify * 2 * minCorrectPct).floor.toInt
         val collection = new ClassificationTree(new PointerType)
-        def randomItems(center:Double=0.0,scale:Double=1.0) = Stream.continually(new ClassificationTreeItem(Map("value" -> (center + scale * Random.nextGaussian()))))
-        randomItems(center = -2).take(items).foreach(x=>collection.atomic().sync.add("foo", x))
-        randomItems(center = 1).take(items).foreach(x=>collection.atomic().sync.add("bar", x))
-        randomItems().take(10).foreach(x => {
-          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
-          println(s"$x routed to node "+JacksonValue.simple(id))
-          println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
-          println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
-          println(s"Node Counts: "+JacksonValue.simple(collection.atomic().sync.getClusterCount(id.id)))
-          println()
-        })
+        def randomItems(offset:Double=0.0,freq:Double=1.0) = {
+          Stream.continually(Random.nextGaussian()*scale)
+            .filter(x=>Math.pow(Math.sin(x*freq+offset),2)>Random.nextDouble())
+            .map(x=>new ClassificationTreeItem(Map("value" -> (x))))
+        }
+
+        Map(
+          "A" -> randomItems(freq = 5),
+          "B" -> randomItems(freq = 5, offset = 5)
+        ).map(e => {
+          val (key, value) = e
+          value.take(items).foreach(x => collection.atomic().sync.add(key, x))
+          key -> value.drop(items).take(verify).toList
+        }).map(e=>{
+          val (key, values) = e
+          values.map(value=>{
+            val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(value)
+            println(s"$value routed to node "+JacksonValue.simple(id))
+            println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
+            println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
+            val counts = collection.atomic().sync.getClusterCount(id.id)
+            println(s"Node Counts: "+JacksonValue.simple(counts))
+            val predictions = counts.mapValues(_.toDouble / counts.values.sum)
+            val prediction = predictions.maxBy(_._2)
+            if(prediction._1 == key) {
+              println(s"Correct Prediction: "+prediction)
+              println()
+              1
+            } else {
+              println(s"False Prediction: "+prediction)
+              println()
+              0
+            }
+          }).sum
+        }).sum must be > minCorrect
       }
     })
 //    List(100).foreach(items=> {

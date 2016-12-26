@@ -29,7 +29,7 @@ case class DefaultClassificationStrategy(
         List(leftOpt,rightOpt).map(map=>{
           val sum = map.values.sum.toDouble
           val factor = sum / total
-          factor * Math.log(1-factor) * map.values.map(x=>x*x).sum
+          factor * Math.log(1-factor) // * map.values.map(x=>x*x).sum
         }).sum
       }).sum
     }
@@ -47,12 +47,10 @@ case class DefaultClassificationStrategy(
     _.value.attributes.get(field).filter(_.isInstanceOf[Number]).isDefined,
     _.attributes(field).asInstanceOf[Number].doubleValue())
 
-  private def rules_Levenshtein(values: List[LabeledItem], field: String): Seq[((ClassificationTreeItem) => Boolean, Double)] = {
-    distanceRules(values,
-      _.value.attributes.get(field).filter(_.isInstanceOf[String]).isDefined,
-      _.attributes(field).toString(),
-      (a: String,b: String) => LevenshteinDistance.getDefaultInstance.apply(a,b))
-  }
+  private def rules_Levenshtein(values: List[LabeledItem], field: String) = distanceRules(values,
+    _.value.attributes.get(field).filter(_.isInstanceOf[String]).isDefined,
+    _.attributes(field).toString(),
+    (a: String,b: String) => LevenshteinDistance.getDefaultInstance.apply(a,b))
 
   private def distanceRules[T](values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => T, distance: (T, T) => Int) = {
     val fileredItems: Seq[LabeledItem] = values.filter(filter)
