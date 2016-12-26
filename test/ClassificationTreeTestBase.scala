@@ -1,3 +1,4 @@
+import java.util.UUID
 import java.util.concurrent.Executors
 
 import _root_.util.Util
@@ -39,12 +40,29 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       }
     })
     List(100).foreach(items=> {
-      s"support query and describe operations for $items items" in {
+      s"operations on $items scalar items" in {
         val collection = new ClassificationTree(new PointerType)
         def randomItems(center:Double=0.0,scale:Double=1.0) = Stream.continually(new ClassificationTreeItem(Map("value" -> (center + scale * Random.nextGaussian()))))
         randomItems(center = -2).take(items).foreach(x=>collection.atomic().sync.add("foo", x))
         randomItems(center = 1).take(items).foreach(x=>collection.atomic().sync.add("bar", x))
         randomItems().take(10).foreach(x => {
+          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
+          println(s"$x routed to node "+JacksonValue.simple(id))
+          println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
+          println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
+          println(s"Node Counts: "+JacksonValue.simple(collection.atomic().sync.getClusterCount(id.id)))
+          println()
+        })
+      }
+    })
+    List(100).foreach(items=> {
+      s"operations on $items text items" in {
+        val collection = new ClassificationTree(new PointerType)
+        collection.atomic().sync.setClusterStrategy(new TextClassificationStrategy)
+        def randomItems(length:Int=4) = Stream.continually(new ClassificationTreeItem(Map("value" -> UUID.randomUUID().toString.take(length))))
+        randomItems(length = 4).take(items).foreach(x=>collection.atomic().sync.add("foo", x))
+        randomItems(length = 3).take(items).foreach(x=>collection.atomic().sync.add("bar", x))
+        randomItems(4).take(10).foreach(x => {
           val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
           println(s"$x routed to node "+JacksonValue.simple(id))
           println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))

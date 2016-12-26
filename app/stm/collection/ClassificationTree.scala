@@ -5,6 +5,7 @@ import stm.{STMPtr, _}
 import storage.Restm
 import storage.Restm._
 import storage.types.KryoValue
+import util.LevenshteinDistance
 
 import scala.collection.immutable.Seq
 import scala.collection.mutable
@@ -30,22 +31,34 @@ case class TextClassificationStrategy(
   def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = {
     val fields = values.flatMap(_.value.attributes.keys).toSet
     fields.flatMap(field=>{
-      val valueOptMap = values.map(item=>item.label->item.value.attributes.get(field))
-      val exceptionCounts = valueOptMap.filter(_._2.isEmpty).groupBy(_._1).mapValues(_.size)
-      val valueSortMap = valueOptMap.filter(_._2.isDefined).map(x=>x._1->x._2.get).sortBy(_._2)
-      val labelCounters = valueSortMap.groupBy(_._1).mapValues(_.size)
-      val valueCounters = new mutable.HashMap[String,Int]()
-      valueSortMap.map(item=>{
-        val (label, value) = item
-        valueCounters.put(label, valueCounters.getOrElse(label, 0)+1)
-        val compliment: Map[String, Int] = valueCounters.toMap.map(e=>e._1->(labelCounters(e._1) - e._2))
-        val rule : (ClassificationTreeItem) => Boolean = item => {
-          item.attributes(field) < value
-        }
-        rule -> fitness(valueCounters.toMap, compliment, exceptionCounts)
+      val fileredItems: Seq[LabeledItem] = values.filter(_.value.attributes.isDefinedAt(field))
+      fileredItems.flatMap(center=>{
+        val exceptionCounts = values.filter(!_.value.attributes.isDefinedAt(field)).groupBy(_.label).mapValues(_.size)
+        val valueSortMap = fileredItems.map(item => {
+          item.label -> LevenshteinDistance.getDefaultInstance.apply(
+            center.value.attributes(field).toString,
+            item.value.attributes(field).toString
+          ).doubleValue()
+        }).sortBy(_._2)
+
+        val labelCounters = valueSortMap.groupBy(_._1).mapValues(_.size)
+        val valueCounters = new mutable.HashMap[String,Int]()
+        valueSortMap.map(item=>{
+          val (label, value) = item
+          valueCounters.put(label, valueCounters.getOrElse(label, 0)+1)
+          val compliment: Map[String, Int] = valueCounters.toMap.map(e=>e._1->(labelCounters(e._1) - e._2))
+          val rule : (ClassificationTreeItem) => Boolean = item => {
+            LevenshteinDistance.getDefaultInstance.apply(
+              center.value.attributes(field).toString,
+              item.attributes(field).toString
+            ) < value.asInstanceOf[Number].doubleValue()
+          }
+          rule -> fitness(valueCounters.toMap, compliment, exceptionCounts)
+        })
       })
     }).maxBy(_._2)._1
   }
+
   def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
     buffer.sync.apxSize() > branchThreshold
   }
@@ -63,7 +76,7 @@ case class DefaultClassificationStrategy(
     fields.flatMap(field=>{
       val valueOptMap = values.map(item=>item.label->item.value.attributes.get(field))
       val exceptionCounts = valueOptMap.filter(_._2.isEmpty).groupBy(_._1).mapValues(_.size)
-      val valueSortMap = valueOptMap.filter(_._2.isDefined).map(x=>x._1->x._2.get).sortBy(_._2)
+      val valueSortMap = valueOptMap.filter(_._2.isDefined).map(x=>x._1->x._2.get).sortBy(_._2.asInstanceOf[Number].doubleValue().toDouble)
       val labelCounters = valueSortMap.groupBy(_._1).mapValues(_.size)
       val valueCounters = new mutable.HashMap[String,Int]()
       valueSortMap.map(item=>{
@@ -71,7 +84,7 @@ case class DefaultClassificationStrategy(
         valueCounters.put(label, valueCounters.getOrElse(label, 0)+1)
         val compliment: Map[String, Int] = valueCounters.toMap.map(e=>e._1->(labelCounters(e._1) - e._2))
         val rule : (ClassificationTreeItem) => Boolean = item => {
-          item.attributes(field) < value
+          item.attributes(field).asInstanceOf[Number].doubleValue() < value.asInstanceOf[Number].doubleValue()
         }
         rule -> fitness(valueCounters.toMap, compliment, exceptionCounts)
       })
@@ -84,7 +97,7 @@ case class DefaultClassificationStrategy(
 
 object ClassificationTree {
 
-  case class ClassificationTreeItem(attributes:Map[String,Double])
+  case class ClassificationTreeItem(attributes:Map[String,Any])
   case class LabeledItem(label : String, value:ClassificationTreeItem)
 
   def newClassificationTreeData()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -311,9 +324,9 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
   def setClusterStrategy(value: ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
     rootPtr.readOpt().map(prev => {
       prev.orElse(Option(ClassificationTree.newClassificationTreeData()))
-        .map(state=>(state -> state.copy(strategy = value)))
+        .map(state=>state.copy(strategy = value))
         .get
-    }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>Unit))
+    }).flatMap(newRootData => rootPtr.write((newRootData)).map(_=>Unit))
   }
 
   def getClusterStrategy()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[ClassificationStrategy] = {
