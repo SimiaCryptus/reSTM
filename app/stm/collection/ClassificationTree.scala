@@ -41,6 +41,47 @@ object ClassificationTree {
   private def newClassificationTreeNode(parent : Option[STMPtr[ClassificationTreeNode]] = None)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     new ClassificationTreeNode(parent, itemBuffer = Option(TreeCollection[LabeledItem]()))
 
+
+  def splitFn(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) : (Restm, ExecutionContext) => TaskResult[Int] = (cluster, executionContext) => {
+    val tasks: List[Task[Int]] = {
+      //implicit val _cluster = cluster
+      //implicit val _executionContext = executionContext
+
+      //println(s"Running split on ${self.id}")
+      val newState: ClassificationTreeNode = Await.result({
+        implicit val _executionContext = executionContext
+        self.atomic(cluster, executionContext).sync.read.atomic()(cluster, executionContext).split(self, strategy, 0).flatMap(_ => self.atomic(cluster, executionContext).readOpt)
+      }, 30.seconds).get
+
+      Await.result(new STMTxn[List[(Restm, ExecutionContext) => TaskResult[Int]]] {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[List[(Restm, ExecutionContext) => TaskResult[Int]]] = Future {
+          Map(
+            "pass"->newState.pass, "fail"->newState.fail, "exception"->newState.exception
+          ).filter(_._2.isDefined).mapValues(_.get).map(t=>{
+            val (childType, child: STMPtr[ClassificationTreeNode]) = t
+            val map: Option[(Restm, ExecutionContext) => TaskResult[Int]] = child.sync.readOpt
+              .filter((childState: ClassificationTreeNode) => {
+                childState.itemBuffer.map(itemBuffer => {
+                  lazy val size = itemBuffer.sync.size()
+                  val recurse = strategy.split(childState.itemBuffer.get)
+                  //println(s"Split result for child $childType of ${self.id}: $size => $recurse (child id=${child.id})")
+                  recurse
+                }).getOrElse(true)
+              })
+              .map((childState: ClassificationTreeNode) => splitFn(child, strategy))
+            map
+          }).filter(_.isDefined).map(_.get).toList
+        }
+      }.txnRun(cluster)(executionContext), 30.seconds).map((x: (Restm, ExecutionContext) => TaskResult[Int]) =>StmExecutionQueue.atomic(cluster, executionContext).sync.add(x))
+    }
+    new Task.TaskContinue[Int](newFunction = (cluster,executionContext) =>{
+      implicit val _cluster = cluster
+      implicit val _executionContext = executionContext
+      new TaskSuccess(tasks.map(_.atomic().sync.result()).sum)
+    }, queue = StmExecutionQueue, newTriggers = tasks)
+  }
+
+
   case class ClassificationTreeNode
   (
     parent : Option[STMPtr[ClassificationTreeNode]],
@@ -119,60 +160,15 @@ object ClassificationTree {
     class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
 
       class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-        def splitTask(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) = sync { NodeAtomicApi.this.splitTask(self, strategy) }
         def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0) = sync { NodeAtomicApi.this.split(self, strategy, maxSplitDepth) }
       }
       def sync(duration: Duration) = new SyncApi(duration)
       def sync = new SyncApi(10.seconds)
 
-      def splitTask(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) = atomic { ClassificationTreeNode.this.splitTask(self, strategy)(_,executionContext) }
       def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0) = atomic { ClassificationTreeNode.this.split(self, strategy, maxSplitDepth)(_,executionContext) }
     }
     def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new NodeAtomicApi(priority,maxRetries)
 
-
-    def splitTask(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Task[Int]] = {
-      StmExecutionQueue.add(splitFn(self, strategy))
-    }
-
-    def splitFn(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[Int] = {
-      val tasks: List[Task[Int]] = {
-        //implicit val _cluster = cluster
-        //implicit val _executionContext = executionContext
-
-        //println(s"Running split on ${self.id}")
-        val newState: ClassificationTreeNode = Await.result({
-          implicit val _executionContext = executionContext
-          atomic()(cluster, executionContext).split(self, strategy, 0).flatMap(_ => self.atomic(cluster, executionContext).readOpt)
-        }, 30.seconds).get
-
-        Await.result(new STMTxn[List[Task[Int]]] {
-          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[List[Task[Int]]] = {
-            Future.sequence(Map(
-              "pass"->newState.pass, "fail"->newState.fail, "exception"->newState.exception
-            ).filter(_._2.isDefined).mapValues(_.get).map(t=>{
-              val (childType, child: STMPtr[ClassificationTreeNode]) = t
-              child.sync.readOpt
-                .filter((childState: ClassificationTreeNode) => {
-                  childState.itemBuffer.map(itemBuffer=>{
-                    lazy val size = itemBuffer.sync.size()
-                    val recurse = strategy.split(childState.itemBuffer.get)
-                    println(s"Split result for child $childType of ${self.id}: $size => $recurse (child id=${child.id})")
-                    recurse
-                  }).getOrElse(true)
-                })
-                .map((childState: ClassificationTreeNode) => childState.splitTask(child, strategy))
-            }).filter(_.isDefined).map(_.get).toList)
-          }
-        }.txnRun(cluster)(executionContext), 30.seconds)
-
-      }
-      new Task.TaskContinue[Int](newFunction = (cluster,executionContext) =>{
-        implicit val _cluster = cluster
-        implicit val _executionContext = executionContext
-        new TaskSuccess(tasks.map(_.atomic().sync.result()).sum)
-      }, queue = StmExecutionQueue, newTriggers = tasks)
-    }
 
     def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0)
              (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
@@ -193,7 +189,7 @@ object ClassificationTree {
           })
         } else Future.successful(0)
         result
-          .map(x=>{println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})");x})
+          //.map(x=>{println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})");x})
       })).getOrElse({
         //println(s"Already split: ${self.id} -> (${pass.get.id}, ${fail.get.id}, ${exception.get.id})")
         Future.successful(0)
@@ -364,7 +360,7 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
 
   def splitCluster(node : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy)
                     (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    node.read().flatMap(_.splitTask(node, strategy))
+    StmExecutionQueue.add(splitFn(node, strategy))
   }
 
   def splitTree(strategy: ClassificationStrategy)

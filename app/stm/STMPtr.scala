@@ -69,6 +69,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def readOpt(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.readOpt)
+      def read(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.read)
       def init(default: => T)(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.init(default))
       def write(value: T)(implicit classTag: ClassTag[T]) = sync(AtomicApi.this.write(value))
     }
@@ -78,6 +79,9 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
     def readOpt(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] =
       atomic { STMPtr.this.readOpt()(_,executionContext,classTag) }
+
+    def read(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] =
+      atomic { STMPtr.this.read()(_,executionContext,classTag) }
 
     def init(default: => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) =
       atomic { STMPtr.this.init(default)(_,executionContext,classTag) }
