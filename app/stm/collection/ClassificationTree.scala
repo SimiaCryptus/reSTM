@@ -22,41 +22,70 @@ trait ClassificationStrategy {
 }
 
 case class TextClassificationStrategy(
-                                          branchThreshold : Int = 4
+                                          branchThreshold : Int = 8
                                         ) extends ClassificationStrategy
 {
-  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int]): Double = {
-    Random.nextDouble()
+  def fitness(left: Map[String, Map[Double,Int]], right: Map[String, Map[Double,Int]], exceptions: Map[String, Int]): Double = {
+    val result = {
+      (left.keys ++ right.keys).toSet.map((label: String) =>{
+        val leftOpt = left.getOrElse(label, Map.empty)
+        val rightOpt = right.getOrElse(label, Map.empty)
+        val total = leftOpt.values.sum + rightOpt.values.sum
+        List(leftOpt,rightOpt).map(map=>{
+          val sum = map.values.sum.toDouble
+          val factor = sum / total
+          factor * Math.log(1-factor) * map.values.map(x=>x*x).sum
+        }).sum
+      }).sum
+    }
+    //println(s"(left=$left,right=$right,ex=$exceptions) = $result")
+    result
   }
+
+  def distance(a:CharSequence,b:CharSequence) : Int = LevenshteinDistance.getDefaultInstance.apply(a,b)
+
   def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = {
     val fields = values.flatMap(_.value.attributes.keys).toSet
     fields.flatMap(field=>{
-      val fileredItems: Seq[LabeledItem] = values.filter(_.value.attributes.isDefinedAt(field))
-      fileredItems.flatMap(center=>{
-        val exceptionCounts = values.filter(!_.value.attributes.isDefinedAt(field)).groupBy(_.label).mapValues(_.size)
-        val valueSortMap = fileredItems.map(item => {
-          item.label -> LevenshteinDistance.getDefaultInstance.apply(
-            center.value.attributes(field).toString,
-            item.value.attributes(field).toString
-          ).doubleValue()
-        }).sortBy(_._2)
-
-        val labelCounters = valueSortMap.groupBy(_._1).mapValues(_.size)
-        val valueCounters = new mutable.HashMap[String,Int]()
-        valueSortMap.map(item=>{
-          val (label, value) = item
-          valueCounters.put(label, valueCounters.getOrElse(label, 0)+1)
-          val compliment: Map[String, Int] = valueCounters.toMap.map(e=>e._1->(labelCounters(e._1) - e._2))
-          val rule : (ClassificationTreeItem) => Boolean = item => {
-            LevenshteinDistance.getDefaultInstance.apply(
-              center.value.attributes(field).toString,
-              item.attributes(field).toString
-            ) < value.asInstanceOf[Number].doubleValue()
-          }
-          rule -> fitness(valueCounters.toMap, compliment, exceptionCounts)
-        })
-      })
+      ruleCandidates(values, field)
     }).maxBy(_._2)._1
+  }
+
+  private def ruleCandidates(values: List[LabeledItem], field: String): Seq[((ClassificationTreeItem) => Boolean, Double)] = {
+    val fileredItems: Seq[LabeledItem] = values.filter(_.value.attributes.isDefinedAt(field))
+    fileredItems.flatMap(center => {
+      val exceptionCounts: Map[String, Int] = values.filter(!_.value.attributes.isDefinedAt(field)).groupBy(_.label).mapValues(_.size)
+      val valueSortMap: Seq[(String, Double)] = fileredItems.map(item => {
+        item.label -> distance(
+          center.value.attributes(field).toString,
+          item.value.attributes(field).toString
+        ).doubleValue()
+      }).sortBy(_._2)
+
+      val labelCounters: Map[String, mutable.Map[Double, Int]] = valueSortMap.groupBy(_._1)
+        .mapValues(_.toList.groupBy(_._2).mapValues(_.size))
+        .mapValues(x => new mutable.HashMap() ++ x)
+      val valueCounters = new mutable.HashMap[String, mutable.Map[Double, Int]]()
+      valueSortMap.distinct.map(item => {
+        val (label, value: Double) = item
+        valueCounters.getOrElseUpdate(label, new mutable.HashMap()).put(value, labelCounters(label)(value))
+
+        val compliment: Map[String, Map[Double, Int]] = valueCounters.map(e => {
+          val (key, leftItems) = e
+          val counters: mutable.Map[Double, Int] = labelCounters(key).clone()
+          val doubleToInt: mutable.Map[Double, Int] = counters -- leftItems.keys
+          key -> doubleToInt
+        }).mapValues(_.toMap).toMap
+
+        val rule: (ClassificationTreeItem) => Boolean = item => {
+          distance(
+            center.value.attributes(field).toString,
+            item.attributes(field).toString
+          ) <= value.asInstanceOf[Number].doubleValue()
+        }
+        rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment.toMap, exceptionCounts)
+      })
+    })
   }
 
   def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
@@ -116,9 +145,8 @@ object ClassificationTree {
     def find(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[ClassificationTreeNode]] =
       root.read().flatMap(_.find(value).map(_.get))
 
-    def add(label: String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[ClassificationTreeNode]] = {
-      val read: Future[ClassificationTreeNode] = root.read()
-      read.flatMap(_.add(label, value, root, strategy).map(_.getOrElse(root)))
+    def add(label: String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+      root.read().flatMap(_.add(label, value, root, strategy))
     }
 
   }
@@ -147,7 +175,7 @@ object ClassificationTree {
         require(0 == cursor)
         itemBuffer.get.stream().map(stream=>{
           val list = stream.toList
-          println(s"Returning ${list.size} items from ${self.id}")
+          //println(s"Returning ${list.size} items from ${self.id}")
           -1 -> list
         })
       } else {
@@ -168,7 +196,7 @@ object ClassificationTree {
           } else {
             nextChildCursor * 3 + cursorBit
           }
-          println(s"Returning ${childResult._2.size} items from ${self.id}; cursor $cursor -> $nextCursor")
+          //println(s"Returning ${childResult._2.size} items from ${self.id}; cursor $cursor -> $nextCursor")
           nextCursor -> childResult._2
         })
       }
@@ -197,43 +225,53 @@ object ClassificationTree {
       }
     }
 
-    def add(label: String, value: ClassificationTreeItem, self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[STMPtr[ClassificationTreeNode]]] = {
+    def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+      itemBuffer.get.stream().map(_.toList).flatMap(bufferedValues => {
+        //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
+        val nextValue: ClassificationTreeNode = copy(
+          itemBuffer = None,
+          rule = Option(KryoValue(strategy.getRule(bufferedValues.asInstanceOf[List[LabeledItem]]))),
+          pass = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
+          fail = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
+          exception = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self))))
+        )
+        self.write(nextValue).flatMap(_ => {
+          Future.sequence(bufferedValues.map(item => {
+            nextValue.add(item.label, item.value, self, strategy)
+          }))
+        }).map(_ => {
+          //println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})")
+          Unit
+        })
+      })
+    }
+
+    def add(label: String, value: ClassificationTreeItem, self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
       if(itemBuffer.isDefined) {
-        println(s"Adding an item ${value} - current size ${itemBuffer.get.sync.stream().size} id=${self.id}")
+        //println(s"Adding an item ${value} - current size ${itemBuffer.get.sync.stream().size} id=${self.id}")
         itemBuffer.get.add(new LabeledItem(label,value)).flatMap(_=>{
           if (strategy.split(itemBuffer.get.asInstanceOf[TreeCollection[ClassificationTree.LabeledItem]])) {
-            itemBuffer.get.stream().map(_.toList).flatMap(bufferedValues=>{
-              //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
-              val nextValue: ClassificationTreeNode = copy(
-                itemBuffer = None,
-                rule = Option(KryoValue(strategy.getRule(bufferedValues.asInstanceOf[List[ClassificationTree.LabeledItem]]))),
-                pass = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
-                fail = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
-                exception = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self))))
-              )
-              self.write(nextValue).flatMap(_=>{
-                Future.sequence(bufferedValues.map(item=>{
-                  nextValue.add(item.label, item.value, self, strategy)
-                }))
-              }).map(_=>{
-                println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})")
-                None
-              })
+            self.lock().flatMap(locked=> {
+              if(locked) {
+                split(self, strategy)
+              } else {
+                Future.successful(Unit)
+              }
             })
           } else {
-            Future.successful(None)
+            Future.successful(Unit)
           }
         })
       } else {
         try {
           if(apply(value)) {
-            pass.get.read().flatMap(_.add(label, value, pass.get, strategy)).map(_.orElse(pass))
+            pass.get.read().flatMap(_.add(label, value, pass.get, strategy))
           } else {
-            fail.get.read().flatMap(_.add(label, value, fail.get, strategy)).map(_.orElse(fail))
+            fail.get.read().flatMap(_.add(label, value, fail.get, strategy))
           }
         } catch {
           case e : Throwable =>
-            exception.get.read().flatMap(_.add(label, value, exception.get, strategy)).map(_.orElse(exception))
+            exception.get.read().flatMap(_.add(label, value, exception.get, strategy))
         }
       }
     }
@@ -243,7 +281,7 @@ object ClassificationTree {
       val stream: Seq[(Int, List[LabeledItem])] = Stream.iterate((cursor, List.empty[LabeledItem]))(t => {
         val (prevCursor, prevList) = t
         if(prevCursor < 0) t else {
-          println(s"Fetch cursor $prevCursor")
+          //println(s"Fetch cursor $prevCursor")
           val (nextCursor, thisList) = result(prevCursor)
           nextCursor -> (prevList ++ thisList)
         }

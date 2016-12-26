@@ -1,6 +1,6 @@
 import java.util.concurrent.Executors
 
-import _root_.util.Util
+import _root_.util.{LevenshteinDistance, Util}
 import org.apache.commons.io.IOUtils
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
@@ -13,6 +13,7 @@ import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClient}
 import storage.types.JacksonValue
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import scala.util.Random
@@ -36,28 +37,28 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
         input.foreach(collection.atomic().sync.add("data", _))
 
-        (0 to 10).toList.filterNot(i=>{collection.atomic().sync.iterateTree(max = items)._2.toSet.size == input.size}).size mustBe 0
+        (1 to 10).toList.filterNot(_=>collection.atomic().sync.iterateTree(max = items)._2.toSet.size == input.size).size mustBe 0
         val output = collection.atomic().sync.iterateTree(max = items)._2.toSet
         output.size mustBe input.size
         output mustBe input
       }
     })
-//    List(100).foreach(items=> {
-//      s"operations on $items scalar items" in {
-//        val collection = new ClassificationTree(new PointerType)
-//        def randomItems(center:Double=0.0,scale:Double=1.0) = Stream.continually(new ClassificationTreeItem(Map("value" -> (center + scale * Random.nextGaussian()))))
-//        randomItems(center = -2).take(items).foreach(x=>collection.atomic().sync.add("foo", x))
-//        randomItems(center = 1).take(items).foreach(x=>collection.atomic().sync.add("bar", x))
-//        randomItems().take(10).foreach(x => {
-//          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
-//          println(s"$x routed to node "+JacksonValue.simple(id))
-//          println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
-//          println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
-//          println(s"Node Counts: "+JacksonValue.simple(collection.atomic().sync.getClusterCount(id.id)))
-//          println()
-//        })
-//      }
-//    })
+    List(100).foreach(items=> {
+      s"operations on $items scalar items" in {
+        val collection = new ClassificationTree(new PointerType)
+        def randomItems(center:Double=0.0,scale:Double=1.0) = Stream.continually(new ClassificationTreeItem(Map("value" -> (center + scale * Random.nextGaussian()))))
+        randomItems(center = -2).take(items).foreach(x=>collection.atomic().sync.add("foo", x))
+        randomItems(center = 1).take(items).foreach(x=>collection.atomic().sync.add("bar", x))
+        randomItems().take(10).foreach(x => {
+          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
+          println(s"$x routed to node "+JacksonValue.simple(id))
+          println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
+          println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
+          println(s"Node Counts: "+JacksonValue.simple(collection.atomic().sync.getClusterCount(id.id)))
+          println()
+        })
+      }
+    })
 //    List(100).foreach(items=> {
 //      s"operations on $items text items" in {
 //        val collection = new ClassificationTree(new PointerType)
@@ -75,23 +76,34 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 //        })
 //      }
 //    })
-    List(50,500).foreach(items=> {
+    List(50,200,1000).foreach(items=> {
       s"operations on $items item dictionary" in {
-        import scala.collection.JavaConverters._
-
-
         val collection = new ClassificationTree(new PointerType)
-        collection.atomic().sync.setClusterStrategy(new TextClassificationStrategy)
         val dictionary = IOUtils.readLines(this.getClass().getClassLoader.getResourceAsStream("20k.txt"), "UTF8")
           .asScala.toList.toStream.map(x=>new ClassificationTreeItem(Map("value" -> x)))
-        dictionary.take(items).foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
-        val spellings = List("tst", "ello", "foo", "ing", "wibsite")
+
+        var toInsert = dictionary.take(items)
+        if(items > 100) {
+          collection.atomic().sync.setClusterStrategy(new TextClassificationStrategy(branchThreshold = 20))
+          toInsert.take(100).foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
+          toInsert = toInsert.drop(100)
+        }
+        collection.atomic().sync.setClusterStrategy(new TextClassificationStrategy(branchThreshold = 5))
+        toInsert.foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
+
+
+        dictionary.drop(100).take(items-100).foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
+
+        val spellings = List("wit", "tome", "morph")
         spellings.map(x=>new ClassificationTreeItem(Map("value" -> x))).foreach(x => {
-          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(x)
+          val word = x.attributes("value").toString
+          val closest = dictionary.map(_.attributes("value").toString).sortBy((a)=>LevenshteinDistance.getDefaultInstance.apply(a,word)).take(5).toList
+          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(30.seconds).getClusterId(x)
           println(s"$x routed to node "+JacksonValue.simple(id))
           println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
           println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id.id)))
           println(s"Node Counts: "+JacksonValue.simple(collection.atomic().sync.getClusterCount(id.id)))
+          println(s"Closest Inserted Words: "+closest)
           println()
         })
       }
