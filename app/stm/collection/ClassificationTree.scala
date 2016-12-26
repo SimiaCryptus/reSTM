@@ -5,124 +5,12 @@ import stm.{STMPtr, _}
 import storage.Restm
 import storage.Restm._
 import storage.types.KryoValue
-import util.LevenshteinDistance
 
 import scala.collection.immutable.Seq
-import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.util.Random
 
-trait ClassificationStrategy {
 
-  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean
-
-  def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean
-
-}
-
-case class TextClassificationStrategy(
-                                          branchThreshold : Int = 8
-                                        ) extends ClassificationStrategy
-{
-  def fitness(left: Map[String, Map[Double,Int]], right: Map[String, Map[Double,Int]], exceptions: Map[String, Int]): Double = {
-    val result = {
-      (left.keys ++ right.keys).toSet.map((label: String) =>{
-        val leftOpt = left.getOrElse(label, Map.empty)
-        val rightOpt = right.getOrElse(label, Map.empty)
-        val total = leftOpt.values.sum + rightOpt.values.sum
-        List(leftOpt,rightOpt).map(map=>{
-          val sum = map.values.sum.toDouble
-          val factor = sum / total
-          factor * Math.log(1-factor) * map.values.map(x=>x*x).sum
-        }).sum
-      }).sum
-    }
-    //println(s"(left=$left,right=$right,ex=$exceptions) = $result")
-    result
-  }
-
-  def distance(a:CharSequence,b:CharSequence) : Int = LevenshteinDistance.getDefaultInstance.apply(a,b)
-
-  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = {
-    val fields = values.flatMap(_.value.attributes.keys).toSet
-    fields.flatMap(field=>{
-      ruleCandidates(values, field)
-    }).maxBy(_._2)._1
-  }
-
-  private def ruleCandidates(values: List[LabeledItem], field: String): Seq[((ClassificationTreeItem) => Boolean, Double)] = {
-    val fileredItems: Seq[LabeledItem] = values.filter(_.value.attributes.isDefinedAt(field))
-    fileredItems.flatMap(center => {
-      val exceptionCounts: Map[String, Int] = values.filter(!_.value.attributes.isDefinedAt(field)).groupBy(_.label).mapValues(_.size)
-      val valueSortMap: Seq[(String, Double)] = fileredItems.map(item => {
-        item.label -> distance(
-          center.value.attributes(field).toString,
-          item.value.attributes(field).toString
-        ).doubleValue()
-      }).sortBy(_._2)
-
-      val labelCounters: Map[String, mutable.Map[Double, Int]] = valueSortMap.groupBy(_._1)
-        .mapValues(_.toList.groupBy(_._2).mapValues(_.size))
-        .mapValues(x => new mutable.HashMap() ++ x)
-      val valueCounters = new mutable.HashMap[String, mutable.Map[Double, Int]]()
-      valueSortMap.distinct.map(item => {
-        val (label, value: Double) = item
-        valueCounters.getOrElseUpdate(label, new mutable.HashMap()).put(value, labelCounters(label)(value))
-
-        val compliment: Map[String, Map[Double, Int]] = valueCounters.map(e => {
-          val (key, leftItems) = e
-          val counters: mutable.Map[Double, Int] = labelCounters(key).clone()
-          val doubleToInt: mutable.Map[Double, Int] = counters -- leftItems.keys
-          key -> doubleToInt
-        }).mapValues(_.toMap).toMap
-
-        val rule: (ClassificationTreeItem) => Boolean = item => {
-          distance(
-            center.value.attributes(field).toString,
-            item.attributes(field).toString
-          ) <= value.asInstanceOf[Number].doubleValue()
-        }
-        rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment.toMap, exceptionCounts)
-      })
-    })
-  }
-
-  def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
-    buffer.sync.apxSize() > branchThreshold
-  }
-}
-
-case class DefaultClassificationStrategy(
-                                          branchThreshold : Int = 4
-                                        ) extends ClassificationStrategy
-{
-  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int]): Double = {
-    Random.nextDouble()
-  }
-  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = {
-    val fields = values.flatMap(_.value.attributes.keys).toSet
-    fields.flatMap(field=>{
-      val valueOptMap = values.map(item=>item.label->item.value.attributes.get(field))
-      val exceptionCounts = valueOptMap.filter(_._2.isEmpty).groupBy(_._1).mapValues(_.size)
-      val valueSortMap = valueOptMap.filter(_._2.isDefined).map(x=>x._1->x._2.get).sortBy(_._2.asInstanceOf[Number].doubleValue().toDouble)
-      val labelCounters = valueSortMap.groupBy(_._1).mapValues(_.size)
-      val valueCounters = new mutable.HashMap[String,Int]()
-      valueSortMap.map(item=>{
-        val (label, value) = item
-        valueCounters.put(label, valueCounters.getOrElse(label, 0)+1)
-        val compliment: Map[String, Int] = valueCounters.toMap.map(e=>e._1->(labelCounters(e._1) - e._2))
-        val rule : (ClassificationTreeItem) => Boolean = item => {
-          item.attributes(field).asInstanceOf[Number].doubleValue() < value.asInstanceOf[Number].doubleValue()
-        }
-        rule -> fitness(valueCounters.toMap, compliment, exceptionCounts)
-      })
-    }).maxBy(_._2)._1
-  }
-  def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
-    buffer.sync.apxSize() > branchThreshold
-  }
-}
 
 object ClassificationTree {
 

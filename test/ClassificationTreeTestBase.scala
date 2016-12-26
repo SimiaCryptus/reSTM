@@ -84,20 +84,17 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 
         var toInsert = dictionary.take(items)
         if(items > 100) {
-          collection.atomic().sync.setClusterStrategy(new TextClassificationStrategy(branchThreshold = 20))
+          collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(branchThreshold = 20))
           toInsert.take(100).foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
           toInsert = toInsert.drop(100)
         }
-        collection.atomic().sync.setClusterStrategy(new TextClassificationStrategy(branchThreshold = 5))
+        collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(branchThreshold = 5))
         toInsert.foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
-
-
-        dictionary.drop(100).take(items-100).foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
 
         val spellings = List("wit", "tome", "morph")
         spellings.map(x=>new ClassificationTreeItem(Map("value" -> x))).foreach(x => {
           val word = x.attributes("value").toString
-          val closest = dictionary.map(_.attributes("value").toString).sortBy((a)=>LevenshteinDistance.getDefaultInstance.apply(a,word)).take(5).toList
+          val closest = dictionary.take(items).map(_.attributes("value").toString).sortBy((a)=>LevenshteinDistance.getDefaultInstance.apply(a,word)).take(5).toList
           val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(30.seconds).getClusterId(x)
           println(s"$x routed to node "+JacksonValue.simple(id))
           println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
