@@ -33,7 +33,7 @@ trait STMTxn[+R] {
     val opId = UUID.randomUUID().toString
     def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = monitorFuture("STMTxn.txnRun.attempt") {
       val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
-      Future { txnLogic()(ctx, executionContext) }
+      chainEx("Transaction Exception") { Future { txnLogic()(ctx, executionContext) }
         .flatMap(x => x)
         .flatMap(result => {
           if (allowCompletion) {
@@ -43,13 +43,13 @@ trait STMTxn[+R] {
             ActorLog.log(s"Prevented committing $ctx for operation $opId retry $retryNumber/$maxRetry")
             Future.successful(result)
           }
-        })
+        })}
         .recoverWith({
           case e: TransactionConflict if retryNumber < maxRetry =>
             ActorLog.log(s"Revert $ctx for operation $opId retry $retryNumber/$maxRetry due to ${toString(e)}")
             //if(!e.isInstanceOf[LockedException]) e.printStackTrace()
             ctx.revert()
-            Thread.sleep(Random.nextInt(5+10*retryNumber))
+            Thread.sleep(Random.nextInt(5+2*retryNumber))
             _txnRun(retryNumber + 1, Option(ctx).filter(_=>false)) // TODO: Seems to be a problem enabling this
           case e: Throwable =>
             if(!e.isInstanceOf[TransactionConflict]) {

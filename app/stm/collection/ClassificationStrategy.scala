@@ -38,9 +38,11 @@ case class DefaultClassificationStrategy(
   }
 
   def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = {
-    values.flatMap(_.value.attributes.keys).toSet.flatMap((field: String) =>{
+    val rules: Set[((ClassificationTreeItem) => Boolean, Double)] = values.flatMap(_.value.attributes.keys).toSet.flatMap((field: String) => {
       rules_Levenshtein(values, field) ++ rules_SimpleScalar(values, field)
-    }).maxBy(_._2)._1
+    })
+    if(!rules.isEmpty) rules.maxBy(_._2)._1
+    else null
   }
 
   private def rules_SimpleScalar(values: List[LabeledItem], field: String) = metricRules(values,
@@ -117,6 +119,6 @@ case class DefaultClassificationStrategy(
   }
 
   def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
-    buffer.sync.apxSize() > branchThreshold
+    buffer.sync.size() > branchThreshold
   }
 }

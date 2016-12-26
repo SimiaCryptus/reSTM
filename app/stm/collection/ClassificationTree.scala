@@ -1,6 +1,8 @@
 package stm.collection
 
 import stm.collection.ClassificationTree.{ClassificationTreeNode, _}
+import stm.task.Task.{TaskResult, TaskSuccess}
+import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}
 import storage.Restm
 import storage.Restm._
@@ -9,8 +11,6 @@ import storage.types.KryoValue
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-
-
 
 object ClassificationTree {
 
@@ -34,7 +34,7 @@ object ClassificationTree {
       root.read().flatMap(_.find(value).map(_.get))
 
     def add(label: String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
-      root.read().flatMap(_.add(label, value, root, strategy))
+      root.read().flatMap(_.add(label, value, root, strategy, 1).map(_=>Unit))
     }
 
   }
@@ -50,6 +50,8 @@ object ClassificationTree {
     itemBuffer : Option[TreeCollection[LabeledItem]],
     rule : Option[KryoValue] = None
   ) {
+
+
 
     private def this() = this(None, itemBuffer = None)
     def this(parent : Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
@@ -113,53 +115,118 @@ object ClassificationTree {
       }
     }
 
-    def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
-      itemBuffer.get.stream().map(_.toList).flatMap(bufferedValues => {
+
+    class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
+
+      class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+        def splitTask(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) = sync { NodeAtomicApi.this.splitTask(self, strategy) }
+        def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0) = sync { NodeAtomicApi.this.split(self, strategy, maxSplitDepth) }
+      }
+      def sync(duration: Duration) = new SyncApi(duration)
+      def sync = new SyncApi(10.seconds)
+
+      def splitTask(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) = atomic { ClassificationTreeNode.this.splitTask(self, strategy)(_,executionContext) }
+      def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0) = atomic { ClassificationTreeNode.this.split(self, strategy, maxSplitDepth)(_,executionContext) }
+    }
+    def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new NodeAtomicApi(priority,maxRetries)
+
+
+    def splitTask(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Task[Int]] = {
+      StmExecutionQueue.add(splitFn(self, strategy))
+    }
+
+    def splitFn(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[Int] = {
+      val tasks: List[Task[Int]] = {
+        //implicit val _cluster = cluster
+        //implicit val _executionContext = executionContext
+
+        //println(s"Running split on ${self.id}")
+        val newState: ClassificationTreeNode = Await.result({
+          implicit val _executionContext = executionContext
+          atomic()(cluster, executionContext).split(self, strategy, 0).flatMap(_ => self.atomic(cluster, executionContext).readOpt)
+        }, 30.seconds).get
+
+        Await.result(new STMTxn[List[Task[Int]]] {
+          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[List[Task[Int]]] = {
+            Future.sequence(Map(
+              "pass"->newState.pass, "fail"->newState.fail, "exception"->newState.exception
+            ).filter(_._2.isDefined).mapValues(_.get).map(t=>{
+              val (childType, child: STMPtr[ClassificationTreeNode]) = t
+              child.sync.readOpt
+                .filter((childState: ClassificationTreeNode) => {
+                  childState.itemBuffer.map(itemBuffer=>{
+                    lazy val size = itemBuffer.sync.size()
+                    val recurse = strategy.split(childState.itemBuffer.get)
+                    println(s"Split result for child $childType of ${self.id}: $size => $recurse (child id=${child.id})")
+                    recurse
+                  }).getOrElse(true)
+                })
+                .map((childState: ClassificationTreeNode) => childState.splitTask(child, strategy))
+            }).filter(_.isDefined).map(_.get).toList)
+          }
+        }.txnRun(cluster)(executionContext), 30.seconds)
+
+      }
+      new Task.TaskContinue[Int](newFunction = (cluster,executionContext) =>{
+        implicit val _cluster = cluster
+        implicit val _executionContext = executionContext
+        new TaskSuccess(tasks.map(_.atomic().sync.result()).sum)
+      }, queue = StmExecutionQueue, newTriggers = tasks)
+    }
+
+    def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0)
+             (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+      itemBuffer.map(_.stream().map(_.toList).flatMap((bufferedValues: List[LabeledItem]) => {
         //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
         val nextValue: ClassificationTreeNode = copy(
           itemBuffer = None,
-          rule = Option(KryoValue(strategy.getRule(bufferedValues.asInstanceOf[List[LabeledItem]]))),
+          rule = Option(KryoValue(strategy.getRule(bufferedValues))),
           pass = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
           fail = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self)))),
           exception = Option(STMPtr.dynamicSync(newClassificationTreeNode(Option(self))))
         )
-        self.write(nextValue).flatMap(_ => {
-          Future.sequence(bufferedValues.map(item => {
-            nextValue.add(item.label, item.value, self, strategy)
-          }))
-        }).map(_ => {
-          //println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})")
-          Unit
-        })
+        val result = if(null != nextValue.rule) {
+          self.write(nextValue).flatMap(_ => {
+            Future.sequence(bufferedValues.map(item => {
+              nextValue.add(item.label, item.value, self, strategy, maxSplitDepth-1)
+            })).map(_.sum)
+          })
+        } else Future.successful(0)
+        result
+          .map(x=>{println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})");x})
+      })).getOrElse({
+        //println(s"Already split: ${self.id} -> (${pass.get.id}, ${fail.get.id}, ${exception.get.id})")
+        Future.successful(0)
       })
     }
 
-    def add(label: String, value: ClassificationTreeItem, self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+    def add(label: String, value: ClassificationTreeItem, self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1)
+           (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
       if(itemBuffer.isDefined) {
         //println(s"Adding an item ${value} - current size ${itemBuffer.get.sync.stream().size} id=${self.id}")
         itemBuffer.get.add(new LabeledItem(label,value)).flatMap(_=>{
-          if (strategy.split(itemBuffer.get.asInstanceOf[TreeCollection[ClassificationTree.LabeledItem]])) {
+          if (maxSplitDepth > 0 && strategy.split(itemBuffer.get.asInstanceOf[TreeCollection[ClassificationTree.LabeledItem]])) {
             self.lock().flatMap(locked=> {
               if(locked) {
-                split(self, strategy)
+                split(self, strategy, maxSplitDepth)
               } else {
-                Future.successful(Unit)
+                Future.successful(0)
               }
             })
           } else {
-            Future.successful(Unit)
+            Future.successful(0)
           }
         })
       } else {
         try {
           if(apply(value)) {
-            pass.get.read().flatMap(_.add(label, value, pass.get, strategy))
+            pass.get.read().flatMap(_.add(label, value, pass.get, strategy, maxSplitDepth))
           } else {
-            fail.get.read().flatMap(_.add(label, value, fail.get, strategy))
+            fail.get.read().flatMap(_.add(label, value, fail.get, strategy, maxSplitDepth))
           }
         } catch {
           case e : Throwable =>
-            exception.get.read().flatMap(_.add(label, value, exception.get, strategy))
+            exception.get.read().flatMap(_.add(label, value, exception.get, strategy, maxSplitDepth))
         }
       }
     }
@@ -209,7 +276,8 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
       def getClusterCount(value: PointerType) = sync { AtomicApi.this.getClusterCount(value) }
       def iterateCluster(node : STMPtr[ClassificationTreeNode], max: Int = 100, cursor : Int = 0) = sync { AtomicApi.this.iterateCluster(node, max, cursor) }
       def iterateTree(max: Int = 100, cursor : Int = 0) = sync { AtomicApi.this.iterateTree(max, cursor) }
-      def predictLabel(value: ClassificationTreeItem) = sync { AtomicApi.this.predictLabel(value) }
+      def splitCluster(node : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy) = sync { AtomicApi.this.splitCluster(node, strategy) }
+      def splitTree(strategy: ClassificationStrategy) = sync { AtomicApi.this.splitTree(strategy) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
@@ -222,7 +290,8 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     def getClusterCount(value: PointerType) = atomic { ClassificationTree.this.getClusterCount(value)(_,executionContext) }
     def iterateCluster(node : STMPtr[ClassificationTreeNode], max: Int = 100, cursor : Int = 0) = atomic { ClassificationTree.this.iterateCluster(node, max, cursor)(_,executionContext) }
     def iterateTree(max: Int = 100, cursor : Int = 0) = atomic { ClassificationTree.this.iterateTree(max, cursor)(_,executionContext) }
-    def predictLabel(value: ClassificationTreeItem) = atomic { ClassificationTree.this.predictLabel(value)(_,executionContext) }
+    def splitCluster(node : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy) = atomic { ClassificationTree.this.splitCluster(node, strategy)(_,executionContext) }
+    def splitTree(strategy: ClassificationStrategy) = atomic { ClassificationTree.this.splitTree(strategy)(_,executionContext) }
   }
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
 
@@ -233,10 +302,10 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     def getClusterId(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterId(value) }
     def getClusterPath(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterPath(value) }
     def getClusterCount(value: PointerType)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterCount(value) }
+    def splitCluster(node : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.splitCluster(node, strategy) }
+    def splitTree(strategy: ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.splitTree(strategy) }
     def iterateCluster(node : STMPtr[ClassificationTreeNode], value: PointerType, max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.iterateCluster(node, max, cursor) }
     def iterateTree(value: PointerType, max: Int = 100, cursor : Int = 0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.iterateTree(max, cursor) }
-    def predictLabel(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-      sync { ClassificationTree.this.predictLabel(value) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -249,10 +318,10 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>newRootData._2))
   }
 
-  def setClusterStrategy(value: ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
+  def setClusterStrategy(strategy: ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
     rootPtr.readOpt().map(prev => {
       prev.orElse(Option(ClassificationTree.newClassificationTreeData()))
-        .map(state=>state.copy(strategy = value))
+        .map(state=>state.copy(strategy = strategy))
         .get
     }).flatMap(newRootData => rootPtr.write((newRootData)).map(_=>Unit))
   }
@@ -293,9 +362,16 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     })
   }
 
-  def predictLabel(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Map[String,Double]] = {
-    throw new RuntimeException
+  def splitCluster(node : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy)
+                    (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    node.read().flatMap(_.splitTask(node, strategy))
   }
 
+  def splitTree(strategy: ClassificationStrategy)
+                 (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    rootPtr.readOpt().map(_.orElse(Option(ClassificationTree.newClassificationTreeData()))).flatMap(innerData => {
+      splitCluster(innerData.get.root, strategy)
+    })
+  }
 }
 

@@ -4,7 +4,6 @@ import java.util.{Date, UUID}
 import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection.{LinkedList, TreeCollection}
-import stm.task.TaskStatus.Orphan
 import stm.task._
 import storage.Restm._
 import storage._
@@ -16,7 +15,7 @@ import storage.types.JacksonValue
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
-import scala.util.Try
+
 
 
 abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
@@ -66,44 +65,8 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
       StmExecutionQueue.registerDaemons(8)
       System.out.println(s"Execution Engine Started at ${new Date()}")
 
-      try {
-        def now = new Date()
-        val timeout = new Date(now.getTime + taskTimeout.toMillis)
-        var continueLoop = true
-        var lastSummary = ""
-        while(!sortTask.future.isCompleted && continueLoop) {
-          if(!timeout.after(now)) throw new RuntimeException("Time Out")
-
-          System.out.println(s"Checking Status at ${new Date()}...")
-          val statusTrace = sortTask.atomic(-0.milliseconds).sync(diagnosticsOperationTimeout).getStatusTrace(Option(StmExecutionQueue))
-          def isOrphaned(node : TaskStatusTrace) : Boolean = (node.status.isInstanceOf[Orphan]) || node.children.exists(isOrphaned(_))
-          def statusSummary(node : TaskStatusTrace = statusTrace) : Map[String,Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
-            .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_+_).getOrElse(0))
-
-          val numQueued = StmExecutionQueue.workQueue.atomic().sync(diagnosticsOperationTimeout).size
-          val numRunning = ExecutionStatusManager.currentlyRunning()
-
-          val summary = JacksonValue.simple(statusSummary()).pretty
-          if(lastSummary == summary) {
-            System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
-          } else if(isOrphaned(statusTrace)) {
-            //println(JacksonValue.simple(statusTrace).pretty)
-            System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
-            //continueLoop = false
-          } else if(numQueued > 0 || numRunning > 0) {
-            System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
-          } else {
-            System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
-            //continueLoop = false
-          }
-          lastSummary = summary
-          if(continueLoop) Try{Await.ready(sortTask.future, 15.seconds)}
-        }
-        System.out.println(s"Colleting Result at ${new Date()}")
-        val sortResult = Await.result(sortTask.future, 5.seconds)
-        val output = sortResult.atomic().sync.stream().toList
-        output.size mustBe input.size
-        output mustBe input.toList.sorted
+      val sortResult = try {
+        TaskUtil.awaitTask(sortTask, taskTimeout, diagnosticsOperationTimeout)
       } finally {
         System.out.println(s"Final Data at ${new Date()}")
         println(JacksonValue.simple(Util.getMetrics()).pretty)
@@ -112,8 +75,13 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
         System.out.println("Stopping Execution Engine")
         Await.result(StmDaemons.stop(), 30.seconds)
       }
+
+      val output = sortResult.atomic().sync.stream().toList
+      output.size mustBe input.size
+      output mustBe input.toList.sorted
     }
   }
+
 }
 
 

@@ -140,7 +140,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   }
 
   def result()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[T] = Util.chainEx("Error getting result") {
-    root.read().map(currentState => currentState.exception.map(throw _).orElse(currentState.result).get)
+    root.read().map(currentState => currentState.exception.map(throw _).orElse(currentState.result).getOrElse(throw new RuntimeException(s"Task ${root.id} not complete")))
   }
 
   def canRun()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
