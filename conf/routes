@@ -32,8 +32,6 @@ POST    /_txn/commit/*time          controllers.RestmController._commit(time:Str
 GET    /task/result/*id             controllers.ExecutionController.taskResult(id:String)
 GET    /task/info/*id               controllers.ExecutionController.taskInfo(id:String)
 
-GET    /demo/sort                   controllers.DemoController.demoSort(n:Int = 100)
-
 GET    /sys/init                    controllers.SystemController.init()
 GET    /sys/shutdown                controllers.SystemController.shutdown()
 GET    /sys/threads                 controllers.SystemController.threadDump()
@@ -43,3 +41,12 @@ GET    /sys/about                   controllers.SystemController.about()
 GET    /sys/logs/                   controllers.SystemController.listLogs()
 GET    /sys/logs/*name              controllers.SystemController.listLog(name:String, search:Option[String])
 
+GET    /demo/sort                   controllers.DemoController.demoSort(n:Int = 100)
+
+PUT    /cluster/*treeId                 controllers.ClusterTreeController.add(treeId:String, label:String="_")
+GET    /cluster/*treeId                 controllers.ClusterTreeController.find(treeId:String)
+GET    /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
+POST   /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
+GET    /cluster/*treeId/*cluster/info   controllers.ClusterTreeController.info(treeId:String, cluster:Int)
+GET    /cluster/*treeId/*cluster/list   controllers.ClusterTreeController.list(treeId:String, cluster:Int, cursor:Int=0, maxItems:Int=100)
+POST   /cluster/*treeId/*cluster/split  controllers.ClusterTreeController.split(treeId:String, cluster:Int)
