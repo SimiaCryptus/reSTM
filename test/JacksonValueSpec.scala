@@ -36,7 +36,7 @@ class KryoValueSpec extends WordSpec with MustMatchers {
     "serialize values" in {
       val input: TestObj = new TestObj("foo")
       val string: String = KryoValue(input).toString
-      val output: TestObj = new KryoValue(string).deserialize[TestObj]().get
+      val output: TestObj = new KryoValue[TestObj](string).deserialize().get
       input mustBe output
     }
     "serialize generic values" in {
@@ -53,7 +53,7 @@ class KryoValueSpec extends WordSpec with MustMatchers {
 
   def verify[T <: AnyRef : ClassTag](input: T): Unit = {
     val string: String = KryoValue(input).toString
-    val output = new KryoValue(string).deserialize[T]().get
+    val output = new KryoValue[T](string).deserialize().get
     input mustBe output
   }
 }

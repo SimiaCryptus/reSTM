@@ -254,7 +254,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
 case class TaskSubscription(task: Task[_], queue:StmExecutionQueue)
 
 case class TaskData[T](
-                              kryoTask : Option[KryoValue] = None,
+                              kryoTask : Option[KryoValue[(Restm, ExecutionContext) => TaskResult[T]]] = None,
                               executorId : Option[String] = None,
                               result : Option[T] = None,
                               exception: Option[Throwable] = None,

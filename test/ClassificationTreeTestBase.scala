@@ -19,6 +19,7 @@ import storage.types.JacksonValue
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
+import scala.util.Random
 
 object ClassificationTreeTestBase {
 }
@@ -41,64 +42,64 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 
   "ClassificationTree" should {
     implicit def _cluster = cluster
-//    List(10,100).foreach(items=> {
-//      s"support insert and iterate over $items items" in {
-//        val collection = new ClassificationTree(new PointerType)
-//        val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
-//        input.foreach(collection.atomic().sync.add("data", _))
-//
-//
-//        (1 to 10).toList.map(_=>collection.atomic().sync.iterateTree(max = items)._2.toSet.size) mustBe (1 to 10).toList.map(_=>input.size)
-//        val output = collection.atomic().sync.iterateTree(max = items)._2.toSet
-//        output.size mustBe input.size
-//        output mustBe input
-//      }
-//    })
-//    List(100).foreach(items=> {
-//      s"model and classify against $items scalar items" in {
-//        val scale = 3.0
-//        val verify = 5
-//        val minCorrectPct = .5
-//
-//        val minCorrect: Int = (verify * 2 * minCorrectPct).floor.toInt
-//        val collection = new ClassificationTree(new PointerType)
-//        def randomItems(offset:Double=0.0,freq:Double=1.0) = {
-//          Stream.continually(Random.nextGaussian()*scale)
-//            .filter(x=>Math.pow(Math.sin(x*freq+offset),2)>Random.nextDouble())
-//            .map(x=>new ClassificationTreeItem(Map("value" -> (x))))
-//        }
-//
-//        Map(
-//          "A" -> randomItems(freq = 5),
-//          "B" -> randomItems(freq = 5, offset = 5)
-//        ).map(e => {
-//          val (key, value) = e
-//          value.take(items).foreach(x => collection.atomic().sync.add(key, x))
-//          key -> value.drop(items).take(verify).toList
-//        }).map(e=>{
-//          val (key, values) = e
-//          values.map(value=>{
-//            val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(value)
-//            println(s"$value routed to node "+JacksonValue.simple(id))
-//            println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
-//            println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id)))
-//            val counts = collection.atomic().sync.getClusterCount(id)
-//            println(s"Node Counts: "+JacksonValue.simple(counts))
-//            val predictions = counts.mapValues(_.toDouble / counts.values.sum)
-//            val prediction = predictions.maxBy(_._2)
-//            if(prediction._1 == key) {
-//              println(s"Correct Prediction: "+prediction)
-//              println()
-//              1
-//            } else {
-//              println(s"False Prediction: "+prediction)
-//              println()
-//              0
-//            }
-//          }).sum
-//        }).sum must be > minCorrect
-//      }
-//    })
+    List(10,100).foreach(items=> {
+      s"support insert and iterate over $items items" in {
+        val collection = new ClassificationTree(new PointerType)
+        val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
+        input.foreach(collection.atomic().sync.add("data", _))
+
+
+        (1 to 10).toList.map(_=>collection.atomic().sync.iterateTree(max = items)._2.toSet.size) mustBe (1 to 10).toList.map(_=>input.size)
+        val output = collection.atomic().sync.iterateTree(max = items)._2.toSet
+        output.size mustBe input.size
+        output mustBe input
+      }
+    })
+    List(100).foreach(items=> {
+      s"model and classify against $items scalar items" in {
+        val scale = 3.0
+        val verify = 5
+        val minCorrectPct = .5
+
+        val minCorrect: Int = (verify * 2 * minCorrectPct).floor.toInt
+        val collection = new ClassificationTree(new PointerType)
+        def randomItems(offset:Double=0.0,freq:Double=1.0) = {
+          Stream.continually(Random.nextGaussian()*scale)
+            .filter(x=>Math.pow(Math.sin(x*freq+offset),2)>Random.nextDouble())
+            .map(x=>new ClassificationTreeItem(Map("value" -> (x))))
+        }
+
+        Map(
+          "A" -> randomItems(freq = 5),
+          "B" -> randomItems(freq = 5, offset = 5)
+        ).map(e => {
+          val (key, value) = e
+          value.take(items).foreach(x => collection.atomic().sync.add(key, x))
+          key -> value.drop(items).take(verify).toList
+        }).map(e=>{
+          val (key, values) = e
+          values.map(value=>{
+            val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync.getClusterId(value)
+            println(s"$value routed to node "+JacksonValue.simple(id))
+            println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
+            println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id)))
+            val counts = collection.atomic().sync.getClusterCount(id)
+            println(s"Node Counts: "+JacksonValue.simple(counts))
+            val predictions = counts.mapValues(_.toDouble / counts.values.sum)
+            val prediction = predictions.maxBy(_._2)
+            if(prediction._1 == key) {
+              println(s"Correct Prediction: "+prediction)
+              println()
+              1
+            } else {
+              println(s"False Prediction: "+prediction)
+              println()
+              0
+            }
+          }).sum
+        }).sum must be > minCorrect
+      }
+    })
     List(1000).foreach(items=> {
       s"operations on $items item dictionary" in {
         StmDaemons.start()
@@ -109,7 +110,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 
         println(s"Populating tree at ${new Date()}")
         collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(branchThreshold = Int.MaxValue))
-        dictionary.take(items).foreach(x=>collection.atomic().sync(30.seconds).add("foo", x))
+        dictionary.take(items).grouped(64).map(_.toList).foreach(collection.atomic().sync(30.seconds).addAll("foo", _))
         println(s"Top-level rule generation at ${new Date()}")
         awaitTask(collection.atomic().sync.splitTree(new DefaultClassificationStrategy(branchThreshold = 16)), taskTimeout = 30.minutes)
         println()

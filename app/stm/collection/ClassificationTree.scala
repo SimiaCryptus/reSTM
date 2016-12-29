@@ -34,13 +34,13 @@ object ClassificationTree {
     def find(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[ClassificationTreeNode]] =
       root.read().flatMap(_.find(value).map(_.getOrElse(root)))
 
-    def add(label: String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
-      root.read().flatMap(_.add(label, value, root, strategy, 1).map(_=>Unit))
+    def add(value: List[LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+      root.read().flatMap(_.add(value, root, strategy, 1).map(_=>Unit))
     }
 
   }
   private def newClassificationTreeNode(parent : Option[STMPtr[ClassificationTreeNode]] = None)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-    new ClassificationTreeNode(parent, itemBuffer = Option(TreeCollection[LabeledItem]()))
+    new ClassificationTreeNode(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
 
 
   def splitFn(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) : (Restm, ExecutionContext) => TaskResult[Int] = (cluster, executionContext) => {
@@ -90,17 +90,17 @@ object ClassificationTree {
     pass : Option[STMPtr[ClassificationTreeNode]] = None,
     fail : Option[STMPtr[ClassificationTreeNode]] = None,
     exception : Option[STMPtr[ClassificationTreeNode]] = None,
-    itemBuffer : Option[TreeCollection[LabeledItem]],
-    rule : Option[KryoValue] = None
+    itemBuffer : Option[BatchedTreeCollection[LabeledItem]],
+    rule : Option[KryoValue[(ClassificationTreeItem)=>Boolean]] = None
   ) {
 
 
 
     private def this() = this(None, itemBuffer = None)
     def this(parent : Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-      this(parent, itemBuffer = Option(TreeCollection[LabeledItem]()))
+      this(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
 
-    def apply = rule.get.deserialize[(ClassificationTreeItem)=>Boolean]().get
+    def apply = rule.get.deserialize().get
 
     def getNextClusterMembers(cursor: Int, self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int, List[LabeledItem])] = {
       require(0 <= cursor)
@@ -214,7 +214,7 @@ object ClassificationTree {
 
     def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0)
              (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-      itemBuffer.map(_.stream().map(_.toList).flatMap((bufferedValues: List[LabeledItem]) => {
+      itemBuffer.map(_.stream().flatMap((bufferedValues: Stream[LabeledItem]) => {
         //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
         val nextValue: ClassificationTreeNode = copy(
           itemBuffer = None,
@@ -225,8 +225,8 @@ object ClassificationTree {
         )
         val result = if(null != nextValue.rule) {
           self.write(nextValue).flatMap(_ => {
-            Future.sequence(bufferedValues.map(item => {
-              nextValue.add(item.label, item.value, self, strategy, maxSplitDepth-1)
+            Future.sequence(bufferedValues.grouped(64).map(_.toList).map(item => {
+              nextValue.add(item, self, strategy, maxSplitDepth - 1)
             })).map(_.sum)
           })
         } else Future.successful(0)
@@ -238,12 +238,12 @@ object ClassificationTree {
       })
     }
 
-    def add(label: String, value: ClassificationTreeItem, self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1)
+    def add(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1)
            (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
       if(itemBuffer.isDefined) {
         //println(s"Adding an item ${value} - current size ${itemBuffer.get.sync.stream().size} id=${self.id}")
-        itemBuffer.get.add(new LabeledItem(label,value)).flatMap(_=>{
-          if (maxSplitDepth > 0 && strategy.split(itemBuffer.get.asInstanceOf[TreeCollection[ClassificationTree.LabeledItem]])) {
+        itemBuffer.get.add(value.toArray.toList).flatMap(_=>{
+          if (maxSplitDepth > 0 && strategy.split(itemBuffer.get.asInstanceOf[BatchedTreeCollection[ClassificationTree.LabeledItem]])) {
             self.lock().flatMap(locked=> {
               if(locked) {
                 split(self, strategy, maxSplitDepth)
@@ -257,14 +257,22 @@ object ClassificationTree {
         })
       } else {
         try {
-          if(apply(value)) {
-            pass.get.read().flatMap(_.add(label, value, pass.get, strategy, maxSplitDepth))
-          } else {
-            fail.get.read().flatMap(_.add(label, value, fail.get, strategy, maxSplitDepth))
-          }
+          val results: Map[Boolean, List[LabeledItem]] = value.groupBy(x=>apply(x.value))
+          Future.sequence(List(
+            if(results.get(true).isDefined) {
+              pass.get.read().flatMap(_.add(results(true), pass.get, strategy, maxSplitDepth))
+            } else {
+              Future.successful(0)
+            },
+            if(results.get(false).isDefined) {
+              fail.get.read().flatMap(_.add(results(false), fail.get, strategy, maxSplitDepth))
+            } else {
+              Future.successful(0)
+            }
+          )).map(_.reduceOption(_+_).getOrElse(0))
         } catch {
           case e : Throwable =>
-            exception.get.read().flatMap(_.add(label, value, exception.get, strategy, maxSplitDepth))
+            exception.get.read().flatMap(_.add(value, exception.get, strategy, maxSplitDepth))
         }
       }
     }
@@ -313,6 +321,7 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
       def setClusterStrategy(value: ClassificationStrategy) = sync { AtomicApi.this.setClusterStrategy(value) }
       def getClusterStrategy() = sync { AtomicApi.this.getClusterStrategy() }
       def add(label:String, value: ClassificationTreeItem) = sync { AtomicApi.this.add(label, value) }
+      def addAll(label:String, value: List[ClassificationTreeItem]) = sync { AtomicApi.this.addAll(label, value) }
       def getClusterId(value: ClassificationTreeItem) = sync { AtomicApi.this.getClusterId(value) }
       def getClusterPath(value: STMPtr[ClassificationTreeNode]) = sync { AtomicApi.this.getClusterPath(value) }
       def getClusterByTreeId(value: Int) = sync { AtomicApi.this.getClusterByTreeId(value) }
@@ -328,6 +337,7 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     def setClusterStrategy(value: ClassificationStrategy) = atomic { ClassificationTree.this.setClusterStrategy(value)(_,executionContext) }
     def getClusterStrategy() = atomic { ClassificationTree.this.getClusterStrategy()(_,executionContext) }
     def add(label:String, value: ClassificationTreeItem) = atomic { ClassificationTree.this.add(label, value)(_,executionContext) }
+    def addAll(label:String, value: List[ClassificationTreeItem]) = atomic { ClassificationTree.this.addAll(label, value)(_,executionContext) }
     def getClusterId(value: ClassificationTreeItem) = atomic { ClassificationTree.this.getClusterId(value)(_,executionContext) }
     def getClusterPath(value: STMPtr[ClassificationTreeNode]) = atomic { ClassificationTree.this.getClusterPath(value)(_,executionContext) }
     def getClusterByTreeId(value: Int) = atomic { ClassificationTree.this.getClusterByTreeId(value)(_,executionContext) }
@@ -343,6 +353,7 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
     def setClusterStrategy(value: ClassificationStrategy)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.setClusterStrategy(value) }
     def getClusterStrategy()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterStrategy() }
     def add(label:String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.add(label, value) }
+    def addAll(label:String, value: List[ClassificationTreeItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.addAll(label, value) }
     def getClusterId(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterId(value) }
     def getClusterPath(value: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterPath(value) }
     def getClusterByTreeId(value: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { ClassificationTree.this.getClusterByTreeId(value) }
@@ -359,7 +370,14 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
   def add(label:String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = Util.monitorFuture("ClassificationTree.add") {
     rootPtr.readOpt().flatMap(prev => {
       prev.orElse(Option(ClassificationTree.newClassificationTreeData()))
-        .map(state => state.add(label, value).map(state -> _)).get
+        .map(state => state.add(List(new LabeledItem(label, value))).map(state -> _)).get
+    }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>newRootData._2))
+  }
+
+  def addAll(label:String, value: List[ClassificationTreeItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = Util.monitorFuture("ClassificationTree.add") {
+    rootPtr.readOpt().flatMap(prev => {
+      prev.orElse(Option(ClassificationTree.newClassificationTreeData()))
+        .map(state => state.add(value.map(new LabeledItem(label, _))).map(state -> _)).get
     }).flatMap(newRootData => rootPtr.write((newRootData._1)).map(_=>newRootData._2))
   }
 

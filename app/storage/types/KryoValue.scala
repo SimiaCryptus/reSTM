@@ -15,7 +15,7 @@ object KryoValue {
     override def initialValue(): Kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
   }
 
-  def apply(value: AnyRef) = new KryoValue(toString(value))
+  def apply[T <: AnyRef](value: T) = new KryoValue[T](toString(value))
 
   def toString(value: AnyRef): String = Base64.getEncoder.encodeToString(serialize(value))
 
@@ -27,7 +27,7 @@ object KryoValue {
     byteArrayOutputStream.toByteArray
   }
 
-  def deserialize[T <: AnyRef : ClassTag](data: String): Option[T] = {
+  def deserialize[T <: AnyRef](data: String)(implicit classTag: ClassTag[T]): Option[T] = {
     Option(data)
       .filterNot(_.isEmpty)
       .map(Base64.getDecoder.decode(_))
@@ -43,16 +43,16 @@ object KryoValue {
   }
 }
 
-class KryoValue(val data: String) {
+class KryoValue[T <: AnyRef](val data: String) {
 
-  def deserialize[T <: AnyRef : ClassTag](): Option[T] = KryoValue.deserialize[T](data)
+  def deserialize()(implicit classTag: ClassTag[T]): Option[T] = KryoValue.deserialize[T](data)
 
   override def toString: String = data
 
   override def hashCode(): Int = data.hashCode()
 
   override def equals(obj: scala.Any): Boolean = obj match {
-    case x: KryoValue => data == x.data
+    case x: KryoValue[_] => data == x.data
     case _ => false
   }
 

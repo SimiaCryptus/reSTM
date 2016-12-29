@@ -37,7 +37,7 @@ class BdbColdStorage(path:String = "db", dbname:String = "db") extends ColdStora
     val keyEntry = new DatabaseEntry(id.toString.getBytes("UTF-8"))
     val valueEntry = new DatabaseEntry()
     if (db.get(null, keyEntry, valueEntry, LockMode.DEFAULT) == OperationStatus.SUCCESS) {
-      new KryoValue(new String(valueEntry.getData(), "UTF-8")).deserialize[Map[TimeStamp, ValueType]]().get
+      new KryoValue[Map[TimeStamp, ValueType]](new String(valueEntry.getData(), "UTF-8")).deserialize().get
     } else {
       Map.empty
     }

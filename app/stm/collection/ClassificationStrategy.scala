@@ -10,9 +10,9 @@ import scala.concurrent.ExecutionContext
 
 trait ClassificationStrategy {
 
-  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean
+  def getRule(values:Stream[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean
 
-  def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean
+  def split(buffer : BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean
 
 }
 
@@ -37,9 +37,10 @@ case class DefaultClassificationStrategy(
     result
   }
 
-  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
-    val rules: Set[((ClassificationTreeItem) => Boolean, Double)] = values.flatMap(_.value.attributes.keys).toSet.flatMap((field: String) => {
-      rules_Levenshtein(values, field) ++ rules_SimpleScalar(values, field)
+  def getRule(values:Stream[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
+    val valuesList = values.toList
+    val rules: Set[((ClassificationTreeItem) => Boolean, Double)] = valuesList.flatMap(_.value.attributes.keys).toSet.flatMap((field: String) => {
+      rules_Levenshtein(valuesList, field) ++ rules_SimpleScalar(valuesList, field)
     })
     if(!rules.isEmpty) rules.maxBy(_._2)._1
     else null
@@ -122,7 +123,7 @@ case class DefaultClassificationStrategy(
     })
   }
 
-  def split(buffer : TreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
+  def split(buffer : BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Boolean = {
     buffer.sync.size() > branchThreshold
   }
 }

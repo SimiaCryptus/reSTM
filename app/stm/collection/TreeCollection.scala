@@ -27,69 +27,75 @@ object TreeCollection {
       child.map(_.read().flatMap(_.apxSize).map(_*2)).getOrElse(Future.successful(1))
     }
 
-    def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-      right.map(_.sync.read.min).getOrElse(value)
+    def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[T] = {
+      right.map(_.read.flatMap(_.min)).getOrElse(Future.successful(value))
     }
 
-    def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): T = {
-      left.map(_.sync.read.min).getOrElse(value)
+    def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[T] = {
+      left.map(_.read.flatMap(_.max)).getOrElse(Future.successful(value))
     }
 
-    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): (Option[TreeCollectionNode[T]],T) = {
-      val childResult = if(Random.nextBoolean()) {
+    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(Option[TreeCollectionNode[T]], T)] = {
+      val childResult: Option[Future[(Option[TreeCollectionNode[T]], T)]] = if(Random.nextBoolean()) {
         left.map(ptr => {
-          val (newVal, revVal) = ptr.sync.read.get()
-          newVal.map(newVal => {
-            ptr.sync <= newVal
-            (Option(TreeCollectionNode.this), revVal)
-          }).getOrElse({
-            (Option(TreeCollectionNode.this.copy(left = None)), revVal)
+          ptr.read.flatMap(_.get()).flatMap(f => {
+            val (newVal, revVal) = f
+            val result: Future[(Option[TreeCollectionNode[T]], T)] = newVal.map(newVal => {
+              ptr.write(newVal).map(_ => (Option(TreeCollectionNode.this), revVal))
+            }).getOrElse({
+              Future.successful((Option(TreeCollectionNode.this.copy(left = None)), revVal))
+            })
+            result
           })
         }).orElse(right.map(ptr => {
-          val (newVal, revVal) = ptr.sync.read.get()
-          newVal.map(newVal => {
-            ptr.sync <= newVal
-            (Option(TreeCollectionNode.this), revVal)
-          }).getOrElse({
-            (Option(TreeCollectionNode.this.copy(right = None)), revVal)
+          val result: Future[(Option[TreeCollectionNode[T]], T)] = ptr.read.flatMap(_.get()).flatMap(f => {
+            val (newVal, revVal) = f
+            newVal.map(newVal => {
+              ptr.write(newVal).map(_ => (Option(TreeCollectionNode.this), revVal))
+            }).getOrElse({
+              Future.successful((Option(TreeCollectionNode.this.copy(right = None)), revVal))
+            })
           })
+          result
         }))
       } else {
         right.map(ptr => {
-          val (newVal, revVal) = ptr.sync.read.get()
-          newVal.map(newVal => {
-            ptr.sync <= newVal
-            (Option(TreeCollectionNode.this), revVal)
-          }).getOrElse({
-            (Option(TreeCollectionNode.this.copy(right = None)), revVal)
+          val result: Future[(Option[TreeCollectionNode[T]], T)] = ptr.read.flatMap(_.get()).flatMap(f => {
+            val (newVal, revVal) = f
+            newVal.map(newVal => {
+              ptr.write(newVal).map(_ => (Option(TreeCollectionNode.this), revVal))
+            }).getOrElse({
+              Future.successful((Option(TreeCollectionNode.this.copy(right = None)), revVal))
+            })
           })
+          result
         }).orElse(left.map(ptr => {
-          val (newVal, revVal) = ptr.sync.read.get()
-          newVal.map(newVal => {
-            ptr.sync <= newVal
-            (Option(TreeCollectionNode.this), revVal)
-          }).getOrElse({
-            (Option(TreeCollectionNode.this.copy(left = None)), revVal)
+          val result = ptr.read.flatMap(_.get()).flatMap(f => {
+            val (newVal, revVal) = f
+            newVal.map(newVal => {
+              ptr.write(newVal).map(_ => (Option(TreeCollectionNode.this), revVal))
+            }).getOrElse({
+              Future.successful((Option(TreeCollectionNode.this.copy(left = None)), revVal))
+            })
           })
+          result
         }))
       }
-      childResult.getOrElse((None, value))
+      childResult.getOrElse(Future.successful((None, value)))
     }
 
-    def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): TreeCollectionNode[T] = {
+    def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeCollectionNode[T]] = {
       if (Random.nextBoolean()) {
         left.map(leftPtr => {
-          leftPtr.sync <= (leftPtr.sync.read += newValue)
-          TreeCollectionNode.this
+          leftPtr.read.flatMap(_ += newValue).flatMap(leftPtr.write(_)).map(_=>TreeCollectionNode.this)
         }).getOrElse({
-          this.copy(left = Option(STMPtr.dynamicSync(TreeCollectionNode(newValue))))
+          STMPtr.dynamic(TreeCollectionNode(newValue)).map(x=>this.copy(left = Option(x)))
         })
       } else {
         right.map(rightPtr => {
-          rightPtr.sync <= (rightPtr.sync.read += newValue)
-          TreeCollectionNode.this
+          rightPtr.read.flatMap(_ += newValue).flatMap(rightPtr.write(_)).map(_=>TreeCollectionNode.this)
         }).getOrElse({
-          this.copy(right = Option(STMPtr.dynamicSync(TreeCollectionNode(newValue))))
+          STMPtr.dynamic(TreeCollectionNode(newValue)).map(x=>this.copy(right = Option(x)))
         })
       }
     }
@@ -193,16 +199,16 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
 
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.flatten).map(prev => {
-      prev.map(r => r += value).getOrElse(new TreeCollectionNode[T](value))
+    rootPtr.readOpt().map(_.flatten).flatMap(prev => {
+      prev.map(r => r += value).getOrElse(Future.successful(new TreeCollectionNode[T](value)))
     }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
   def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]]  = {
     rootPtr.readOpt().map(_.flatten).flatMap(value=>{
-      value.map(_.get()).map(newRootData => {
-          rootPtr.write(newRootData._1).map(_ => Option(newRootData._2))
-        }).getOrElse(Future.successful(None))
+      value.map(_.get()).map(_.flatMap(newRootData => {
+        rootPtr.write(newRootData._1).map(_ => Option(newRootData._2))
+      })).getOrElse(Future.successful(None))
     })
   }
 

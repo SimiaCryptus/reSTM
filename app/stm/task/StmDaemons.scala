@@ -11,11 +11,11 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object DaemonConfig {
   def apply(name:String, f:(Restm, ExecutionContext)=>Unit) = {
-    new DaemonConfig(name, KryoValue(f))
+    new DaemonConfig(name, KryoValue[(Restm, ExecutionContext)=>Unit](f))
   }
 }
-case class DaemonConfig(name: String, impl: KryoValue) {
-  def deserialize() = impl.deserialize[(Restm, ExecutionContext)=>Unit]()
+case class DaemonConfig(name: String, impl: KryoValue[(Restm, ExecutionContext)=>Unit]) {
+  def deserialize() = impl.deserialize()
 }
 
 object StmDaemons {
