@@ -13,3 +13,4 @@ target
 *.log
 /testDb
 /bin
+/covtype.data.txt
