@@ -43,10 +43,10 @@ GET    /sys/logs/*name              controllers.SystemController.listLog(name:St
 
 GET    /demo/sort                   controllers.DemoController.demoSort(n:Int = 100)
 
-PUT    /cluster/*treeId                 controllers.ClusterTreeController.add(treeId:String, label:String="_")
-GET    /cluster/*treeId                 controllers.ClusterTreeController.find(treeId:String)
-GET    /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
-POST   /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
 GET    /cluster/*treeId/*cluster/info   controllers.ClusterTreeController.info(treeId:String, cluster:Int)
 GET    /cluster/*treeId/*cluster/list   controllers.ClusterTreeController.list(treeId:String, cluster:Int, cursor:Int=0, maxItems:Int=100)
 POST   /cluster/*treeId/*cluster/split  controllers.ClusterTreeController.split(treeId:String, cluster:Int)
+GET    /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
+POST   /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
+POST    /cluster/*treeId/find           controllers.ClusterTreeController.find(treeId:String)
+PUT    /cluster/*treeId                 controllers.ClusterTreeController.add(treeId:String, label:String="_")

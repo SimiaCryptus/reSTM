@@ -16,6 +16,7 @@ object TaskUtil {
     val timeout = new Date(now.getTime + taskTimeout.toMillis)
     var continueLoop = true
     var lastSummary = ""
+    var lastChanged = now
     while (!sortTask.future.isCompleted && continueLoop) {
       if (!timeout.after(now)) throw new RuntimeException("Time Out")
 
@@ -33,6 +34,7 @@ object TaskUtil {
       val summary = JacksonValue.simple(statusSummary()).pretty
       if (lastSummary == summary) {
         System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
+        require(lastChanged.compareTo(new Date(now.getTime - 2.minutes.toMillis)) > 0)
       } else if (isOrphaned(statusTrace)) {
         //println(JacksonValue.simple(statusTrace).pretty)
         System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
@@ -43,7 +45,10 @@ object TaskUtil {
         System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
         //continueLoop = false
       }
-      lastSummary = summary
+      if(lastSummary != summary) {
+        lastSummary = summary
+        lastChanged = now
+      }
       if (continueLoop) Try {
         Await.ready(sortTask.future, 15.seconds)
       }

@@ -50,7 +50,7 @@ class LocalRestmSpec extends RestmSpecBase with BeforeAndAfterEach {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
 
-  val cluster = LocalRestmDb
+  val cluster = LocalRestmDb()
 }
 class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 

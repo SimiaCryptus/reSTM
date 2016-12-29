@@ -2,6 +2,7 @@ package stm
 
 import storage.Restm
 import storage.Restm._
+import util.Util
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration.{Duration, _}
@@ -20,7 +21,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
 
   var isClosed = false
 
-  private[stm] def commit()(implicit executionContext: ExecutionContext): Future[Unit] = {
+  private[stm] def commit()(implicit executionContext: ExecutionContext): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
     //if(writeLocks.isEmpty) Future.successful(Unit) else
     isClosed = true
     txnId.flatMap(txnId => Future.sequence(
@@ -33,7 +34,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
       .flatMap(cluster.commit)
   }
 
-  private[stm] def revert()(implicit executionContext: ExecutionContext): Future[Unit] = {
+  private[stm] def revert()(implicit executionContext: ExecutionContext): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
     isClosed = true
     //if(writeLocks.isEmpty) Future.successful(Unit) else
     txnId.flatMap(cluster.reset)
@@ -45,7 +46,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   private[stm] val initCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   private[stm] val writeCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
 
-  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => {
+  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.write") {
     require(!isClosed)
     readOpt(id).flatMap(prior => {
       if (value != prior.orNull) {
@@ -64,7 +65,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     })
   })
 
-  def delete(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit]  = txnId.flatMap(txnId => {
+  def delete(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit]  = txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.delete") {
     require(!isClosed)
     readOpt(id).flatMap(prior => {
       if (prior.isDefined) {
@@ -83,28 +84,31 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     })
   })
 
-  private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)(implicit executionContext: ExecutionContext): Future[Option[T]] = {
+  private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)
+                                                  (implicit executionContext: ExecutionContext): Future[Option[T]] = //Util.monitorFuture("STMTxnCtx.readOpt")
+  {
     require(!isClosed)
     writeCache.get(id).orElse(initCache.get(id))
     .map(x => Future.successful(x.map(_.asInstanceOf[T]))).getOrElse(
       readCache.getOrElseUpdate(id,
         txnId.flatMap(txnId => {
-          def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)
-            .filter(_.isCompleted)
-            .map(_.recover({ case _ => None }))
-            .flatMap(Await.result(_, 0.millisecond))
-            .map(_.asInstanceOf[T]))
-          val previousTime: Option[TimeStamp] = prior.map(_.txnId)
-            .map(_.recover({ case _ => None }))
-            .filter(_.isCompleted)
-            .map(Await.result(_, 0.millisecond))
-            .map(_.asInstanceOf[TimeStamp])
-          cluster.getPtr(id, txnId, previousTime).map(_.flatMap(_.deserialize[T]()).orElse(previousValue))
+//          def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)
+//            .filter(_.isCompleted)
+//            .map(_.recover({ case _ => None }))
+//            .flatMap(Await.result(_, 0.millisecond))
+//            .map(_.asInstanceOf[T]))
+//          val previousTime: Option[TimeStamp] = prior.map(_.txnId)
+//            .map(_.recover({ case _ => None }))
+//            .filter(_.isCompleted)
+//            .map(Await.result(_, 0.millisecond))
+//            .map(_.asInstanceOf[TimeStamp])
+//          cluster.getPtr(id, txnId, previousTime).map(_.flatMap(_.deserialize[T]()).orElse(previousValue))
+          cluster.getPtr(id, txnId).map(_.flatMap(_.deserialize[T]()))
         })
       ).map(_.map(_.asInstanceOf[T])))
   }
 
-  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = {
+  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = Util.monitorFuture("STMTxnCtx.lock") {
     writeLocks.getOrElseUpdate(id,
       txnId.flatMap(txnId => {
         require(!isClosed)

@@ -3,22 +3,26 @@ package storage.types
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 
+import com.esotericsoftware.kryo.Kryo
 import com.esotericsoftware.kryo.io.Input
 import com.twitter.chill.{Output, ScalaKryoInstantiator}
+import util.Util
 
 import scala.reflect._
 
 object KryoValue {
-  private def kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
+  private val kryo: ThreadLocal[Kryo] = new ThreadLocal[Kryo]{
+    override def initialValue(): Kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
+  }
 
   def apply(value: AnyRef) = new KryoValue(toString(value))
 
   def toString(value: AnyRef): String = Base64.getEncoder.encodeToString(serialize(value))
 
-  def serialize(value: AnyRef): Array[Byte] = {
+  def serialize(value: AnyRef): Array[Byte] = Util.monitorBlock("KryoValue.serialize") {
     val byteArrayOutputStream: ByteArrayOutputStream = new ByteArrayOutputStream
     val output = new Output(byteArrayOutputStream)
-    kryo.writeClassAndObject(output, value)
+    kryo.get().writeClassAndObject(output, value)
     output.close()
     byteArrayOutputStream.toByteArray
   }
@@ -31,10 +35,10 @@ object KryoValue {
       .flatMap(deserialize[T])
   }
 
-  def deserialize[T <: AnyRef : ClassTag](data: Array[Byte]): Option[T] = {
+  def deserialize[T <: AnyRef : ClassTag](data: Array[Byte]): Option[T] = Util.monitorBlock("KryoValue.deserialize") {
     Option(data)
       .map(new Input(_))
-      .map(kryo.readClassAndObject(_))
+      .map(kryo.get().readClassAndObject(_))
       .map(_.asInstanceOf[T])
   }
 }

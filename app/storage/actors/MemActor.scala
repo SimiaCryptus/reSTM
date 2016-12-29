@@ -15,7 +15,7 @@ class HistoryRecord(val time : TimeStamp, val value : ValueType) {
 class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
 
-  val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]
+  val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]()
   private[this] var lastRead: Option[TimeStamp] = None
   private[actors] var writeLock: Option[TimeStamp] = None
   private[this] var committed: Boolean = false
@@ -37,20 +37,46 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       })
     }
   }
-
-  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = Util.monitorFuture("MemActor.getValue") {
-    {
-      withActor {
-        writeLock.foreach(writeLock => if (writeLock < time) throw new TransactionConflict(writeLock))
-        lastRead = lastRead.filter(_ > time).orElse(Option(time))
-        Option(history.toArray.filter(_.time <= time)
-          .filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))))
-          .filterNot(_.isEmpty).map(_.maxBy(_.time).value)
-      }.andThen({
-        case Success(result) =>
-          logMsg(s"getValue($time, $ifModifiedSince) $result")
-        case e: Throwable => logMsg(s"getValue failed - $e")
+  val rwlock = new Object()
+  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = //Util.monitorFuture("MemActor.getValue")
+  {
+//    if(false && lastRead.filter(_ >= time).isDefined) //Util.monitorFuture("MemActor.getValue.1")
+//    {
+//      val record: Option[HistoryRecord] = history.synchronized {
+//        Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+//      }
+//      val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
+//      logMsg(s"getValue($time, $ifModifiedSince) $result")
+//      Future.successful(result)
+//    } else //Util.monitorFuture("MemActor.getValue.2")
+//    {
+//      rwlock.synchronized {
+//        writeLock.foreach(writeLock => if (writeLock < time) {
+//          logMsg(s"getValue failed - txn lock $writeLock")
+//          throw new TransactionConflict(writeLock)
+//        })
+//        lastRead = lastRead.filter(_ > time).orElse(Option(time))
+//      }
+//      val record: Option[HistoryRecord] = history.synchronized {
+//        Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+//      }
+//      val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
+//      logMsg(s"getValue($time, $ifModifiedSince) $result")
+//      Future.successful(result)
+//    }
+    withActor {
+      writeLock.foreach(writeLock => if (writeLock < time) {
+        logMsg(s"getValue failed - txn lock $writeLock")
+        throw new TransactionConflict(writeLock)
       })
+      lastRead = lastRead.filter(_ > time).orElse(Option(time))
+      val record: Option[HistoryRecord] = history.synchronized {
+        Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+      }
+      Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+      val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
+      logMsg(s"getValue($time, $ifModifiedSince) $result")
+      result
     }
   }
 
@@ -60,9 +86,13 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         if (history.nonEmpty) {
           false
         } else {
-          history += new HistoryRecord(time, value)
-          lastRead = Option(time)
-          writeLock = None
+          history.synchronized {
+            history += new HistoryRecord(time, value)
+          }
+          rwlock.synchronized {
+            lastRead = Option(time)
+            writeLock = None
+          }
           queuedValue = None
           committed = false
           true
@@ -78,24 +108,31 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = Util.monitorFuture("MemActor.writeLock") {
     {
       withActor {
-        if (writeLock.isDefined) {
-          if (writeLock.get == time) {
-            // Write-locked
-            logMsg(s"writeLock($time) ok - redundant")
-            None
+        rwlock.synchronized {
+          if (writeLock.isDefined) {
+            if (writeLock.get == time) {
+              // Write-locked
+              logMsg(s"writeLock($time) ok - redundant")
+              None
+            } else {
+              // Write-locked
+              logMsg(s"writeLock($time) failed - write locked @ $writeLock")
+              Option(writeLock.get)
+            }
+          } else if (lastRead.exists(_ > time)) {
+            // Read-locked
+            logMsg(s"writeLock($time) failed - read locked @ $lastRead")
+            Option(lastRead.get)
+          } else if (history.exists(_.time > time)) {
+            // Already written
+            val record = history.find(_.time >= time).get
+            logMsg(s"writeLock($time) failed - written @ ${record.time}")
+            Option(record.time)
           } else {
-            // Write-locked
-            logMsg(s"writeLock($time) failed - write locked @ $writeLock")
-            Option(writeLock.get)
+            logMsg(s"writeLock($time) ok")
+            writeLock = Option(time)
+            None
           }
-        } else if (lastRead.exists(_ > time)) {
-          // Read-locked
-          logMsg(s"writeLock($time) failed - read locked @ $lastRead")
-          Option(lastRead.get)
-        } else {
-          logMsg(s"writeLock($time) ok")
-          writeLock = Option(time)
-          None
         }
       }
     }
@@ -107,8 +144,12 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         if(!writeLock.contains(time)) throw new TransactionConflict(s"Lock mismatch: $writeLock != $time")
         require(queuedValue.isEmpty, "Value already queued")
         if (committed) {
-          history += new HistoryRecord(writeLock.get, value)
-          writeLock = None
+          history.synchronized {
+            history += new HistoryRecord(writeLock.get, value)
+          }
+          rwlock.synchronized {
+            writeLock = None
+          }
           queuedValue = None
           committed = false
           true
@@ -134,8 +175,12 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         require(writeLock.contains(time), s"Lock mismatch: $writeLock != $time")
         require(queuedValue.isEmpty, "Value already queued")
         if (committed) {
-          history += new HistoryRecord(writeLock.get, null)
-          writeLock = None
+          history.synchronized {
+            history += new HistoryRecord(writeLock.get, null)
+          }
+          rwlock.synchronized {
+            writeLock = None
+          }
           queuedValue = None
           committed = false
           true
@@ -160,9 +205,13 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       withActor {
         require(writeLock.contains(time), "Lock mismatch")
         if (queuedValue.isDefined) {
-          history --= history.filter(_.time==time).toList // Remove duplicate times caused by init
-          history += new HistoryRecord(writeLock.get, queuedValue.get)
-          writeLock = None
+          history.synchronized {
+            history --= history.filter(_.time==time).toList // Remove duplicate times caused by init
+            history += new HistoryRecord(writeLock.get, queuedValue.get)
+          }
+          rwlock.synchronized {
+            writeLock = None
+          }
           queuedValue = None
           committed = false
           true
@@ -186,7 +235,9 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     {
       withActor {
         require(writeLock.contains(time), "Lock mismatch")
-        writeLock = None
+        rwlock.synchronized {
+          writeLock = None
+        }
         queuedValue = None
         committed = false
       }.andThen({

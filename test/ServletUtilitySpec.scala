@@ -1,33 +1,78 @@
+import java.util.UUID
 import java.util.concurrent.Executors
 
+import controllers.RestmController.storageService
+import dispatch.{Http, as, url}
 import org.scalatest.{MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
+import stm.task.{StmDaemons, StmExecutionQueue}
 import storage.remote.RestmHttpClient
+import storage.types.JacksonValue
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext}
 
 
 class ServletUtilitySpec extends WordSpec with MustMatchers with OneServerPerTest {
-  implicit val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  private val baseUrl = s"http://localhost:$port"
+  implicit val cluster = new RestmHttpClient(baseUrl)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
   implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
 
-  "Single Node Servlet" should {
-    "provide demo sort class" in {
-//      StmExecutionQueue.verbose = true
-//      //StmDaemons.start()
-//      Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/init"))
-//      Thread.sleep(1000) // Allow platform to start
-//
-////      Desktop.getDesktop.browse(new URI(s"http://localhost:$port/demo/sort?n=10"))
-//      Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/logs/"))
-//
-//      //Thread.sleep(600.seconds.toMillis)
-//      //Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/shutdown"))
-//      Await.result(StmDaemons.join(), 300.minutes)
-//      Thread.sleep(1000) // Allow rest of processes to complete
+  //  "Single Node Servlet" should {
+  //    "provide demo sort class" in {
+  //      StmExecutionQueue.verbose = true
+  //      //StmDaemons.start()
+  //      Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/init"))
+  //      Thread.sleep(1000) // Allow platform to start
+  //
+  ////      Desktop.getDesktop.browse(new URI(s"http://localhost:$port/demo/sort?n=10"))
+  //      Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/logs/"))
+  //
+  //      //Thread.sleep(600.seconds.toMillis)
+  //      //Desktop.getDesktop.browse(new URI(s"http://localhost:$port/sys/shutdown"))
+  //      Await.result(StmDaemons.join(), 300.minutes)
+  //      Thread.sleep(1000) // Allow rest of processes to complete
+  //    }
+  //  }
+
+    "Single Node Servlet" should {
+      "provide demo sort class" in {
+        StmExecutionQueue.verbose = true
+        StmExecutionQueue.registerDaemons(4)(storageService,executionContext)
+        StmDaemons.start()
+        try {
+          Thread.sleep(1000) // Allow platform to start
+
+          val treeId = UUID.randomUUID().toString
+
+          //val result: String = Await.result(Http((url(baseUrl) / "cluster" / treeId).GET OK as.String), 30.seconds)
+
+          def insert(label:String, item:Any): String = {
+            val request = (url(baseUrl) / "cluster" / treeId).addQueryParameter("label", label)
+            Await.result(Http(request.PUT << JacksonValue(item).toString OK as.String), 30.seconds)
+          }
+          def query(item:Any): String = {
+            val request = (url(baseUrl) / "cluster" / treeId / "find")
+            Await.result(Http(request.POST << JacksonValue(item).toString OK as.String), 30.seconds)
+          }
+          def info(): String = {
+            val request = (url(baseUrl) / "cluster" / treeId / "config")
+            Await.result(Http(request.GET OK as.String), 30.seconds)
+          }
+
+          println(insert("A", Map("value" -> 5)))
+          println(query(Map("value" -> 5)))
+          println(info())
+
+          Await.result(Http((url(baseUrl) / "sys" / "shutdown").GET OK as.String), 30.seconds)
+          Await.result(StmDaemons.join(), 300.minutes)
+          Thread.sleep(1000) // Allow rest of processes to complete
+        } finally {
+          Await.result(StmDaemons.stop(), 10.seconds)
+        }
+      }
     }
-  }
 
 
 }

@@ -2,7 +2,7 @@ package stm.collection
 
 import stm.STMTxnCtx
 import stm.collection.ClassificationTree.{ClassificationTreeItem, LabeledItem}
-import util.LevenshteinDistance
+import util.{LevenshteinDistance, Util}
 
 import scala.collection.immutable.Seq
 import scala.collection.mutable
@@ -20,7 +20,7 @@ case class DefaultClassificationStrategy(
                                           branchThreshold : Int = 8
                                         ) extends ClassificationStrategy
 {
-  def fitness(left: Map[String, Map[Double,Int]], right: Map[String, Map[Double,Int]], exceptions: Map[String, Int]): Double = {
+  def fitness(left: Map[String, Map[Double,Int]], right: Map[String, Map[Double,Int]], exceptions: Map[String, Int]): Double = Util.monitorBlock("DefaultClassificationStrategy.fitness") {
     val result = {
       (left.keys ++ right.keys).toSet.map((label: String) =>{
         val leftOpt = left.getOrElse(label, Map.empty)
@@ -37,7 +37,7 @@ case class DefaultClassificationStrategy(
     result
   }
 
-  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = {
+  def getRule(values:List[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val rules: Set[((ClassificationTreeItem) => Boolean, Double)] = values.flatMap(_.value.attributes.keys).toSet.flatMap((field: String) => {
       rules_Levenshtein(values, field) ++ rules_SimpleScalar(values, field)
     })
@@ -45,16 +45,20 @@ case class DefaultClassificationStrategy(
     else null
   }
 
-  private def rules_SimpleScalar(values: List[LabeledItem], field: String) = metricRules(values,
-    _.value.attributes.get(field).filter(_.isInstanceOf[Number]).isDefined,
-    _.attributes(field).asInstanceOf[Number].doubleValue())
+  private def rules_SimpleScalar(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
+    metricRules(values,
+      _.value.attributes.get(field).filter(_.isInstanceOf[Number]).isDefined,
+      _.attributes(field).asInstanceOf[Number].doubleValue())
+  }
 
-  private def rules_Levenshtein(values: List[LabeledItem], field: String) = distanceRules(values,
-    _.value.attributes.get(field).filter(_.isInstanceOf[String]).isDefined,
-    _.attributes(field).toString(),
-    (a: String,b: String) => LevenshteinDistance.getDefaultInstance.apply(a,b))
+  private def rules_Levenshtein(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_Levenshtein") {
+    distanceRules(values,
+      _.value.attributes.get(field).filter(_.isInstanceOf[String]).isDefined,
+      _.attributes(field).toString(),
+      (a: String,b: String) => LevenshteinDistance.getDefaultInstance.apply(a,b))
+  }
 
-  private def distanceRules[T](values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => T, distance: (T, T) => Int) = {
+  private def distanceRules[T](values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => T, distance: (T, T) => Int) = Util.monitorBlock("DefaultClassificationStrategy.distanceRules") {
     val fileredItems: Seq[LabeledItem] = values.filter(filter)
     fileredItems.flatMap(center => {
       val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
@@ -91,7 +95,7 @@ case class DefaultClassificationStrategy(
     })
   }
 
-  private def metricRules(values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => Double) = {
+  private def metricRules(values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
     val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter).map(item => item.label -> metric(item.value))
       .map(item => item._1 -> item._2.asInstanceOf[Number].doubleValue().toDouble)

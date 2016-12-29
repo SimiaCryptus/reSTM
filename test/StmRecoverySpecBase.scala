@@ -2,7 +2,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
-import org.scalatestplus.play.OneServerPerTest
+import org.scalatestplus.play.OneServerPerSuite
 import stm.collection.TreeSet
 import stm.task.Task.TaskResult
 import stm.task.{StmExecutionQueue, Task}
@@ -127,7 +127,7 @@ class LocalStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
 
-  val cluster = LocalRestmDb
+  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
@@ -141,13 +141,13 @@ class LocalClusterStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfte
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class ServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerTest {
+class ServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite {
   val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
 
 
-class ActorServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerTest {
+class ActorServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite {
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }

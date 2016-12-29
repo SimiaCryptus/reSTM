@@ -3,7 +3,7 @@ import java.util.concurrent.Executors
 
 import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
-import org.scalatestplus.play.OneServerPerTest
+import org.scalatestplus.play.OneServerPerSuite
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm.PointerType
 import storage._
@@ -100,7 +100,7 @@ class LocalStmSpec extends StmSpecBase with BeforeAndAfterEach {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
 
-  val cluster = LocalRestmDb
+  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmSpec extends StmSpecBase with BeforeAndAfterEach {
@@ -115,12 +115,12 @@ class LocalClusterStmSpec extends StmSpecBase with BeforeAndAfterEach {
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class ServletStmSpec extends StmSpecBase with OneServerPerTest {
+class ServletStmSpec extends StmSpecBase with OneServerPerSuite {
   val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
 
-class ActorServletStmSpec extends StmSpecBase with OneServerPerTest {
+class ActorServletStmSpec extends StmSpecBase with OneServerPerSuite {
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.google.gson.{Gson, GsonBuilder, JsonElement}
+import util.Util
 
 import scala.reflect._
 
@@ -15,7 +16,7 @@ object JacksonValue {
   val mapper = new ObjectMapper().registerModule(DefaultScalaModule).enableDefaultTyping(DefaultTyping.NON_FINAL)
   val simpleMapper = new ObjectMapper().registerModule(DefaultScalaModule)
 
-  def simple(value: Any) = new JacksonValue({
+  def simple(value: Any) = new JacksonValue(Util.monitorBlock("JacksonValue.simple"){
     if (value.isInstanceOf[String]) {
       value.toString
     } else {
@@ -25,7 +26,7 @@ object JacksonValue {
     }
   })
 
-  def apply(value: Any) = new JacksonValue({
+  def apply(value: Any) = new JacksonValue(Util.monitorBlock("JacksonValue.serialize"){
     if (value.isInstanceOf[String]) {
       value.toString
     } else {
@@ -40,7 +41,8 @@ import storage.types.JacksonValue._
 
 class JacksonValue(val data: String) {
 
-  def deserialize[T <: AnyRef : ClassTag](): Option[T] = {
+  def deserialize[T <: AnyRef : ClassTag](): Option[T] = //Util.monitorBlock("JacksonValue.deserialize")
+  {
     if(classOf[String] == classTag[T].runtimeClass) {
       Option(data).asInstanceOf[Option[T]]
     } else {
@@ -52,7 +54,7 @@ class JacksonValue(val data: String) {
     }
   }
 
-  def pretty: String = {
+  def pretty: String = Util.monitorBlock("JacksonValue.pretty"){
     val gson: Gson = new GsonBuilder().setPrettyPrinting().create()
     gson.toJson(gson.fromJson(toString, classOf[JsonElement]))
   }

@@ -6,4 +6,6 @@ import storage.actors.RestmActors
 import scala.concurrent.ExecutionContext
 
 
-object LocalRestmDb extends RestmImpl(new RestmActors())(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+object LocalRestmDb {
+  def apply() = new RestmImpl(new RestmActors())(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+}

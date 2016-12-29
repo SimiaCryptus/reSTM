@@ -3,7 +3,7 @@ import java.util.{Date, UUID}
 
 import _root_.util.Util
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
-import org.scalatestplus.play.OneServerPerTest
+import org.scalatestplus.play.OneServerPerSuite
 import stm.collection.{LinkedList, TreeCollection, TreeMap, TreeSet}
 import stm.task.Task.TaskResult
 import stm.task.{StmExecutionQueue, Task}
@@ -255,7 +255,7 @@ class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEa
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
 
-  val cluster = LocalRestmDb
+  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
@@ -270,11 +270,11 @@ class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAnd
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerTest {
+class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
   val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
 }
 
-class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerTest {
+class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
