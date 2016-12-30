@@ -19,7 +19,8 @@ libraryDependencies ++= Seq(
   "commons-io" % "commons-io" % "2.5",
   "com.sleepycat" % "je" % "5.0.73",
   //"org.apache.commons" % "commons-text" % "0.1-SNAPSHOT",
-  "de.unkrig.commons" % "commons-text" % "1.2.7"
+  "de.unkrig.commons" % "commons-text" % "1.2.7",
+  "net.jpountz.lz4" % "lz4" % "1.3.0"
 )
 
 

@@ -5,8 +5,8 @@ import javax.inject._
 import akka.actor.ActorSystem
 import play.api.mvc._
 import stm.STMPtr
-import stm.collection.ClassificationTree.{ClassificationTreeItem, ClassificationTreeNode}
-import stm.collection.{ClassificationStrategy, ClassificationTree}
+import stm.collection.clustering.ClassificationTree.ClassificationTreeItem
+import stm.collection.clustering.{ClassificationStrategy, ClassificationTree, ClassificationTreeNode}
 import storage.types.JacksonValue
 import util.Util._
 

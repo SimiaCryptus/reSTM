@@ -23,7 +23,7 @@ object BatchedTreeCollection {
 
     def apxSize(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
       val child = if(Random.nextBoolean()) left.orElse(right) else right.orElse(left)
-      child.map(_.read().flatMap(_.apxSize).map(_*2)).getOrElse(Future.successful(1))
+      child.map(_.read().flatMap(_.apxSize).map(_*2)).getOrElse(value.read().map(_.deserialize()).map(_.size))
     }
 
     def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(Option[TreeCollectionNode[T]], List[T])] = {

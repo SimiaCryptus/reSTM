@@ -41,7 +41,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
   }
 
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
   s"TreeSet via ${getClass.getSimpleName}" should {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
@@ -259,7 +259,7 @@ class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEa
 }
 
 class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
   val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
@@ -267,15 +267,15 @@ class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAnd
     shards.foreach(_.clear())
   }
 
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
 }
 
 class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
 }
 
 class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
-  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 

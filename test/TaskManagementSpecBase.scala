@@ -20,7 +20,7 @@ import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 
 abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
   "Task management" should {
     def randomStr = UUID.randomUUID().toString.take(8)
@@ -91,7 +91,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
 
 class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach with BeforeAndAfterAll  {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
   val shards = (0 until 8).map(_ => new RestmActors(new BdbColdStorage(path = "testDb", dbname = UUID.randomUUID().toString))).toList
 
   override def beforeEach() {
@@ -101,5 +101,5 @@ class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeA
   override def afterAll() {
   }
 
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
 }

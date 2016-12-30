@@ -15,8 +15,8 @@ import scala.concurrent.{Await, ExecutionContext}
 
 class ServletUtilitySpec extends WordSpec with MustMatchers with OneServerPerTest {
   private val baseUrl = s"http://localhost:$port"
-  implicit val cluster = new RestmHttpClient(baseUrl)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  implicit val cluster = new RestmHttpClient(baseUrl)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
 
   //  "Single Node Servlet" should {

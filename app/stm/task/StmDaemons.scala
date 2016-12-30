@@ -1,6 +1,6 @@
 package stm.task
 
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{Executors, TimeUnit}
 
 import stm.collection.LinkedList
 import storage.Restm
@@ -24,7 +24,8 @@ object StmDaemons {
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]
   private[this] var mainThread: Option[Thread] = None
 
-  def start()(implicit cluster: Restm, executionContext: ExecutionContext) : Unit = {
+  def start()(implicit cluster: Restm) : Unit = {
+    implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(16))
     if(!mainThread.filter(_.isAlive).isDefined) mainThread = Option({
       val thread: Thread = new Thread(new Runnable {
         override def run(): Unit = try {

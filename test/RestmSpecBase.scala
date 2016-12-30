@@ -54,7 +54,7 @@ class LocalRestmSpec extends RestmSpecBase with BeforeAndAfterEach {
 }
 class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 
-  private val pool = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private val pool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
   val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
 }
 

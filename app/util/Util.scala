@@ -45,7 +45,7 @@ object Util {
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
     "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )
-  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 }
 import util.Util._
 

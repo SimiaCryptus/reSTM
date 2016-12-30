@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
 
 class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
-  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
   "HeapColdStorage" should {
     "persist and restore data" in {

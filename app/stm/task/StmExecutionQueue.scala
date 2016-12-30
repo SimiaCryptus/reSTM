@@ -9,6 +9,7 @@ import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
 import storage.Restm.PointerType
 
+import scala.collection.immutable.Seq
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Try}
@@ -89,9 +90,13 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
       taskTuple.map(tuple => {
         val (task: Task[AnyRef], function) = tuple
         if (verbose) println(s"Starting task ${task.id} at ${new Date()}")
-        val result = monitorBlock("StmExecutionQueue.runTask") { Try { function(cluster, executionContext) } }
-          .recoverWith({ case e =>
-            if (verbose) e.printStackTrace();
+        val result = monitorBlock("StmExecutionQueue.runTask") {
+          val tries: Seq[Try[TaskResult[_]]] = (1 to 3).map(_ => Try {
+            function(cluster, executionContext)
+          })
+          tries.find(_.isSuccess).getOrElse(tries.head)
+        }.recoverWith({ case e =>
+            e.printStackTrace()
             Failure(e)
           }).asInstanceOf[Try[TaskResult[AnyRef]]]
         monitorFuture("StmExecutionQueue.completeTask") {

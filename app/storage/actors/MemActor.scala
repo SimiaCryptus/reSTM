@@ -11,7 +11,10 @@ import scala.util.Success
 class HistoryRecord(val time : TimeStamp, val value : ValueType) {
   var coldStorageTs : Option[Long] = None
 }
+object MemActor {
+  val safeRead = false
 
+}
 class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
 
@@ -38,45 +41,50 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
   val rwlock = new Object()
+
+
   def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = //Util.monitorFuture("MemActor.getValue")
   {
-//    if(false && lastRead.filter(_ >= time).isDefined) //Util.monitorFuture("MemActor.getValue.1")
-//    {
-//      val record: Option[HistoryRecord] = history.synchronized {
-//        Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
-//      }
-//      val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
-//      logMsg(s"getValue($time, $ifModifiedSince) $result")
-//      Future.successful(result)
-//    } else //Util.monitorFuture("MemActor.getValue.2")
-//    {
-//      rwlock.synchronized {
-//        writeLock.foreach(writeLock => if (writeLock < time) {
-//          logMsg(s"getValue failed - txn lock $writeLock")
-//          throw new TransactionConflict(writeLock)
-//        })
-//        lastRead = lastRead.filter(_ > time).orElse(Option(time))
-//      }
-//      val record: Option[HistoryRecord] = history.synchronized {
-//        Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
-//      }
-//      val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
-//      logMsg(s"getValue($time, $ifModifiedSince) $result")
-//      Future.successful(result)
-//    }
-    withActor {
-      writeLock.foreach(writeLock => if (writeLock < time) {
-        logMsg(s"getValue failed - txn lock $writeLock")
-        throw new TransactionConflict(writeLock)
-      })
-      lastRead = lastRead.filter(_ > time).orElse(Option(time))
-      val record: Option[HistoryRecord] = history.synchronized {
+    if(MemActor.safeRead) {
+      withActor {
+        writeLock.foreach(writeLock => if (writeLock < time) {
+          logMsg(s"getValue failed - txn lock $writeLock")
+          throw new TransactionConflict(writeLock)
+        })
+        lastRead = lastRead.filter(_ > time).orElse(Option(time))
+        val record: Option[HistoryRecord] = history.synchronized {
+          Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+        }
         Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
+        logMsg(s"getValue($time, $ifModifiedSince) $result")
+        result
       }
-      Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
-      val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
-      logMsg(s"getValue($time, $ifModifiedSince) $result")
-      result
+    } else {
+      if(false && lastRead.filter(_ >= time).isDefined) //Util.monitorFuture("MemActor.getValue.1")
+      {
+        val record: Option[HistoryRecord] = history.synchronized {
+          Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+        }
+        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
+        logMsg(s"getValue($time, $ifModifiedSince) $result")
+        Future.successful(result)
+      } else //Util.monitorFuture("MemActor.getValue.2")
+      {
+        rwlock.synchronized {
+          writeLock.foreach(writeLock => if (writeLock < time) {
+            logMsg(s"getValue failed - txn lock $writeLock")
+            throw new TransactionConflict(writeLock)
+          })
+          lastRead = lastRead.filter(_ > time).orElse(Option(time))
+        }
+        val record: Option[HistoryRecord] = history.synchronized {
+          Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+        }
+        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value)
+        logMsg(s"getValue($time, $ifModifiedSince) $result")
+        Future.successful(result)
+      }
     }
   }
 

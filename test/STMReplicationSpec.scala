@@ -11,7 +11,7 @@ import storage.remote.RestmInternalStaticListReplicator
 import scala.concurrent.ExecutionContext
 
 class STMReplicationSpec extends WordSpec with MustMatchers {
-  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
   "RestmInternalStaticListReplicator" should {
     "persist and restore data" in {

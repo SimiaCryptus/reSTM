@@ -7,5 +7,5 @@ import scala.concurrent.ExecutionContext
 
 
 object LocalRestmDb {
-  def apply() = new RestmImpl(new RestmActors())(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  def apply() = new RestmImpl(new RestmActors())(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
 }

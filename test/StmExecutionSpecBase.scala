@@ -33,7 +33,7 @@ object StmExecutionSpecBase {
 
 abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
 
   "TreeCollection" should {
     val collection = new TreeCollection[String](new PointerType)
@@ -149,24 +149,24 @@ class LocalStmExecutionSpec extends StmExecutionSpecBase with BeforeAndAfterEach
 }
 
 class LocalClusterStmExecutionSpec extends StmExecutionSpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
   val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())
   }
 
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
 }
 
 class ServletStmExecutionSpec extends StmExecutionSpecBase with OneServerPerSuite {
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newCachedThreadPool()))
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
 }
 
 
 
 class ActorServletStmExecutionSpec extends StmExecutionSpecBase with OneServerPerSuite {
-  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 

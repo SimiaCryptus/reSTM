@@ -67,18 +67,20 @@ class LinkedList[T](rootPtr: STMPtr[Option[LinkedListHead[T]]]) {
 
   def add(value: T, strictness:Double = 1.0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
     val read: Future[LinkedListHead[T]] = rootPtr.readOpt().map(_.flatten).map(_.getOrElse(new LinkedListHead))
-    val update: Future[LinkedListHead[T]] = read.map(_.add(value, strictness))
+    val update: Future[LinkedListHead[T]] = read.flatMap(_.add(value, strictness))
     update.flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
   def remove(strictness:Double = 1.0)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
-    rootPtr.readOpt()
-      .map(_.flatten)
-      .map(_.map(r => r.remove(strictness)))
-      .flatMap(_.map(newRootTuple => {
+    rootPtr.readOpt().map(_.flatten)
+      .flatMap(x => {
+        x.map(r => r.remove(strictness)).map(_.map(Option(_))).getOrElse(Future.successful(None))
+      })
+      .flatMap(_.map((newRootTuple: (LinkedListHead[T], Option[T])) => {
         val (newRoot, removedItem) = newRootTuple
         rootPtr.write(Option(newRoot)).map(_ => removedItem)
-      }).getOrElse(Future.successful(None)))
+      })
+      .getOrElse(Future.successful(None)))
   }
 }
 
@@ -87,53 +89,58 @@ private case class LinkedListHead[T]
   head: Option[STMPtr[LinkedListNode[T]]] = None,
   tail: Option[STMPtr[LinkedListNode[T]]] = None
 ) {
-  def add(newValue: T, strictness:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): LinkedListHead[T] = {
+  def add(newValue: T, strictness:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[LinkedListHead[T]] = {
     if (head.isDefined) {
-      def insertAt(nodePtr: STMPtr[LinkedListNode[T]] = head.get): LinkedListHead[T] = {
-        val currentValue: LinkedListNode[T] = nodePtr.sync.read
-        if(currentValue.prev.isDefined && Random.nextDouble() > strictness) {
-          insertAt(currentValue.prev.get)
-        } else {
-          val newPtr = STMPtr.dynamicSync(LinkedListNode(newValue, prev = Option(nodePtr), next = currentValue.next))
-          nodePtr.sync <= currentValue.copy(next = Option(newPtr))
-          if (currentValue.next.isDefined) {
-            currentValue.next.foreach(ptr=>ptr.sync <= ptr.sync.read.copy(prev = Option(newPtr)))
-            LinkedListHead.this
-          } else {
-            LinkedListHead.this.copy(head = Option(newPtr))
-          }
-        }
+      def insertAt(nodePtr: STMPtr[LinkedListNode[T]] = head.get): Future[LinkedListHead[T]] = {
+          nodePtr.read.flatMap(currentValue=>{
+            if(currentValue.prev.isDefined && Random.nextDouble() > strictness) {
+              insertAt(currentValue.prev.get)
+            } else {
+              STMPtr.dynamic(LinkedListNode(newValue, prev = Option(nodePtr), next = currentValue.next)).flatMap(newPtr=>{
+                nodePtr.write(currentValue.copy(next = Option(newPtr))).flatMap(_=>{
+                  if (currentValue.next.isDefined) {
+                    Future.successful(currentValue.next.map(ptr=>{
+                      ptr.read.map(_.copy(prev = Option(newPtr))).map(ptr.write(_))
+                    })).map(_=>LinkedListHead.this)
+                  } else {
+                    Future.successful(LinkedListHead.this.copy(head = Option(newPtr)))
+                  }
+                })
+              })
+            }
+          })
       }
       insertAt()
     } else {
-      val newRoot = STMPtr.dynamicSync(LinkedListNode(newValue))
-      copy(head = Option(newRoot), tail = Option(newRoot))
+      STMPtr.dynamic(LinkedListNode(newValue)).map(newRoot=>copy(head = Option(newRoot), tail = Option(newRoot)))
     }
   }
 
-  def remove(strictness:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): (LinkedListHead[T], Option[T]) = {
+  def remove(strictness:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(LinkedListHead[T],Option[T])] = {
     if (tail.isDefined) {
-      def removeAt(nodePtr: STMPtr[LinkedListNode[T]] = tail.get): (LinkedListHead[T],Option[T]) = {
-        val currentValue: LinkedListNode[T] = nodePtr.sync.read
-        if(currentValue.next.isDefined && Random.nextDouble() > strictness) {
-          removeAt(currentValue.next.get)
-        } else {
-          currentValue.next.foreach(ptr => ptr.sync <= ptr.sync.read.copy(prev = currentValue.prev))
-          currentValue.prev.foreach(ptr => ptr.sync <= ptr.sync.read.copy(next = currentValue.next))
-          if(currentValue.prev.isDefined && currentValue.next.isDefined) {
-            (LinkedListHead.this, Option(currentValue.value))
-          } else if(currentValue.next.isDefined) {
-            (LinkedListHead.this.copy(tail = currentValue.next), Option(currentValue.value))
-          } else if(currentValue.prev.isDefined) {
-            (LinkedListHead.this.copy(head = currentValue.prev), Option(currentValue.value))
+      def removeAt(nodePtr: STMPtr[LinkedListNode[T]] = tail.get): Future[(LinkedListHead[T],Option[T])] = {
+        nodePtr.read.flatMap(currentValue=>{
+          if (currentValue.next.isDefined && Random.nextDouble() > strictness) {
+            removeAt(currentValue.next.get)
           } else {
-            (LinkedListHead.this.copy(head = None, tail = None), Option(currentValue.value))
+            Future.successful(currentValue.next.map(ptr => ptr.read.map(_.copy(prev = currentValue.prev)).flatMap(ptr.write(_)))).flatMap(_ =>
+              Future.successful(currentValue.next.map(ptr => ptr.read.map(_.copy(next = currentValue.next)).flatMap(ptr.write(_))))).map(_ => {
+              if (currentValue.prev.isDefined && currentValue.next.isDefined) {
+                (LinkedListHead.this, Option(currentValue.value))
+              } else if (currentValue.next.isDefined) {
+                (LinkedListHead.this.copy(tail = currentValue.next), Option(currentValue.value))
+              } else if (currentValue.prev.isDefined) {
+                (LinkedListHead.this.copy(head = currentValue.prev), Option(currentValue.value))
+              } else {
+                (LinkedListHead.this.copy(head = None, tail = None), Option(currentValue.value))
+              }
+            })
           }
-        }
+        })
       }
       removeAt()
     } else {
-      (this, None)
+      Future.successful((this, None))
     }
   }
 
