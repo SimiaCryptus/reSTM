@@ -4,6 +4,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import _root_.util.Util
 import _root_.util.Util._
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import storage.Restm._
 import storage.RestmInternal
 import storage.cold.{ColdStorage, HeapColdStorage}
@@ -18,7 +19,8 @@ object RestmActors {
 }
 
 class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends RestmInternal {
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("storage-actor-pool-%d").build()))
 
   protected var expireQueue = Executors.newScheduledThreadPool(1)
   protected val freezeQueue = new java.util.concurrent.LinkedBlockingDeque[AnyRef]()

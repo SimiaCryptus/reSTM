@@ -141,21 +141,26 @@ case class ClassificationTreeNode
            (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
     itemBuffer.map(_.stream().flatMap((bufferedValues: Stream[LabeledItem]) => {
       //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
-      val nextValue: ClassificationTreeNode = copy(
-        itemBuffer = None,
-        rule = Option(KryoValue(strategy.getRule(bufferedValues))),
-        pass = Option(STMPtr.dynamicSync(ClassificationTree.newClassificationTreeNode(Option(self)))),
-        fail = Option(STMPtr.dynamicSync(ClassificationTree.newClassificationTreeNode(Option(self)))),
-        exception = Option(STMPtr.dynamicSync(ClassificationTree.newClassificationTreeNode(Option(self))))
-      )
-      val result = if(null != nextValue.rule) {
-        self.write(nextValue).flatMap(_ => {
-          Future.sequence(bufferedValues.grouped(128).map(_.toList).map(item => {
-            nextValue.add(item, self, strategy, maxSplitDepth - 1)
-          })).map(_.sum)
-        })
-      } else Future.successful(0)
-      result
+      Future.sequence(List(
+        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
+        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
+        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self)))
+      )).flatMap(t=>{
+        val nextValue: ClassificationTreeNode = copy(
+          itemBuffer = None,
+          rule = Option(KryoValue(strategy.getRule(bufferedValues))),
+          pass = Option(t(0)),
+          fail = Option(t(1)),
+          exception = Option(t(2))
+        )
+        if (null != nextValue.rule) {
+          self.write(nextValue).flatMap(_ => {
+            Future.sequence(bufferedValues.grouped(128).map(_.toList).map(item => {
+              nextValue.add(item, self, strategy, maxSplitDepth - 1)
+            })).map(_.sum)
+          })
+        } else Future.successful(0)
+      })
       //.map(x=>{println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})");x})
     })).getOrElse({
       //println(s"Already split: ${self.id} -> (${pass.get.id}, ${fail.get.id}, ${exception.get.id})")

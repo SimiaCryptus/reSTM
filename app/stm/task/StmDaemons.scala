@@ -1,13 +1,15 @@
 package stm.task
 
-import java.util.concurrent.{Executors, TimeUnit}
+import java.util.concurrent._
 
-import stm.collection.LinkedList
+import com.google.common.util.concurrent.ThreadFactoryBuilder
+import stm.collection.SimpleLinkedList
 import storage.Restm
 import storage.Restm.PointerType
 import storage.types.KryoValue
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 object DaemonConfig {
   def apply(name:String, f:(Restm, ExecutionContext)=>Unit) = {
@@ -20,21 +22,33 @@ case class DaemonConfig(name: String, impl: KryoValue[(Restm, ExecutionContext)=
 
 object StmDaemons {
 
-  val config = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
+  val config = SimpleLinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]
   private[this] var mainThread: Option[Thread] = None
 
   def start()(implicit cluster: Restm) : Unit = {
-    implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(16))
     if(!mainThread.filter(_.isAlive).isDefined) mainThread = Option({
+
+
+
+      val pool = new ThreadPoolExecutor(32, 128, 5L, TimeUnit.SECONDS,
+        new LinkedBlockingQueue[Runnable],//new SynchronousQueue[Runnable],
+        new ThreadFactoryBuilder().setNameFormat("daemon-pool-%d").build())
+      val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
+      Await.result(StmExecutionQueue.init()(cluster, executionContext), 30.seconds)
       val thread: Thread = new Thread(new Runnable {
-        override def run(): Unit = try {
-          while(!Thread.interrupted()) {
-            startAll()
-            Thread.sleep(1000)
+        override def run(): Unit = {
+          implicit def _exe: ExecutionContext = executionContext
+          try {
+            while(!Thread.interrupted()) {
+              startAll()
+              Thread.sleep(1000)
+            }
+          } finally {
+            daemonThreads.values.foreach(_.interrupt())
+            pool.shutdown()
+            StmExecutionQueue.reset()
           }
-        } finally {
-          daemonThreads.values.foreach(_.interrupt())
         }
       })
       thread.setName("StmDaemons-poller")

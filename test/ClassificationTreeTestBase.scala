@@ -1,15 +1,16 @@
 import java.io.FileInputStream
 import java.util.Date
-import java.util.concurrent.Executors
+import java.util.concurrent.{ExecutorService, Executors}
 
 import TaskUtil._
 import _root_.util.Util
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.apache.commons.io.IOUtils
-import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.STMPtr
 import stm.collection.clustering.ClassificationTree._
-import stm.collection.clustering.{ClassificationTree, ClassificationTreeNode, DefaultClassificationStrategy}
+import stm.collection.clustering.{ClassificationTree, ClassificationTreeNode, DefaultClassificationStrategy, NoBranchStrategy}
 import stm.task.{StmDaemons, StmExecutionQueue}
 import storage.Restm._
 import storage._
@@ -20,30 +21,36 @@ import storage.types.JacksonValue
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Random
 
 object ClassificationTreeTestBase {
 }
 
-abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers with BeforeAndAfterEach {
+abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers with BeforeAndAfterEach with BeforeAndAfterAll {
+
 
   override def beforeEach() {
     super.beforeEach()
-    implicit val _cluster = cluster
+    pool = Executors.newFixedThreadPool(8, new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build())
+  }
+  override def afterAll() {
   }
   override def afterEach() {
     super.afterEach()
-    implicit val _cluster = cluster
-    Await.result(StmDaemons.stop(), 10.seconds)
-    Util.clearMetrics()
+    val cleanup = {
+      implicit val executionContext = ExecutionContext.fromExecutor(pool)
+      Await.result(StmDaemons.stop(), 30.seconds)
+      Util.clearMetrics()
+    }
+    pool.shutdown()
   }
 
   def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+
+  private var pool: ExecutorService = null
 
   "ClassificationTree" should {
-    implicit def _cluster = cluster
 //    List(10,100).foreach(items=> {
 //      s"support insert and iterate over $items items" in {
 //        val collection = new ClassificationTree(new PointerType)
@@ -152,43 +159,55 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       (1 to 4).map(i => s"Wilderness_Area_$i"), // (4 binary columns)     qualitative     0 (absence) or 1 (presence)  Wilderness area designation
       (1 to 40).map(i => s"Soil_Type_$i"), // (40 binary columns)          qualitative     0 (absence) or 1 (presence)  Soil Type designation
       List("Cover_Type") // (7 types)                    integer         1 to 7                       Forest Cover Type designation
-    ).flatten
-    lazy val dataSet = IOUtils.readLines(new FileInputStream("covtype.data.txt"), "UTF8").asScala.toList.toParArray
-      .map(_.trim).filterNot(_.isEmpty)
-      .map(line=>{
-        val values = line.split(",").map(Integer.parseInt(_).toInt)
+    ).flatten.toArray
+    lazy val dataSet = IOUtils.readLines(new FileInputStream("covtype.data.txt"), "UTF8").asScala
+      .map(_.trim).filterNot(_.isEmpty).toList.toParArray.map(_.split(",").map(Integer.parseInt(_)).toArray)
+      .map((values: Array[Int]) =>{
         val combined = fields.zip(values).toMap
         new ClassificationTreeItem(combined)
-      }).filter(_.attributes.contains("Cover_Type")).map(_->Random.nextDouble()).toList.sortBy(_._2).map(_._1)
-    List(1,10,100,1000,10000,100000).foreach(items=> {
+      }).filter(_.attributes.contains("Cover_Type")).map(_->Random.nextDouble()).toList.sortBy(_._2).map(_._1).toArray.toStream
+    List(1,100,10000,1000000).foreach(items=> {
       s"modeling on $items items from forest cover" in {
+        implicit val executionContext = ExecutionContext.fromExecutor(pool)
+        implicit val _cluster = cluster
+
+        println(s"Begin test at ${new Date()}")
         StmDaemons.start()
-        StmExecutionQueue.registerDaemons(8)
+        StmExecutionQueue.get().registerDaemons(8)
         val collection = new ClassificationTree(new PointerType)
+        collection.atomic().sync.setClusterStrategy(new NoBranchStrategy())
+        val testingSet = dataSet.take(100)
+        val trainingSet = dataSet.drop(100).take(items)
+        require(!testingSet.isEmpty)
+        require(!trainingSet.isEmpty)
 
-        println(s"Populating tree at ${new Date()}")
-        collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(branchThreshold = Int.MaxValue))
-
-        dataSet.take(items).groupBy(_.attributes("Cover_Type")).foreach(t=>{
-          val (cover_type: Any,stream: Seq[ClassificationTreeItem]) = t
-          stream.grouped(64).map(_.map(item=>item.copy(attributes = item.attributes - "Cover_Type")).toList).foreach(collection.atomic().sync(30.seconds).addAll(cover_type.toString, _))
+        print(s"Populating tree at ${new Date()}")
+        val insertFutures = trainingSet.groupBy(_.attributes("Cover_Type")).map(t => Future {
+          val (cover_type: Any, stream: Seq[ClassificationTreeItem]) = t
+          stream.map(item => item.copy(attributes = item.attributes - "Cover_Type")).grouped(256).map(_.toList)
+            .foreach(block => {
+              print(".")
+              Console.flush()
+              collection.atomic().sync(30.seconds).addAll(cover_type.toString, block)
+            })
         })
-
+        Await.result(Future.sequence(insertFutures), 5.minutes)
+        println(s"completed at ${new Date()}")
 
         println(s"Top-level rule generation at ${new Date()}")
-        awaitTask(collection.atomic().sync.splitTree(new DefaultClassificationStrategy(branchThreshold = 16)), taskTimeout = 30.minutes)
+        awaitTask(collection.atomic().sync(5.minutes).splitTree(new DefaultClassificationStrategy(branchThreshold = 16)), taskTimeout = 30.minutes)
         println()
         println(s"Second-level rule generation at ${new Date()}")
-        awaitTask(collection.atomic().sync.splitTree(new DefaultClassificationStrategy(branchThreshold = 4)), taskTimeout = 30.minutes)
+        awaitTask(collection.atomic().sync(5.minutes).splitTree(new DefaultClassificationStrategy(branchThreshold = 4)), taskTimeout = 30.minutes)
         println()
 
         println(s"Testing model at ${new Date()}")
-        val correct = dataSet.drop(items).take(100).map(item => {
+        val correct = testingSet.map(item => {
           val testValue = item.copy(attributes = item.attributes - "Cover_Type")
           val coverType = item.attributes("Cover_Type")
           val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(30.seconds).getClusterId(testValue)
           println()
-          println(s"$item routed to node "+JacksonValue.simple(id))
+          println(s"item routed to node "+JacksonValue.simple(id))
           //println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
           println(s"Tree Path: "+JacksonValue.simple(collection.atomic().sync.getClusterPath(id)))
           val counts: Map[String, Int] = collection.atomic().sync(5.minutes).getClusterCount(id)
@@ -212,7 +231,6 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
           }
         }).sum
         println(s"$correct correct out of 100")
-
         println(JacksonValue.simple(Util.getMetrics()).pretty)
         Util.clearMetrics()
       }
@@ -230,19 +248,24 @@ class LocalClassificationTreeTest extends ClassificationTreeTestBase with Before
   val cluster = LocalRestmDb()
 }
 
-class LocalClusterClassificationTreeTest extends ClassificationTreeTestBase with BeforeAndAfterEach {
+class LocalClusterClassificationTreeTest extends ClassificationTreeTestBase with BeforeAndAfterEach with BeforeAndAfterAll {
   val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     super.beforeEach()
     shards.foreach(_.clear())
   }
+  override def afterAll() {
+    restmPool.shutdown()
+  }
 
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  val restmPool = Executors.newFixedThreadPool(8, new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(restmPool))
 }
 
 class ServletClassificationTreeTest extends ClassificationTreeTestBase with OneServerPerTest {
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 

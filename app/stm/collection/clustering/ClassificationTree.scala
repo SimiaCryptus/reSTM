@@ -46,7 +46,7 @@ object ClassificationTree {
     new ClassificationTreeNode(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
 
 
-  def applyStrategy(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy)(implicit executionContext: ExecutionContext) : (Restm, ExecutionContext) => TaskResult[Int] =
+  def applyStrategy(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy) : (Restm, ExecutionContext) => TaskResult[Int] =
     (cluster, executionContext) => {
       val task: Future[TaskContinue[Int]] = {
         lazy val stateFuture: Future[Option[ClassificationTreeNode]] = {
@@ -79,7 +79,7 @@ object ClassificationTree {
         })(executionContext).flatMap(list=>{
           implicit var _exe = executionContext
           Future.sequence(list.map((x: (Restm, ExecutionContext) => TaskResult[Int]) => {
-            StmExecutionQueue.atomic(cluster, executionContext).add(x)
+            StmExecutionQueue.get().atomic(cluster, executionContext).add(x)
           }))
         })(executionContext)
       }.map(tasks => {
@@ -87,9 +87,9 @@ object ClassificationTree {
           implicit val _cluster = cluster
           implicit val _executionContext = executionContext
           new TaskSuccess(Await.result(Future.sequence(tasks.map(_.atomic()result())), 90.seconds).sum)
-        }, queue = StmExecutionQueue, newTriggers = tasks)
+        }, queue = StmExecutionQueue.get(), newTriggers = tasks)
       })(executionContext)
-      Await.result(task, 60.seconds)
+      Await.result(task, 5.minutes)
   }
 
 
@@ -230,7 +230,7 @@ class ClassificationTree(rootPtr: STMPtr[ClassificationTree.ClassificationTreeDa
 
   def splitCluster(node : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy)
                     (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = Util.monitorFuture("ClassificationTree.splitCluster") {
-    StmExecutionQueue.add(ClassificationTree.applyStrategy(node, strategy))
+    StmExecutionQueue.get().add(ClassificationTree.applyStrategy(node, strategy))
   }
 
   def splitTree(strategy: ClassificationStrategy)

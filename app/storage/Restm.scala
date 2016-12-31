@@ -16,7 +16,7 @@ object Restm {
 
 class TransactionConflict(val msg:String, val cause : Throwable, val conflitingTxn: TimeStamp)
   extends RuntimeException(msg, cause) {
-  def this(conflitingTxn: TimeStamp, cause:Throwable = null) = this("Already locked by " + conflitingTxn, cause, conflitingTxn)
+  def this(conflitingTxn: TimeStamp, cause:Throwable = null) = this({require(null != conflitingTxn);"Already locked by " + conflitingTxn}, cause, conflitingTxn)
   def this(msg:String) = this(msg, null, null)
   def this(msg:String, cause:Throwable) = this(msg, cause, {
     Option(cause).filter(_.isInstanceOf[TransactionConflict]).map(_.asInstanceOf[TransactionConflict].conflitingTxn).orNull

@@ -2,6 +2,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 import com.amazonaws.auth.{AWSCredentials, AWSStaticCredentialsProvider, BasicAWSCredentials}
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{MustMatchers, WordSpec}
 import stm.collection.TreeSet
 import storage.Restm._
@@ -13,7 +14,8 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
 
 class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
-  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "HeapColdStorage" should {
     "persist and restore data" in {

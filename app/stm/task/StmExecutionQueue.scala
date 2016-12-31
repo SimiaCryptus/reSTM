@@ -3,11 +3,10 @@ package stm.task
 import java.util.Date
 
 import _root_.util.Util._
-import stm.collection.LinkedList
+import stm.collection.MultiQueue
 import stm.task.Task._
 import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
-import storage.Restm.PointerType
 
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
@@ -15,10 +14,25 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Try}
 
 
-object StmExecutionQueue extends StmExecutionQueue(LinkedList.static[Task[_]](new PointerType("StmExecutionQueue/workQueue"))) {
+object StmExecutionQueue {
+  private var default : StmExecutionQueue = null
+
+  def init()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    new STMTxn[StmExecutionQueue] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
+        MultiQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
+      }
+    }.txnRun(cluster).map(x=>{default = x;x})
+  }
+  def get() = {
+    default
+  }
+  def reset()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    default = null
+  }
 }
 
-class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
+class StmExecutionQueue(val workQueue: MultiQueue[Task[_]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(f: Task[_]) = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }
@@ -45,7 +59,7 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
   }
 
   def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
-    workQueue.add(f, 0.2)
+    workQueue.add(f)
   }
 
   var verbose = false
@@ -56,7 +70,7 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
         try {
           val future = runTask(cluster, executionContext)
           val result = Await.result(future, 10.minutes)
-          if(!result) Thread.sleep(500)
+          if(!result) Thread.sleep(1000)
         } catch {
           case e: InterruptedException =>
             Thread.currentThread().interrupt()
@@ -71,18 +85,10 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
   }
 
   private[this] def runTask(implicit cluster: Restm, executionContext: ExecutionContext): Future[Boolean] = {
-    val executorName: String = ExecutionStatusManager.getName()
     val taskFuture = monitorFuture("StmExecutionQueue.getTask") {
       new STMTxn[Option[(Task[_], (Restm, ExecutionContext) => TaskResult[_])]] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-          workQueue.remove(0.2).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap(task => {
-            task.map(task => {
-              task.obtainTask(executorName).map(_.map(function => {
-                ExecutionStatusManager.start(executorName, task)
-                task -> function
-              }))
-            }).getOrElse(Future.successful(None))
-          })
+          getTask()
         }
       }.txnRun(cluster)(executionContext)
     }
@@ -103,12 +109,25 @@ class StmExecutionQueue(val workQueue: LinkedList[Task[_]]) {
           task.atomic()(cluster, executionContext).complete(result)
         }.map(_ => {
           if (verbose) println(s"Completed task ${task.id} at ${new Date()}")
-          ExecutionStatusManager.end(executorName, task)
+          ExecutionStatusManager.end(ExecutionStatusManager.getName(), task)
           true
         })
       }).getOrElse(Future.successful(false))
     })(executionContext)
 
+  }
+
+  private def getTask()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
+    val executorName: String = ExecutionStatusManager.getName()
+    workQueue.take(2).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap((task: Option[Task[AnyRef]]) => {
+      task.map(task => {
+        val obtainTask: Future[Option[(Restm, ExecutionContext) => TaskResult[AnyRef]]] = task.obtainTask(executorName)
+        obtainTask.map(_.map(function => {
+          ExecutionStatusManager.start(executorName, task)
+          task -> function
+        }))
+      }).getOrElse(Future.successful(None))
+    })
   }
 
   def registerDaemons(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext) = {

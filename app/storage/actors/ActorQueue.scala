@@ -16,6 +16,7 @@ trait ActorQueue {
 
   private[this] var closed = false
   def close() = closed = true
+  def logMsg(msg: String)(implicit exeCtx: ExecutionContext)
 
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {
     if(closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
@@ -35,7 +36,7 @@ trait ActorQueue {
 
   def errorHandler[T](implicit exeCtx: ExecutionContext): PartialFunction[Throwable, T] = {
     case e: Throwable =>
-      log(s"$this Error - " + e.getMessage)
+      logMsg(s"$this Error - " + e.getMessage)
       throw e
   }
 

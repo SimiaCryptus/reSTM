@@ -4,6 +4,7 @@ import java.util.UUID
 import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm._
 import stm.task.Task.TaskResult
 import stm.task.TaskStatus.Failed
@@ -27,7 +28,8 @@ object Task {
   final case class TaskSuccess[T](value:T) extends TaskResult[T]
   final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers:List[Task[T]] = List.empty) extends TaskResult[T]
 
-  private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(5)
+  private[stm] val scheduledThreadPool: ScheduledExecutorService = Executors.newScheduledThreadPool(5,
+    new ThreadFactoryBuilder().setNameFormat("task-monitor-pool-%d").build())
   private[Task] val futureCache = new TrieMap[AnyRef, Future[_]]()
 }
 import stm.task.Task._
@@ -150,7 +152,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   }
 
   @JsonIgnore def getStatusTrace(queue: Option[StmExecutionQueue])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
-    val queuedTasks = queue.map(_.workQueue.sync.stream().map(_.id).toSet).getOrElse(Set.empty)
+    val queuedTasks = queue.map(queue=>queue.workQueue.sync.stream().take(100).map(_.id).toSet).getOrElse(Set.empty)
     //System.out.println(s"Current tasks: ${queuedTasks.size}")
     val threads: Iterable[Thread] = Thread.getAllStackTraces.asScala.keys
     getStatusTrace(queuedTasks, threads)

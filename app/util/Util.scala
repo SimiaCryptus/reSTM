@@ -3,7 +3,7 @@ package util
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
-import com.google.common.util.concurrent.AtomicDouble
+import com.google.common.util.concurrent.{AtomicDouble, ThreadFactoryBuilder}
 import storage.TransactionConflict
 
 import scala.collection.concurrent.TrieMap
@@ -30,7 +30,7 @@ object Util {
     val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
     f.recover({
       case e : TransactionConflict =>
-        val wrappedEx = new TransactionConflict(e.conflitingTxn, e)
+        val wrappedEx = new TransactionConflict(e.msg, e, e.conflitingTxn)
         wrappedEx.setStackTrace(stackTrace)
         throw wrappedEx
       case e =>
@@ -45,7 +45,8 @@ object Util {
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
     "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )
-  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("code-metrics-pool-%d").build()))
 }
 import util.Util._
 

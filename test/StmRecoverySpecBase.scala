@@ -1,6 +1,7 @@
 import java.util.UUID
 import java.util.concurrent.Executors
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerSuite
 import stm.collection.TreeSet
@@ -25,7 +26,7 @@ object StmRecoverySpecBase {
     }.txnRun(cluster)(executionContext), 100.milliseconds)
     if (n>1) {
       val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter,n-1) _
-      new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue)
+      new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
     } else {
       new Task.TaskSuccess("foo")
     }
@@ -34,7 +35,8 @@ object StmRecoverySpecBase {
 
 abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Transactional Pointers" should {
     "basic writes" in {
@@ -131,24 +133,28 @@ class LocalStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
 }
 
 class LocalClusterStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
   val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())
   }
 
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 class ServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite {
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 
 
 class ActorServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite {
-  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 

@@ -41,7 +41,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   }
 
   private lazy val txnId = cluster.newTxn(priority)
-  private[this] val writeLocks = new TrieMap[PointerType,Future[_]]()
+  private[this] val writeLocks = new TrieMap[PointerType,Future[Boolean]]()
   private[stm] val readCache: TrieMap[PointerType, Future[Option[_]]] = new TrieMap()
   private[stm] val initCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   private[stm] val writeCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
@@ -50,7 +50,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     require(!isClosed)
     readOpt(id).flatMap(prior => {
       if (value != prior.orNull) {
-        lock(id).flatMap(x => {
+        lock(id).flatMap(_ => {
           if(!isClosed) {
             writeCache.put(id, Option(value))
             Future.successful(Unit)
@@ -69,7 +69,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     require(!isClosed)
     readOpt(id).flatMap(prior => {
       if (prior.isDefined) {
-        lock(id).flatMap(x => {
+        lock(id).flatMap(_ => {
           if(!isClosed) {
             writeCache.put(id, None)
             System.err.println(s"Post-commit delete for $id")
@@ -108,15 +108,17 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
       ).map(_.map(_.asInstanceOf[T])))
   }
 
-  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = Util.monitorFuture("STMTxnCtx.lock") {
-    writeLocks.getOrElseUpdate(id,
-      txnId.flatMap(txnId => {
-        require(!isClosed)
-        cluster.lock(id, txnId)
-      }).map(_.isEmpty)
-      .map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId") else success))
-      .asInstanceOf[Future[Boolean]]
+  private[stm] def lockOptional(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = {
+    writeLocks.getOrElseUpdate(id, txnId.flatMap(txnId => {
+      require(!isClosed)
+      cluster.lock(id, txnId)
+    }).map(_.isEmpty))
   }
+
+  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit] = {
+    lockOptional(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
+  }
+
   override def toString = {
     "txn@" + Option(txnId).filter(_.isCompleted).map(future => Await.result(future, 1.second))
       .map(_.toString).getOrElse("???")

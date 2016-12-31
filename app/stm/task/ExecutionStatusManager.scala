@@ -3,6 +3,7 @@ package stm.task
 import java.net.InetAddress
 import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import storage.Restm.PointerType
 
 import scala.collection.concurrent.TrieMap
@@ -31,7 +32,8 @@ object ExecutionStatusManager {
 
   def getName(): String = localName + ":" + Thread.currentThread().getName
 
-  private[this] val pool: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+  private[this] val pool: ScheduledExecutorService = Executors.newScheduledThreadPool(1,
+    new ThreadFactoryBuilder().setNameFormat("exe-status-pool-%d").build())
   private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
   private[this] val currentStatus = new TrieMap[String,TrieMap[PointerType,String]]()
 }

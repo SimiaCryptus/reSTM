@@ -39,8 +39,9 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     write(upadater(optValue.get)).map(_ => this)
   })
 
-  def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Boolean] = ctx.lock(id)
-    .recover({ case e => throw new RuntimeException(s"failed lock to $id", e) })
+  def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Boolean] = Util.chainEx(s"failed lock on $id") {
+    ctx.lockOptional(id)
+  }
 
   def default() : Future[Option[T]] = Future.successful(None)
 

@@ -21,14 +21,14 @@ object TaskUtil {
       if (!timeout.after(now)) throw new RuntimeException("Time Out")
 
       System.out.println(s"Checking Status at ${new Date()}...")
-      val statusTrace = sortTask.atomic(-0.milliseconds).sync(diagnosticsTimeout).getStatusTrace(Option(StmExecutionQueue))
+      val statusTrace = sortTask.atomic(-0.milliseconds).sync(diagnosticsTimeout).getStatusTrace(Option(StmExecutionQueue.get()))
 
       def isOrphaned(node: TaskStatusTrace): Boolean = (node.status.isInstanceOf[Orphan]) || node.children.exists(isOrphaned(_))
 
       def statusSummary(node: TaskStatusTrace = statusTrace): Map[String, Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
         .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ + _).getOrElse(0))
 
-      val numQueued = StmExecutionQueue.workQueue.atomic().sync(diagnosticsTimeout).size
+      val numQueued = Option(StmExecutionQueue.get()).map(_.workQueue.atomic().sync(diagnosticsTimeout).stream().take(100).size).filter(_<100).getOrElse(999)
       val numRunning = ExecutionStatusManager.currentlyRunning()
 
       val summary = JacksonValue.simple(statusSummary()).pretty

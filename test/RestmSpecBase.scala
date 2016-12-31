@@ -1,5 +1,6 @@
 import java.util.concurrent.Executors
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import storage.Restm
@@ -54,7 +55,8 @@ class LocalRestmSpec extends RestmSpecBase with BeforeAndAfterEach {
 }
 class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 
-  private val pool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  private val pool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
   val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
 }
 

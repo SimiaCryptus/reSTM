@@ -2,6 +2,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 import _root_.util.Util
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerSuite
 import stm.{STMPtr, STMTxn, STMTxnCtx}
@@ -23,7 +24,8 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
   }
 
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Transactional Pointers" should {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
@@ -104,7 +106,8 @@ class LocalStmSpec extends StmSpecBase with BeforeAndAfterEach {
 }
 
 class LocalClusterStmSpec extends StmSpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
   val shards = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
@@ -112,16 +115,19 @@ class LocalClusterStmSpec extends StmSpecBase with BeforeAndAfterEach {
     shards.foreach(_.clear())
   }
 
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 class ServletStmSpec extends StmSpecBase with OneServerPerSuite {
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8)))
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 
 class ActorServletStmSpec extends StmSpecBase with OneServerPerSuite {
-  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 

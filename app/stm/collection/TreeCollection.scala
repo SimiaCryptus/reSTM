@@ -4,8 +4,8 @@ import stm._
 import stm.collection.TreeCollection.TreeCollectionNode
 import stm.task.Task.{TaskResult, TaskSuccess}
 import stm.task.{StmExecutionQueue, Task}
-import storage.Restm
 import storage.Restm.PointerType
+import storage.{Restm, TransactionConflict}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -23,8 +23,19 @@ object TreeCollection {
   ) {
 
     def apxSize(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
-      val child = if(Random.nextBoolean()) left.orElse(right) else right.orElse(left)
-      child.map(_.read().flatMap(_.apxSize).map(_*2)).getOrElse(Future.successful(1))
+      if(!right.isDefined && !left.isDefined) {
+        Future.successful(1)
+      } else if(right.isDefined && left.isDefined) {
+        val childs = (if(Random.nextBoolean()) List(left, right) else List(right, left)).map(_.get)
+        try {
+          childs(0).read().flatMap(_.apxSize).map(_*2)
+        } catch {
+          case e : TransactionConflict =>
+            childs(1).read().flatMap(_.apxSize).map(_*2)
+        }
+      } else {
+        left.orElse(right).map(_.read().flatMap(_.apxSize).map(_*2)).get
+      }
     }
 
     def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[T] = {
@@ -109,10 +120,10 @@ object TreeCollection {
       case _ => false
     }
 
-    def sortTask(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]) : Task[LinkedList[T]] = {
+    def sortTask(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]) : Task[SimpleLinkedList[T]] = {
       implicit val _cluster = cluster
       implicit val _executionContext = executionContext
-      StmExecutionQueue.atomic.sync.add(sort());
+      StmExecutionQueue.get().atomic.sync.add(sort());
     }
 
     def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) : Future[Stream[T]] = {
@@ -123,21 +134,21 @@ object TreeCollection {
       )).map(_.reduce(_++_))
     }
 
-    def sort()(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]) : TaskResult[LinkedList[T]] = {
-      val tasks: List[Task[LinkedList[T]]] = {
+    def sort()(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]) : TaskResult[SimpleLinkedList[T]] = {
+      val tasks: List[Task[SimpleLinkedList[T]]] = {
         implicit val _cluster = cluster
         implicit val _executionContext = executionContext
-        val leftList: Option[Task[LinkedList[T]]] = left.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster,executionContext))
-        val rightList: Option[Task[LinkedList[T]]] = right.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster,executionContext))
+        val leftList: Option[Task[SimpleLinkedList[T]]] = left.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster,executionContext))
+        val rightList: Option[Task[SimpleLinkedList[T]]] = right.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster,executionContext))
         List(leftList, rightList).filter(_.isDefined).map(_.get)
       }
       new Task.TaskContinue(newFunction = (cluster,executionContext) =>{
         implicit val _cluster = cluster
         implicit val _executionContext = executionContext
         val sources = tasks.map(_.atomic().sync.result())
-        def read(list: LinkedList[T]): Option[(T, Option[LinkedList[T]])] = list.atomic().sync.remove().map(_ -> Option(list))
+        def read(list: SimpleLinkedList[T]): Option[(T, Option[SimpleLinkedList[T]])] = list.atomic().sync.remove().map(_ -> Option(list))
         var cursors = (sources.map(list => read(list)).filter(_.isDefined).map(_.get) ++ List(value->None))
-        val result = LinkedList.static[T](new PointerType)
+        val result = SimpleLinkedList.static[T](new PointerType)
         while(!cursors.isEmpty) {
           val (nextValue, optList) = cursors.minBy(_._1)
           result.atomic().sync.add(nextValue)
@@ -145,7 +156,7 @@ object TreeCollection {
           cursors = optList.flatMap(list=>read(list)).map(cursors++List(_)).getOrElse(cursors)
         }
         new TaskSuccess(result)
-      }, queue = StmExecutionQueue, newTriggers = tasks)
+      }, queue = StmExecutionQueue.get(), newTriggers = tasks)
     }
 
   }

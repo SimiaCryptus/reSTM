@@ -1,6 +1,7 @@
 import java.util.UUID
 import java.util.concurrent.Executors
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{MustMatchers, WordSpec}
 import stm.collection.TreeSet
 import storage.Restm._
@@ -11,7 +12,8 @@ import storage.remote.RestmInternalStaticListReplicator
 import scala.concurrent.ExecutionContext
 
 class STMReplicationSpec extends WordSpec with MustMatchers {
-  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+  implicit val executor: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "RestmInternalStaticListReplicator" should {
     "persist and restore data" in {
