@@ -119,7 +119,7 @@ private case class SimpleLinkedListHead[T]
             .flatMap(_ => self.write(copy(tail = Option(nextPtr))))
           writeFuture.map(_=>Option(tailValue.value))
         } else {
-          require(tail == head)
+          require(tail == head, "List header seems to be corrupt")
           self.write(copy(tail = None, head = None)).map(_=>Option(tailValue.value))
         }
       })

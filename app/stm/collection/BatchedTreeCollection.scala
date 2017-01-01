@@ -150,7 +150,7 @@ object BatchedTreeCollection {
           val bit: Int = parentNode.getTreeBit(self)
           parentId * 2 + bit
         })
-      })).getOrElse(Future.successful(1)).map(id=>{
+      })).getOrElse(Future.successful(1l)).map((id: Long) =>{
         if(id < 0) throw new RuntimeException("Node is too deep to calculate id")
         id
       })

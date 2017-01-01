@@ -28,7 +28,10 @@ object TaskUtil {
       def statusSummary(node: TaskStatusTrace = statusTrace): Map[String, Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
         .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ + _).getOrElse(0))
 
-      val numQueued = Option(StmExecutionQueue.get()).map(_.workQueue.atomic().sync(diagnosticsTimeout).stream().take(100).size).filter(_<100).getOrElse(999)
+      val numQueued = Option(StmExecutionQueue.get()).map(queue=>{
+        val list = queue.workQueue.atomic().sync(diagnosticsTimeout).stream().take(1000).toList
+        list.size
+      }).filter(_<1000).getOrElse(999)
       val numRunning = ExecutionStatusManager.currentlyRunning()
 
       val summary = JacksonValue.simple(statusSummary()).pretty

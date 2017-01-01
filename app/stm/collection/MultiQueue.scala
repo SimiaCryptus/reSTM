@@ -151,7 +151,7 @@ class MultiQueue[T](rootPtr: STMPtr[MultiQueue.MultiQueueData[T]]) {
     })
   }
 
-  private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
     rootPtr.readOpt().map(_.orElse(Option(new MultiQueue.MultiQueueData[T]()))).map(_.get)
   }
 

@@ -76,6 +76,21 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     })
   }
 
+  s"DistributedScalar via ${getClass.getSimpleName}" should {
+    List(1, 10, 100).foreach(items=>{
+      s"accumulates $items values" in {
+        def randomStream = Stream.continually(Random.nextDouble())
+        val collection = DistributedScalar.createSync(8)
+        val input = randomStream.take(items).sorted.toList
+        input.foreach(collection.atomic().sync.add(_))
+        val outputSum = collection.atomic().sync.get()
+        val inputSum = input.reduce(_+_)
+        outputSum mustBe inputSum
+        println(JacksonValue.simple(Util.getMetrics()).pretty)
+      }
+    })
+  }
+
   s"TreeSet via ${getClass.getSimpleName}" should {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
     List(1,10,100).foreach(items=>s"synchronous insert and verify with $items items" in {
