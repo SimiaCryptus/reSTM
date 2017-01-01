@@ -5,7 +5,7 @@ import javax.inject._
 import akka.actor.ActorSystem
 import play.api.mvc._
 import stm.STMPtr
-import stm.collection.clustering.ClassificationTree.ClassificationTreeItem
+import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
 import stm.collection.clustering.{ClassificationStrategy, ClassificationTree, ClassificationTreeNode}
 import storage.types.JacksonValue
 import util.Util._
@@ -88,12 +88,14 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
   }}
 
   def list(treeId:String, clusterId:Int, cursor:Int=0, maxItems:Int=100) = Action.async { request => monitorFuture("ClusterTreeController.list"){
-    val tree = ClassificationTree(treeId).atomic()
-    tree.getClusterByTreeId(clusterId).flatMap((ptr: STMPtr[ClassificationTreeNode]) => {
-      tree.iterateCluster(ptr, maxItems, cursor).map( result => {
-          Ok(JacksonValue(result).pretty).as("application/json")
+    ClassificationTree(treeId).atomic().getClusterByTreeId(clusterId)
+      .flatMap((nodePtr: STMPtr[ClassificationTreeNode]) => {
+        nodePtr.atomic.read.flatMap((node: ClassificationTreeNode) =>{
+          node.atomic().stream(nodePtr).map((items: Stream[LabeledItem]) =>{
+            Ok(JacksonValue(items.toList).pretty).as("application/json")
+          })
+        })
       })
-    })
   }}
 
   def split(treeId:String, clusterId:Int) = Action.async { request => monitorFuture("ClusterTreeController.split"){

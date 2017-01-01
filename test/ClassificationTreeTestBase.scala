@@ -1,6 +1,6 @@
 import java.io.FileInputStream
 import java.util.Date
-import java.util.concurrent.{ExecutorService, Executors}
+import java.util.concurrent.{ExecutorService, Executors, TimeUnit}
 
 import TaskUtil._
 import _root_.util.Util
@@ -43,7 +43,8 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       Await.result(StmDaemons.stop(), 30.seconds)
       Util.clearMetrics()
     }
-    pool.shutdown()
+    pool.shutdownNow()
+    pool.awaitTermination(1, TimeUnit.MINUTES)
   }
 
   def cluster: Restm
@@ -51,19 +52,36 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
   private var pool: ExecutorService = null
 
   "ClassificationTree" should {
-//    List(10,100).foreach(items=> {
-//      s"support insert and iterate over $items items" in {
-//        val collection = new ClassificationTree(new PointerType)
-//        val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
-//        input.foreach(collection.atomic().sync.add("data", _))
-//
-//
-//        (1 to 10).toList.map(_=>collection.atomic().sync.iterateTree(max = items)._2.toSet.size) mustBe (1 to 10).toList.map(_=>input.size)
-//        val output = collection.atomic().sync.iterateTree(max = items)._2.toSet
-//        output.size mustBe input.size
-//        output mustBe input
-//      }
-//    })
+    List(5,10,100, 1000).foreach(items=> {
+      s"support insert and iterate over $items items" in {
+        implicit val executionContext = ExecutionContext.fromExecutor(pool)
+        implicit val _cluster = cluster
+        val collection = new ClassificationTree(new PointerType)
+        collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(1))
+        val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
+        input.foreach(collection.atomic().sync.add("data", _))
+
+
+        val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root
+        def print(prefix:String, nodePtr:STMPtr[ClassificationTreeNode]):Unit = {
+          val node: ClassificationTreeNode = nodePtr.atomic.sync.read
+          val nodeId = node.atomic().sync.getTreeId(nodePtr, rootPtr)
+          val nodeSize = node.itemBuffer.map(_.atomic().sync.size()).getOrElse(0)
+          println(prefix+s"Node $nodeId size $nodeSize")
+          node.pass.foreach(pass=>print(prefix+" ",pass))
+          node.fail.foreach(fail=>print(prefix+" ",fail))
+          node.exception.foreach(ex=>print(prefix+" ",ex))
+        }
+        print("",rootPtr)
+
+
+        val output = collection.atomic().sync.stream().map(_.value).toSet
+        output.size mustBe input.size
+        output mustBe input
+      }
+    })
+
+
 //    List(100).foreach(items=> {
 //      s"model and classify against $items scalar items" in {
 //        val scale = 3.0
@@ -145,6 +163,10 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 //        Util.clearMetrics()
 //      }
 //    })
+
+
+
+
     val fields = List(
       List("Elevation"), //                              quantitative    meters                       Elevation in meters
       List("Aspect"), //                                 quantitative    azimuth                      Aspect in degrees azimuth

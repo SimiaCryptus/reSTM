@@ -13,6 +13,21 @@ import scala.util.{Failure, Success, Try}
 
 
 object Util {
+  def mod(a:Long, b:Int) : Int = {
+    val result = (a % b).toInt
+    if(result < 0) result + b
+    else result
+  }
+  def toDigits(number:Long, radix:Int) : List[Int] = {
+    if(number == 0) {
+      List.empty
+    } else {
+      val bit = mod(number, radix)
+      val remainder = Math.floorDiv(number - bit, radix)
+      toDigits(remainder, radix) ++ List(bit)
+    }
+  }
+
   def clearMetrics(): Unit = {
     codeMetricsData.clear()
   }
