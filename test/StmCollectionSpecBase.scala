@@ -36,7 +36,7 @@ object StmCollectionSpecBase {
   }
 }
 
-abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with BeforeAndAfterEach {
+abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach with MustMatchers {
 
   override def afterEach() {
     Util.clearMetrics()
@@ -48,7 +48,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
 
 
 
-  s"BatchedTreeCollection via ${getClass.getSimpleName}" should {
+  s"BatchedTreeCollection via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
     List(1, 10, 100).foreach(items=>{
@@ -76,7 +76,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     })
   }
 
-  s"DistributedScalar via ${getClass.getSimpleName}" should {
+  s"DistributedScalar via ${getClass.getSimpleName}" must {
     List(1, 10, 100).foreach(items=>{
       s"accumulates $items values" in {
         def randomStream = Stream.continually(Random.nextDouble())
@@ -85,13 +85,13 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         input.foreach(collection.atomic().sync.add(_))
         val outputSum = collection.atomic().sync.get()
         val inputSum = input.reduce(_+_)
-        outputSum mustBe inputSum
+        outputSum mustBe inputSum +- 0.000001
         println(JacksonValue.simple(Util.getMetrics()).pretty)
       }
     })
   }
 
-  s"TreeSet via ${getClass.getSimpleName}" should {
+  s"TreeSet via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
     List(1,10,100).foreach(items=>s"synchronous insert and verify with $items items" in {
       val collection = new TreeSet[String](new PointerType)
@@ -126,7 +126,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
               sync.contains(item) mustBe false
             }
           } catch {
-            case e => throw new RuntimeException(s"Error in item $item", e)
+            case e : Throwable => throw new RuntimeException(s"Error in item $item", e)
           }
         }(executionContext2)
         Await.result(Future.sequence(futures), 1.minutes)
@@ -136,7 +136,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     )
   }
 
-  s"TreeCollection via ${getClass.getSimpleName}" should {
+  s"TreeCollection via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
     List(10,100,1000).foreach(items=>{
@@ -160,7 +160,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     })
   }
 //
-//  s"TreeMap via ${getClass.getSimpleName}" should {
+//  s"TreeMap via ${getClass.getSimpleName}" must {
 //    val collection = new TreeMap[String,String](new PointerType)
 //    def randomStr = UUID.randomUUID().toString.take(8)
 //    def randomUUIDs: Stream[(String,String)] = Stream.continually((randomStr, randomStr))
@@ -240,7 +240,7 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
 //    })
 //  }
 
-  s"SimpleLinkedList via ${getClass.getSimpleName}" should {
+  s"SimpleLinkedList via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
     List(10,100,1000).foreach(items=> {
       s"synchronous add and remove with $items items" in {
@@ -297,12 +297,12 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     })
   }
 
-  s"MultiQueue via ${getClass.getSimpleName}" should {
+  s"MultiQueue via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
     List(10,100,1000).foreach(items=> {
       s"synchronous add and remove with $items items" in {
-        val collection = MultiQueue.createSync[String](8)
-        val input: List[String] = randomUUIDs.take(items).toList
+        val collection = IdQueue.createSync[TestValue](8)
+        val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
         input.foreach(collection.atomic().sync.add(_))
         val output = Stream.continually(collection.atomic().sync.take()).takeWhile(_.isDefined).map(_.get).toList
         output.toSet mustBe input.toSet
@@ -316,18 +316,18 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
         val maxRetries = 1000
         val totalTimeout = 5.minutes
 
-        val input = randomUUIDs.take(items).toList
+        val input = randomUUIDs.take(items).toList.map(new TestValue(_))
         val pool = Executors.newFixedThreadPool(20)
         val exeCtx = ExecutionContext.fromExecutor(pool)
-        val collection = MultiQueue.createSync[String](8)
+        val collection = IdQueue.createSync[TestValue](8)
         val shuffled = input.map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1).toList
         input.size mustBe (shuffled.size)
-        val future: Future[List[String]] = Future.sequence(
+        val future: Future[List[TestValue]] = Future.sequence(
           input.map(input => Future {
             collection.atomic().sync(syncTimeout).add(input)
             collection.atomic().sync(syncTimeout).take(2)
           }(exeCtx))).map(_.flatten)
-        val output = new mutable.HashSet[String]()
+        val output = new mutable.HashSet[TestValue]()
         output ++= Await.result(future, 1.minutes)
 
         output ++= Stream.continually({
@@ -341,8 +341,8 @@ abstract class StmCollectionSpecBase extends WordSpec with MustMatchers with Bef
     })
     List(10,100,1000).foreach(items=> {
       s"stream iteration with $items items" in {
-        val collection = MultiQueue.createSync[String](8)
-        val input: List[String] = randomUUIDs.take(items).toList
+        val collection = IdQueue.createSync[TestValue](8)
+        val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
         input.foreach(collection.atomic().sync.add(_))
         val output = collection.atomic().sync.stream().toList
         input.toSet mustBe output.toSet
@@ -386,3 +386,20 @@ class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServer
   val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 
+class TestValue(val id: String = null) extends Identifiable {
+  override def toString = id
+
+  def canEqual(other: Any): Boolean = other.isInstanceOf[TestValue]
+
+  override def equals(other: Any): Boolean = other match {
+    case that: TestValue =>
+      (that canEqual this) &&
+        id == that.id
+    case _ => false
+  }
+
+  override def hashCode(): Int = {
+    val state = Seq(id)
+    state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+  }
+}
