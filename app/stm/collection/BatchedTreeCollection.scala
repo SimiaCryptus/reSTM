@@ -22,6 +22,20 @@ object BatchedTreeCollection {
     right: Option[STMPtr[TreeCollectionNode[T]]] = None
   ) {
 
+    def getCursorBlock(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(Int, List[T])] = {
+      val nextNodeFuture = nextNode(self)
+      val valueFuture = value.read().map(_.deserialize().get)
+      valueFuture.flatMap((list: List[T]) => {
+        nextNodeFuture.flatMap((nextNodeOptPtr: Option[STMPtr[TreeCollectionNode[T]]]) => {
+          nextNodeOptPtr.map((nextPtr: STMPtr[TreeCollectionNode[T]]) => {
+            nextPtr.read().flatMap(next => next.getTreeId(nextPtr))
+              .map((nextId: Int) => nextId -> list)
+          }).getOrElse(Future.successful(-1 -> list))
+        })
+      })
+    }
+
+
     def apxSize(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
       val child = if(Random.nextBoolean()) left.orElse(right) else right.orElse(left)
       child.map(_.read().flatMap(_.apxSize).map(_*2)).getOrElse(value.read().map(_.deserialize()).map(_.size))
@@ -83,54 +97,63 @@ object BatchedTreeCollection {
       case _ => false
     }
 
-    def stream(self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) : Future[Stream[T]] = {
-      def rightFuture = right.map(rightPtr=>rightPtr.read().flatMap[Stream[T]](x => x.stream(rightPtr)(ctx, executionContext, classTag))).getOrElse(Future.successful(Stream.empty))
-      def leftFuture = left.map(leftPtr=>leftPtr.read().flatMap[Stream[T]](x => x.stream(leftPtr)(ctx, executionContext, classTag))).getOrElse(Future.successful(Stream.empty))
-      def thisFuture: Future[Stream[T]] = value.read().map(_.deserialize().get).map(Stream(_: _*))
-      rightFuture.flatMap(right=>{
-        leftFuture.flatMap(left=>{
-          thisFuture.map(center=>{
-            List(left, center, right).reduce(_++_)
-          })
+    def leftChild(self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[TreeCollectionNode[T]]] = {
+      left.map(left=>{
+        left.read().flatMap(_.leftChild(left))
+      }).getOrElse(Future.successful(self))
+    }
+
+    def rightParent(self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Option[STMPtr[TreeCollectionNode[T]]]] = {
+      parent.map(parentPtr=>{
+        parentPtr.read().flatMap(parentValue=>{
+          if(parentValue.left == Option(self)) {
+            Future.successful(parent)
+          } else {
+            parentValue.rightParent(parentPtr)
+          }
         })
-      })
+      }).getOrElse(Future.successful(None))
     }
 
 
+    def nextNode(self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Option[STMPtr[TreeCollectionNode[T]]]] = {
+      right.map(rightPtr => rightPtr.read().flatMap(_.leftChild(rightPtr).map(Option(_)))).getOrElse(rightParent(self))
+    }
 
-    def getByTreeId(cursor: Int, self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[TreeCollectionNode[T]]] = {
-      require(0 <= cursor)
-      if(0 == cursor) {
-        Future.successful(self)
-      } else {
-        value.read().map(_.deserialize().get).flatMap(itemBuffer=>{
-          val childCursor: Int = Math.floorDiv(cursor, 2)
-          val cursorBit: Int = cursor % 2
-          cursorBit match {
-            case 0 =>
-              left.get.read().flatMap(_.getByTreeId(childCursor, left.get))
-            case 1 =>
-              right.get.read().flatMap(_.getByTreeId(childCursor, right.get))
-          }
-        })
+    def getByTreePath(self : STMPtr[TreeCollectionNode[T]], path: List[Int])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[TreeCollectionNode[T]]] = {
+      if(path.isEmpty) Future.successful(self)
+      else {
+        path.head match {
+          case 0 =>
+            left.get.read().flatMap(_.getByTreePath(left.get, path.tail))
+          case 1 =>
+            right.get.read().flatMap(_.getByTreePath(right.get, path.tail))
+        }
       }
     }
 
-    def getTreeBit(self:STMPtr[TreeCollectionNode[T]], node:STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Int = {
+    def getByTreeId(cursor: Int, self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[TreeCollectionNode[T]]] = {
+      require(0 <= cursor)
+      val path: List[Int] = Integer.toBinaryString(cursor).toCharArray.map(_ match {
+        case '0' => 0
+        case '1' => 1
+      }).tail.toList
+      getByTreePath(self, path)
+    }
+
+    def getTreeBit(node:STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Int = {
       if(left.filter(_==node).isDefined) 0
       else if(right.filter(_==node).isDefined) 1
       else throw new RuntimeException()
     }
 
-    def getTreeId(self:STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[(Int,Int)] = {
-      parent.map(_.read().flatMap(parentNode => {
-        parentNode.getTreeId(parent.get).map(x=>{
-          val (depth:Int,parentId:Int) = x
-          val bit: Int = parentNode.getTreeBit(parent.get, self)
-          val tuple: (Int, Int) = (depth + 1) -> (parentId+Math.pow(2,depth).toInt*bit)
-          tuple
+    def getTreeId(self:STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Int] = {
+      parent.map(parentPtr=>parentPtr.read().flatMap(parentNode => {
+        parentNode.getTreeId(parent.get).map(parentId=>{
+          val bit: Int = parentNode.getTreeBit(self)
+          parentId * 2 + bit
         })
-      })).getOrElse(Future.successful(0->0))
+      })).getOrElse(Future.successful(1))
     }
 
 
@@ -150,9 +173,10 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def get() = sync { AtomicApi.this.get() }
-      def toList()(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.toList() }
       def apxSize() = sync { AtomicApi.this.apxSize() }
+      def nextBlock(cursor:Int) = sync { AtomicApi.this.nextBlock(cursor) }
       def add(value: List[T]) = sync { AtomicApi.this.add(value) }
+      def stream()(implicit classTag: ClassTag[T]) = AtomicApi.this.stream()
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
@@ -160,11 +184,10 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
     def get() = atomic { BatchedTreeCollection.this.get()(_,executionContext) }
     def add(value: List[T]) = atomic { BatchedTreeCollection.this.add(value)(_,executionContext) }
     def apxSize() = atomic { BatchedTreeCollection.this.apxSize()(_,executionContext) }
-    def toList()(implicit classTag: ClassTag[T]) : Future[List[T]] = {
-      atomic { (ctx: STMTxnCtx) => {
-          BatchedTreeCollection.this.stream()(ctx, executionContext, classTag).map(_.toList)
-        }
-      }
+    def nextBlock(cursor:Int) = atomic { BatchedTreeCollection.this.nextBlock(cursor)(_,executionContext) }
+
+    def stream()(implicit classTag: ClassTag[T]) = {
+      Stream.iterate((0,List.empty[T]))(t=>sync.nextBlock(t._1)).takeWhile(_._1 > -2).flatMap(_._2)
     }
 
   }
@@ -174,8 +197,9 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
     def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { BatchedTreeCollection.this.get() }
     def apxSize()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { BatchedTreeCollection.this.apxSize() }
     def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.size() }
-    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.stream() }
+    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = BatchedTreeCollection.this.stream()
     def add(value: List[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.add(value) }
+    def nextBlock(cursor:Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.nextBlock(cursor) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -192,6 +216,32 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
     })
   }
 
+  def nextBlock(cursor:Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(Int, List[T])] = {
+    if(cursor < 0) {
+      Future.successful( (cursor-1) -> List.empty )
+    } else {
+      rootPtr.readOpt().flatMap(rootOpt=>{
+        rootOpt.map(root => {
+          if(cursor == 0) {
+            root.leftChild(rootPtr).flatMap((nodePtr: STMPtr[TreeCollectionNode[T]]) => {
+              nodePtr.read().flatMap(node => {
+                node.getCursorBlock(nodePtr)
+              })
+            })
+          } else {
+            root.getByTreeId(cursor, rootPtr).flatMap((nodePtr: STMPtr[TreeCollectionNode[T]]) => {
+              nodePtr.read().flatMap(node => {
+                node.getCursorBlock(nodePtr)
+              })
+            })
+          }
+        }).getOrElse({
+          Future.successful(-1->List.empty)
+        })
+      })
+    }
+  }
+
   def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[List[T]]]  = {
     rootPtr.readOpt().flatMap(rootOpt=>{
       rootOpt.map(root=>root.get(rootPtr).map(Option(_)))
@@ -204,11 +254,13 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
   }
 
   def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Int] = {
-    rootPtr.readOpt().flatMap(_.map(_.stream(rootPtr).map(_.size)).getOrElse(Future.successful(0)))
+    Future.successful(stream().size)
   }
 
-  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = {
-    rootPtr.readOpt().flatMap(_.map(_.stream(rootPtr)).getOrElse(Future.successful(Stream.empty)))
+  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Stream[T] = {
+    val cursorStream: Stream[(Int, List[T])] = Stream.iterate((0, List.empty[T]))(t => sync.nextBlock(t._1))
+    val itemStream: Stream[T] = cursorStream.takeWhile(_._1 > -2).flatMap(_._2)
+    itemStream
   }
 }
 

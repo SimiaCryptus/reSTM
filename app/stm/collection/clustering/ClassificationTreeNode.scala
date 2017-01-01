@@ -31,11 +31,7 @@ case class ClassificationTreeNode
     require(0 <= cursor)
     if(itemBuffer.isDefined) {
       require(0 == cursor)
-      itemBuffer.get.stream().map(stream=>{
-        val list = stream.toList
-        //println(s"Returning ${list.size} items from ${self.id}")
-        -1 -> list
-      })
+      Future { -1 -> itemBuffer.get.stream().toList }
     } else {
       val childCursor: Int = Math.floorDiv(cursor, 3)
       val cursorBit: Int = cursor % 3
@@ -139,7 +135,8 @@ case class ClassificationTreeNode
 
   def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0)
            (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-    itemBuffer.map(_.stream().flatMap((bufferedValues: Stream[LabeledItem]) => {
+    itemBuffer.map(itemBuffer=>{
+      val bufferedValues: Stream[LabeledItem] = itemBuffer.stream()
       //println(s"Begin split node with ${bufferedValues.size} items id=${self.id}")
       Future.sequence(List(
         STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
@@ -162,7 +159,7 @@ case class ClassificationTreeNode
         } else Future.successful(0)
       })
       //.map(x=>{println(s"Finished spliting node ${self.id} -> (${nextValue.pass.get.id}, ${nextValue.fail.get.id}, ${nextValue.exception.get.id})");x})
-    })).getOrElse({
+    }).getOrElse({
       //println(s"Already split: ${self.id} -> (${pass.get.id}, ${fail.get.id}, ${exception.get.id})")
       Future.successful(0)
     })
