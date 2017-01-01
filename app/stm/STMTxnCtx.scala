@@ -27,9 +27,12 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     txnId.flatMap(txnId => Future.sequence(
           writeCache
             //.filter(_=>false)
-            .map(write=>write._2
-              .map(newValue=>cluster.queueValue(write._1, txnId, Restm.value(newValue)))
-              .getOrElse(cluster.delete(write._1, txnId)))
+            .map((write: (PointerType, Option[AnyRef])) =>{
+            val future: Future[Unit] = write._2
+              .map(newValue => cluster.queueValue(write._1, txnId, Restm.value(newValue)))
+              .getOrElse(cluster.delete(write._1, txnId))
+            future
+          })
         ).map(_=>txnId))
       .flatMap(cluster.commit)
   }
@@ -72,9 +75,9 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
         lock(id).flatMap(_ => {
           if(!isClosed) {
             writeCache.put(id, None)
-            System.err.println(s"Post-commit delete for $id")
             Future.successful(Unit)
           } else {
+            System.err.println(s"Post-commit delete for $id")
             cluster.delete(id, txnId)
           }
         })

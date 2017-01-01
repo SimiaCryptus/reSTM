@@ -29,16 +29,14 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   override def toString = s"ptr@$objId:$name#${history.size}#$messageNumber"
 
   def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = Util.monitorFuture("MemActor.getCurrentValue") {
-    {
-      withActor {
-        Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_.time))
-          .map(record=>record.time->record.value)
-      }.andThen({
-        case Success(result) =>
-          logMsg(s"getCurrentValue")
-        case Failure(e) => logMsg(s"getCurrentValue failed - $e")
-      })
-    }
+    withActor {
+      Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_.time))
+        .map(record=>record.time->record.value)
+    }.andThen({
+      case Success(result) =>
+        logMsg(s"getCurrentValue")
+      case Failure(e) => logMsg(s"getCurrentValue failed - $e")
+    })
   }
   val rwlock = new Object()
 
@@ -61,16 +59,14 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         result
       }
     } else {
-      if(false && lastRead.filter(_ >= time).isDefined) //Util.monitorFuture("MemActor.getValue.1")
-      {
+      if(lastRead.filter(_ >= time).isDefined) {
         val record: Option[HistoryRecord] = history.synchronized {
           Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
         }
         val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_==null)
         logMsg(s"getValue($time, $ifModifiedSince) $result")
         Future.successful(result)
-      } else //Util.monitorFuture("MemActor.getValue.2")
-      {
+      } else {
         rwlock.synchronized {
           writeLock.foreach(writeLock => if (writeLock < time) {
             logMsg(s"getValue failed - txn lock $writeLock")

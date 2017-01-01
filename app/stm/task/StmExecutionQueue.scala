@@ -3,7 +3,7 @@ package stm.task
 import java.util.Date
 
 import _root_.util.Util._
-import stm.collection.MultiQueue
+import stm.collection.IdQueue
 import stm.task.Task._
 import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
@@ -20,7 +20,7 @@ object StmExecutionQueue {
   def init()(implicit cluster: Restm, executionContext: ExecutionContext) = {
     new STMTxn[StmExecutionQueue] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
-        MultiQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
+        IdQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
       }
     }.txnRun(cluster).map(x=>{default = x;x})
   }
@@ -32,7 +32,7 @@ object StmExecutionQueue {
   }
 }
 
-class StmExecutionQueue(val workQueue: MultiQueue[Task[_]]) {
+class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
 
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
     def add(f: Task[_]) = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }

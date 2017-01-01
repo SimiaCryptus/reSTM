@@ -6,7 +6,7 @@ import _root_.util.Util
 import akka.actor.ActorSystem
 import controllers.RestmController._
 import play.api.mvc._
-import stm.task.{Task, TaskStatusTrace}
+import stm.task.{StmExecutionQueue, Task, TaskStatusTrace}
 import storage.Restm._
 import storage.types.JacksonValue
 
@@ -26,7 +26,7 @@ class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: Exe
   def taskInfo(id: String) = Action.async {
     Util.monitorFuture("ExecutionController.taskInfo") {
       val task: Task[AnyRef] = new Task(new PointerType(id))
-      val trace: Future[TaskStatusTrace] = task.atomic()(storageService, exec).getStatusTrace()
+      val trace: Future[TaskStatusTrace] = task.atomic()(storageService, exec).getStatusTrace(StmExecutionQueue.get())
       trace.map(result=>Ok(JacksonValue(result).pretty).as("application/json"))
     }
   }

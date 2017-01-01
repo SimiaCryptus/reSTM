@@ -73,7 +73,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
         } finally {
           System.out.println(s"Final Data at ${new Date()}")
           println(JacksonValue.simple(Util.getMetrics()).pretty)
-          println(JacksonValue.simple(sortTask.atomic().sync(60.seconds).getStatusTrace(Option(StmExecutionQueue.get()))).pretty)
+          println(JacksonValue.simple(sortTask.atomic().sync(60.seconds).getStatusTrace(StmExecutionQueue.get())).pretty)
 
           System.out.println("Stopping Execution Engine")
           Await.result(StmDaemons.stop(), 30.seconds)

@@ -30,7 +30,7 @@ object TreeSet {
       val compare: Int = value.compareTo(newValue)
       if (compare == 0) {
         if (left.isEmpty && right.isEmpty) {
-          Future.successful(true)
+          self.delete().map(_=>true)
         } else if (left.isDefined) {
           left.map(leftPtr => {
             leftPtr.read.flatMap(leftNode=>{
@@ -109,6 +109,10 @@ object TreeSet {
       case x: TreeSetNode[_] => x.equalityFields == equalityFields
       case _ => false
     }
+  }
+
+  def create[T <: Comparable[T]]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeSet[T]] = {
+    STMPtr.dynamic(null:TreeSetNode[T]).map(new TreeSet[T](_))
   }
 
 }

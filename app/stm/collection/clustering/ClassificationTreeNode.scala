@@ -3,6 +3,8 @@ package stm.collection.clustering
 
 import stm.collection.BatchedTreeCollection
 import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem, NodeInfo}
+import stm.task.Task.TaskSuccess
+import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}
 import storage.Restm
 import storage.types.KryoValue
@@ -18,6 +20,7 @@ case class ClassificationTreeNode
   fail : Option[STMPtr[ClassificationTreeNode]] = None,
   exception : Option[STMPtr[ClassificationTreeNode]] = None,
   itemBuffer : Option[BatchedTreeCollection[LabeledItem]],
+  splitTask : Option[Task[String]] = None,
   rule : Option[KryoValue[(ClassificationTreeItem)=>Boolean]] = None
 ) {
 
@@ -41,7 +44,40 @@ case class ClassificationTreeNode
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
 
-    def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0) = atomic { ClassificationTreeNode.this.split(self, strategy, maxSplitDepth)(_,executionContext) }
+    def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0): Future[Int] = {
+      itemBuffer.map(itemBuffer=>{
+        val bufferedValues: Stream[LabeledItem] = itemBuffer.atomic().stream()
+        createChildren(self).flatMap(t=>{
+          val nextValue: ClassificationTreeNode = copy(
+            itemBuffer = None,
+            rule = Option(KryoValue(strategy.getRule(bufferedValues))),
+            pass = Option(t(0)),
+            fail = Option(t(1)),
+            exception = Option(t(2))
+          )
+          if (null != nextValue.rule) {
+            self.atomic.write(nextValue).flatMap(_ => {
+              Future.sequence(bufferedValues.grouped(512).map(_.toList).map(item => {
+                nextValue.atomic().add(item, self, strategy, maxSplitDepth - 1)
+              })).map(_.sum)
+            })
+          } else Future.successful(0)
+        })
+      }).getOrElse({
+        Future.successful(0)
+      })
+    }
+
+    private def createChildren(self: STMPtr[ClassificationTreeNode]): Future[List[STMPtr[ClassificationTreeNode]]] = atomic { txn => {
+      implicit val _txn = txn
+      Future.sequence(List(
+        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
+        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
+        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self)))
+      ))
+    }}
+
+    def add(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1) = atomic { ClassificationTreeNode.this.add(value, self, strategy, maxSplitDepth)(_,executionContext) }
     def firstNode(self : STMPtr[ClassificationTreeNode]) = atomic { ClassificationTreeNode.this.firstNode(self)(_,executionContext) }
     def nextNode(self : STMPtr[ClassificationTreeNode], root : STMPtr[ClassificationTreeNode]) = atomic { ClassificationTreeNode.this.nextNode(self, root)(_,executionContext) }
     def getTreeId(self : STMPtr[ClassificationTreeNode], root : STMPtr[ClassificationTreeNode]) = atomic { ClassificationTreeNode.this.getTreeId(self, root)(_,executionContext) }
@@ -120,43 +156,21 @@ case class ClassificationTreeNode
 
 
 
-  def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0)
-           (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-    itemBuffer.map(itemBuffer=>{
-      val bufferedValues: Stream[LabeledItem] = itemBuffer.stream()
-      Future.sequence(List(
-        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
-        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
-        STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self)))
-      )).flatMap(t=>{
-        val nextValue: ClassificationTreeNode = copy(
-          itemBuffer = None,
-          rule = Option(KryoValue(strategy.getRule(bufferedValues))),
-          pass = Option(t(0)),
-          fail = Option(t(1)),
-          exception = Option(t(2))
-        )
-        if (null != nextValue.rule) {
-          self.write(nextValue).flatMap(_ => {
-            Future.sequence(bufferedValues.grouped(128).map(_.toList).map(item => {
-              nextValue.add(item, self, strategy, maxSplitDepth - 1)
-            })).map(_.sum)
-          })
-        } else Future.successful(0)
-      })
-    }).getOrElse({
-      Future.successful(0)
-    })
-  }
-
   def add(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1)
          (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
     if(itemBuffer.isDefined) {
       itemBuffer.get.add(value.toArray.toList).flatMap(_=>{
-        if (maxSplitDepth > 0 && strategy.split(itemBuffer.get.asInstanceOf[BatchedTreeCollection[ClassificationTree.LabeledItem]])) {
+        if (splitTask.isEmpty && maxSplitDepth > 0 && strategy.split(itemBuffer.get)) {
           self.lock().flatMap(locked=> {
             if(locked) {
-              split(self, strategy, maxSplitDepth)
+              Option(StmExecutionQueue.get()).map(_.add(ClassificationTreeNode.splitTaskFn(self, strategy, maxSplitDepth)).flatMap(
+                (task: Task[String]) =>{
+                  self.write(ClassificationTreeNode.this.copy(splitTask=Option(task))).map(_=>0)
+                }
+              )).getOrElse({
+                System.err.println("StmExecutionQueue not initialized - cannot queue split")
+                Future.successful(0)
+              })
             } else {
               Future.successful(0)
             }
@@ -304,5 +318,15 @@ case class ClassificationTreeNode
       })
     }
   }
+
+}
+
+object ClassificationTreeNode {
+
+  def splitTaskFn(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int): (Restm, ExecutionContext) => TaskSuccess[String] =
+    (c : Restm, e : ExecutionContext) => {
+      self.atomic(c,e).sync.read.atomic()(c, e).split(self, strategy, maxSplitDepth)
+      new TaskSuccess("OK")
+    }
 
 }

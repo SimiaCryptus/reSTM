@@ -35,10 +35,10 @@ object DistributedScalar {
       add()
     }
 
-    def get(rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Double] = {
+    def get(rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[scala.Double] = {
       Future.sequence(values.map(_.read()))
         .map((sequence: List[java.lang.Double]) => {
-          sequence.map(_.toDouble).reduceOption(_ + _).getOrElse(0.0).toDouble
+          sequence.map(_.toDouble).reduceOption(_ + _).getOrElse(0.0)
         })
     }
 
@@ -58,6 +58,7 @@ object DistributedScalar {
 }
 
 class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
+  private def this() = this(null:STMPtr[DistributedScalar.ScalarData])
   def id = rootPtr.id.toString
 
   def this(ptr:PointerType) = this(new STMPtr[DistributedScalar.ScalarData](ptr))
@@ -86,9 +87,9 @@ class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
     })
   }
 
-  def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Double] = {
+  def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[scala.Double] = {
     getInner().flatMap(inner => {
-      inner.get(rootPtr)
+      inner.get(rootPtr).map(_.toDouble)
     })
   }
 

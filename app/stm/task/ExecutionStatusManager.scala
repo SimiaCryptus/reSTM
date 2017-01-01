@@ -4,13 +4,12 @@ import java.net.InetAddress
 import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import storage.Restm.PointerType
 
 import scala.collection.concurrent.TrieMap
 
 object ExecutionStatusManager {
   def end(executorName: String, task: Task[AnyRef]) = {
-    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[PointerType,String]())
+    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String,String]())
     executorRecord.put(task.id, "Complete")
     pool.schedule(new Runnable {
       override def run(): Unit = {
@@ -20,11 +19,11 @@ object ExecutionStatusManager {
   }
 
   def start(executorName: String, task: Task[AnyRef]) = {
-    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[PointerType,String]())
+    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String,String]())
     executorRecord.put(task.id, "Started")
   }
 
-  def check(executorId: String, taskId: PointerType) = {
+  def check(executorId: String, taskId: String) = {
     currentStatus(executorId).contains(taskId)
   }
 
@@ -35,5 +34,5 @@ object ExecutionStatusManager {
   private[this] val pool: ScheduledExecutorService = Executors.newScheduledThreadPool(1,
     new ThreadFactoryBuilder().setNameFormat("exe-status-pool-%d").build())
   private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
-  private[this] val currentStatus = new TrieMap[String,TrieMap[PointerType,String]]()
+  private[this] val currentStatus = new TrieMap[String,TrieMap[String,String]]()
 }

@@ -6,6 +6,7 @@ import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFutur
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm._
+import stm.collection.Identifiable
 import stm.task.Task.TaskResult
 import stm.task.TaskStatus.Failed
 import storage.Restm
@@ -54,7 +55,7 @@ sealed class TaskStatus {
 
 case class TaskStatusTrace(id:PointerType, status: TaskStatus, children: List[TaskStatusTrace] = List.empty)
 
-class Task[T](val root : STMPtr[TaskData[T]]) {
+class Task[T](val root : STMPtr[TaskData[T]]) extends Identifiable {
 
   def this(ptr:PointerType) = this(new STMPtr[TaskData[T]](ptr))
   private def this() = this(new PointerType)
@@ -65,14 +66,14 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     def result() = atomic { Task.this.result()(_,executionContext) }
     def isComplete() = atomic { Task.this.isComplete()(_,executionContext) }
     def complete(result:Try[TaskResult[T]]) = atomic { Task.this.complete(result)(_,executionContext) }
-    def getStatusTrace(queue: Option[StmExecutionQueue] = None) = atomic { Task.this.getStatusTrace(queue)(_,executionContext) }
+    def getStatusTrace(queue: StmExecutionQueue) = atomic { Task.this.getStatusTrace(queue)(_,executionContext) }
     def obtainTask(executorId: String = UUID.randomUUID().toString) = atomic { Task.this.obtainTask(executorId)(_,executionContext) }
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = atomic { Task.this.map(queue, function)(_,executionContext) }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def result() = sync { AtomicApi.this.result() }
       def isComplete() = sync { AtomicApi.this.isComplete() }
       def complete(result:Try[TaskResult[T]]) = sync { AtomicApi.this.complete(result) }
-      def getStatusTrace(queue: Option[StmExecutionQueue] = None) = sync { AtomicApi.this.getStatusTrace(queue) }
+      def getStatusTrace(queue: StmExecutionQueue) = sync { AtomicApi.this.getStatusTrace(queue) }
       def obtainTask(executorId: String = UUID.randomUUID().toString) = sync { AtomicApi.this.obtainTask(executorId) }
       def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U]) = sync { AtomicApi.this.map(queue, function) }
     }
@@ -85,13 +86,13 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.map(queue, function) }
     def isComplete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.isComplete() }
     def complete(result:Try[TaskResult[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.complete(result) }
-    def getStatusTrace(queue: Option[StmExecutionQueue] = None)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.getStatusTrace(queue) }
+    def getStatusTrace(queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.getStatusTrace(queue) }
     def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { Task.this.obtainTask(executorId) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
-  def id = root.id
+  def id = root.id.toString
 
   def map[U](queue : StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[U]] = {
     val func: (Restm, ExecutionContext) => TaskResult[U] = wrapMap(function)
@@ -151,14 +152,13 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     })
   }
 
-  @JsonIgnore def getStatusTrace(queue: Option[StmExecutionQueue])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
-    val queuedTasks = queue.map(queue=>queue.workQueue.sync.stream().take(100).map(_.id).toSet).getOrElse(Set.empty)
+  @JsonIgnore def getStatusTrace(queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[TaskStatusTrace] = {
     //System.out.println(s"Current tasks: ${queuedTasks.size}")
     val threads: Iterable[Thread] = Thread.getAllStackTraces.asScala.keys
-    getStatusTrace(queuedTasks, threads)
+    getStatusTrace(queue, threads)
   }
 
-  def getStatusTrace(queuedTasks: Set[PointerType], threads: Iterable[Thread])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskStatusTrace] = {
+  def getStatusTrace(queue: StmExecutionQueue, threads: Iterable[Thread])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskStatusTrace] = {
     def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
       val status: TaskStatus = if (currentState.result.isDefined) {
         TaskStatus.Success
@@ -178,24 +178,27 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
     root.readOpt().flatMap(currentState => {
       val statusTrace: TaskStatusTrace = currentState.map(visit(_, root.id))
         .getOrElse(new TaskStatusTrace(root.id, TaskStatus.Ex_NotDefined))
-      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(queuedTasks, threads)))
+      lazy val children: Future[List[TaskStatusTrace]] = currentState.map(_.triggers.map(_.getStatusTrace(queue, threads)))
         .map(Future.sequence(_)).getOrElse(Future.successful(List.empty))
       statusTrace.status match {
         case TaskStatus.Success => Future.successful(statusTrace)
-        case TaskStatus.Unknown => children.map(children => {
+        case TaskStatus.Unknown => children.flatMap(children => {
           val pending = children.filter(_.status match {
             case TaskStatus.Success => false
             case _: Failed => false
             case _ => true
           })
           if (pending.isEmpty) {
-            if (queuedTasks.contains(id)) {
-              statusTrace.copy(status = TaskStatus.Queued)
-            } else {
-              statusTrace.copy(status = new TaskStatus.Orphan("Not In Queue"))
-            }
+            queue.workQueue.contains(id).map(contains=>{
+              if (contains) {
+                statusTrace.copy(status = TaskStatus.Queued)
+              } else {
+                statusTrace.copy(status = new TaskStatus.Orphan("Not In Queue"))
+              }
+            })
+          } else {
+            Future.successful(statusTrace.copy(status = TaskStatus.Blocked, children = children))
           }
-          else statusTrace.copy(status = TaskStatus.Blocked, children = children)
         })
         case _: Failed => Future.successful(statusTrace)
         case TaskStatus.Ex_NotDefined => Future.successful(statusTrace)
@@ -207,7 +210,7 @@ class Task[T](val root : STMPtr[TaskData[T]]) {
   def checkExecutor(executorId: String, id: PointerType, threads: Iterable[Thread]): Boolean = {
     val threadName = executorId.split(":")(1)
     def isExecutorAlive = threads.filter(_.isAlive).exists(_.getName == threadName)
-    def isCurrentTask = ExecutionStatusManager.check(executorId, id)
+    def isCurrentTask = ExecutionStatusManager.check(executorId, id.toString)
     isCurrentTask && isExecutorAlive
   }
 

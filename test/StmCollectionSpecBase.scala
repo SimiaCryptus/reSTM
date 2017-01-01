@@ -1,4 +1,4 @@
-import java.util.concurrent.Executors
+import java.util.concurrent.{Executors, TimeUnit}
 import java.util.{Date, UUID}
 
 import _root_.util.Util
@@ -47,7 +47,6 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
 
-
   s"BatchedTreeCollection via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
     def randomUUIDs = Stream.continually(randomStr)
@@ -76,7 +75,8 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     })
   }
 
-  s"DistributedScalar via ${getClass.getSimpleName}" must {
+
+ s"DistributedScalar via ${getClass.getSimpleName}" must {
     List(1, 10, 100).foreach(items=>{
       s"accumulates $items values" in {
         def randomStream = Stream.continually(Random.nextDouble())
@@ -95,10 +95,18 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
     List(1,10,100).foreach(items=>s"synchronous insert and verify with $items items" in {
       val collection = new TreeSet[String](new PointerType)
-      for (item <- randomUUIDs.take(items)) {
+      val input = randomUUIDs.take(items)
+      for (item <- input) {
         collection.atomic.sync.contains(item) mustBe false
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
+//        println(s"Inserted $item")
+      }
+      for (item <- input) {
+        collection.atomic.sync.contains(item) mustBe true
+        collection.atomic.sync.remove(item)
+        collection.atomic.sync.contains(item) mustBe false
+//        println(s"Deleted $item")
       }
       println(JacksonValue.simple(Util.getMetrics()).pretty)
     })
@@ -132,9 +140,12 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         Await.result(Future.sequence(futures), 1.minutes)
         println(JacksonValue.simple(Util.getMetrics()).pretty)
         threadPool.shutdown()
+        threadPool.awaitTermination(1, TimeUnit.MINUTES)
       }
     )
   }
+
+
 
   s"TreeCollection via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
@@ -159,7 +170,10 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
       }
     })
   }
-//
+
+
+
+
 //  s"TreeMap via ${getClass.getSimpleName}" must {
 //    val collection = new TreeMap[String,String](new PointerType)
 //    def randomStr = UUID.randomUUID().toString.take(8)
@@ -297,15 +311,25 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     })
   }
 
-  s"MultiQueue via ${getClass.getSimpleName}" must {
+  s"IdQueue via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
     List(10,100,1000).foreach(items=> {
       s"synchronous add and remove with $items items" in {
         val collection = IdQueue.createSync[TestValue](8)
         val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
         input.foreach(collection.atomic().sync.add(_))
+        collection.atomic().sync.size() mustBe items
+        collection.atomic().sync.stream().map((item: TestValue) =>{
+          collection.atomic().sync.contains(item.id) mustBe true
+        }).size mustBe items
         val output = Stream.continually(collection.atomic().sync.take()).takeWhile(_.isDefined).map(_.get).toList
         output.toSet mustBe input.toSet
+        collection.atomic().sync.size() mustBe 0
+        input.count((item: TestValue) =>{
+          val contains = collection.atomic().sync.contains(item.id)
+          if(contains) println(s"Found ghost: ${item.id}")
+          contains
+        }) mustBe 0
         println(JacksonValue.simple(Util.getMetrics()).pretty)
       }
     })

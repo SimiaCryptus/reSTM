@@ -56,11 +56,13 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       s"support insert and iterate over $items items" in {
         implicit val executionContext = ExecutionContext.fromExecutor(pool)
         implicit val _cluster = cluster
+        StmDaemons.start()
+        StmExecutionQueue.get().registerDaemons(8)
         val collection = new ClassificationTree(new PointerType)
         collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(1))
         val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
         input.foreach(collection.atomic().sync.add("data", _))
-
+        Thread.sleep(1000)
 
         val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root
         def print(prefix:String, nodePtr:STMPtr[ClassificationTreeNode]):Unit = {
@@ -206,7 +208,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         print(s"Populating tree at ${new Date()}")
         val insertFutures = trainingSet.groupBy(_.attributes("Cover_Type")).map(t => Future {
           val (cover_type: Any, stream: Seq[ClassificationTreeItem]) = t
-          stream.map(item => item.copy(attributes = item.attributes - "Cover_Type")).grouped(256).map(_.toList)
+          stream.map(item => item.copy(attributes = item.attributes - "Cover_Type")).grouped(512).map(_.toList)
             .foreach(block => {
               print(".")
               Console.flush()
