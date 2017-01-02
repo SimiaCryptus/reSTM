@@ -259,7 +259,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         val correct = testingSet.map(item => {
           val testValue = item.copy(attributes = item.attributes - "Cover_Type")
           val coverType = item.attributes("Cover_Type")
-          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(30.seconds).getClusterId(testValue)
+          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(90.seconds).getClusterId(testValue)
           println()
           println(s"item routed to node " + JacksonValue.simple(id))
           //println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))

@@ -82,11 +82,16 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
 
   def task()(cluster: Restm, executionContext: ExecutionContext): Unit = {
     try {
+      var lastExecuted = now
       while (!Thread.interrupted()) {
         try {
           val future = runTask(cluster, executionContext)
           val result = Await.result(future, 10.minutes)
-          if (!result) Thread.sleep(1000)
+          if (!result) {
+            Thread.sleep(Math.min((now - lastExecuted).toMillis, 500))
+          } else {
+            lastExecuted = now
+          }
         } catch {
           case _: InterruptedException =>
             Thread.currentThread().interrupt()
@@ -122,7 +127,6 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
               case _: Throwable if retries > 0 => attempt(retries - 1)
             }
           }
-
           Try {
             attempt(3)
           }

@@ -167,8 +167,8 @@ case class ClassificationTreeNode
       })
   }
 
-  def stream(self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Stream[LabeledItem] = {
-    Stream.iterate((0l, Stream.empty[LabeledItem]))(t => sync.nextBlock(t._1, self, self)).takeWhile(_._1 > -2).flatMap(_._2)
+  def stream(self: STMPtr[ClassificationTreeNode], duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Stream[LabeledItem] = {
+    Stream.iterate((0l, Stream.empty[LabeledItem]))(t => sync(duration = duration).nextBlock(t._1, self, self)).takeWhile(_._1 > -2).flatMap(_._2)
   }
 
   def sync = new SyncApi(10.seconds)

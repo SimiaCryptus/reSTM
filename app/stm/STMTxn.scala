@@ -84,7 +84,7 @@ trait STMTxn[+R] {
                   promisedFuture.success(future)
                   future
                 }
-              }, Random.nextInt(1 + Random.nextInt(1 + ((retryNumber * retryNumber) / 100))), TimeUnit.MILLISECONDS)
+              }, Random.nextInt(1 + Random.nextInt(1 + ((retryNumber * retryNumber) / 1000))), TimeUnit.MICROSECONDS)
               promisedFuture.future.flatMap(x => x)
             case e: Throwable =>
               if (!e.isInstanceOf[TransactionConflict]) {
