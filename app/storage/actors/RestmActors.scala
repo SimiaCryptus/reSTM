@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2017 by Andrew Charneski.
+ *
+ * The author licenses this file to you under the
+ * Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy
+ * of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package storage.actors
 
 import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
@@ -108,12 +127,6 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     getTxnActor(time).getState
   }
 
-  protected def getTxnActor(id: TimeStamp): TxnActor = monitorBlock("Restm.getTxn") {
-    txns.getOrElseUpdate(id, monitorBlock("Restm.newTxn") {
-      new TxnActor(id.toString)
-    })
-  }
-
   def _resetValue(id: PointerType, time: TimeStamp): Future[Unit] = {
     getPtrActor(id).flatMap(_.writeReset(time))
   }
@@ -182,6 +195,12 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
 
   def _commitTxn(time: TimeStamp): Future[Set[PointerType]] = {
     getTxnActor(time).setState("COMMIT")
+  }
+
+  protected def getTxnActor(id: TimeStamp): TxnActor = monitorBlock("Restm.getTxn") {
+    txns.getOrElseUpdate(id, monitorBlock("Restm.newTxn") {
+      new TxnActor(id.toString)
+    })
   }
 
   override def delete(id: PointerType, time: TimeStamp): Future[Unit] = getPtrActor(id).flatMap(_.delete(time))

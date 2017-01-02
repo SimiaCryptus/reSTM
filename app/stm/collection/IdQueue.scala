@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2017 by Andrew Charneski.
+ *
+ * The author licenses this file to you under the
+ * Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy
+ * of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package stm.collection
 
 import stm._
@@ -102,6 +121,7 @@ object IdQueue {
       SimpleLinkedList.create[T].map((newList: SimpleLinkedList[T]) => copy(queues = queues ++ List(newList))).flatMap(self.write)
     }
   }
+
 }
 
 class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
@@ -157,15 +177,15 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
     })
   }
 
-  private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
-    rootPtr.readOpt().flatMap(_.map(Future.successful).getOrElse(IdQueue.createInnerData[T](8)
-      .flatMap((x: MultiQueueData[T]) => rootPtr.write(x).map(_ => x))))
-  }
-
   def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
     getInner().flatMap(inner => {
       inner.size.get().map(_.toInt)
     })
+  }
+
+  private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
+    rootPtr.readOpt().flatMap(_.map(Future.successful).getOrElse(IdQueue.createInnerData[T](8)
+      .flatMap((x: MultiQueueData[T]) => rootPtr.write(x).map(_ => x))))
   }
 
   def contains(id: String)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {

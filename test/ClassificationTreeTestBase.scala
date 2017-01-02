@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2017 by Andrew Charneski.
+ *
+ * The author licenses this file to you under the
+ * Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy
+ * of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import java.io.FileInputStream
 import java.util.Date
 import java.util.concurrent.{ExecutorService, Executors, TimeUnit}
@@ -66,13 +85,18 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         input.foreach(collection.atomic().sync.add("data", _))
 
         def now = System.currentTimeMillis()
+
         val timeout = now + 30.seconds.toMillis
+
         def isWorkQueueEmpty = StmExecutionQueue.get().workQueue.atomic().sync.size() > 0
+
         def isAnythingRunning = ExecutionStatusManager.currentlyRunning() > 0
+
         while ((isWorkQueueEmpty || isAnythingRunning) && timeout > now) Thread.sleep(2000)
         println(JacksonValue.simple(ExecutionStatusManager.status()).pretty)
 
         val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root
+
         def print(prefix: String, nodePtr: STMPtr[ClassificationTreeNode]): Unit = {
           val node: ClassificationTreeNode = nodePtr.atomic.sync.read
           val nodeId = node.atomic().sync.getTreeId(nodePtr, rootPtr)
@@ -82,6 +106,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
           node.fail.foreach(fail => print(prefix + " ", fail))
           node.exception.foreach(ex => print(prefix + " ", ex))
         }
+
         print("", rootPtr)
 
         val output = collection.atomic().sync.stream().map(_.value).toSet

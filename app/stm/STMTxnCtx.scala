@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2017 by Andrew Charneski.
+ *
+ * The author licenses this file to you under the
+ * Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy
+ * of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package stm
 
 import storage.Restm
@@ -47,6 +66,41 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     })
   }
 
+  private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)
+                                                  (implicit executionContext: ExecutionContext): Future[Option[T]] = //Util.monitorFuture("STMTxnCtx.readOpt")
+  {
+    require(!isClosed)
+    writeCache.get(id).orElse(initCache.get(id))
+      .map(x => Future.successful(x.map(_.asInstanceOf[T]))).getOrElse(
+      readCache.getOrElseUpdate(id,
+        txnId.flatMap(txnId => {
+          //          def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)
+          //            .filter(_.isCompleted)
+          //            .map(_.recover({ case _ => None }))
+          //            .flatMap(Await.result(_, 0.millisecond))
+          //            .map(_.asInstanceOf[T]))
+          //          val previousTime: Option[TimeStamp] = prior.map(_.txnId)
+          //            .map(_.recover({ case _ => None }))
+          //            .filter(_.isCompleted)
+          //            .map(Await.result(_, 0.millisecond))
+          //            .map(_.asInstanceOf[TimeStamp])
+          //          cluster.getPtr(id, txnId, previousTime).map(_.flatMap(_.deserialize[T]()).orElse(previousValue))
+          cluster.getPtr(id, txnId).map(_.flatMap(_.deserialize[T]()))
+        })
+      ).map(_.map(_.asInstanceOf[T])))
+  }
+
+  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit] = {
+    lockOptional(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
+  }
+
+  private[stm] def lockOptional(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = {
+    writeLocks.getOrElseUpdate(id, txnId.flatMap(txnId => {
+      require(!isClosed)
+      cluster.lock(id, txnId)
+    }).map(_.isEmpty))
+  }
+
   override def toString: String = {
     "txn@" + Option(txnId).filter(_.isCompleted).map(future => Await.result(future, 1.second))
       .map(_.toString).getOrElse("???")
@@ -91,40 +145,5 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
         }
       })
     })
-  }
-
-  private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)
-                                                  (implicit executionContext: ExecutionContext): Future[Option[T]] = //Util.monitorFuture("STMTxnCtx.readOpt")
-  {
-    require(!isClosed)
-    writeCache.get(id).orElse(initCache.get(id))
-      .map(x => Future.successful(x.map(_.asInstanceOf[T]))).getOrElse(
-      readCache.getOrElseUpdate(id,
-        txnId.flatMap(txnId => {
-          //          def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)
-          //            .filter(_.isCompleted)
-          //            .map(_.recover({ case _ => None }))
-          //            .flatMap(Await.result(_, 0.millisecond))
-          //            .map(_.asInstanceOf[T]))
-          //          val previousTime: Option[TimeStamp] = prior.map(_.txnId)
-          //            .map(_.recover({ case _ => None }))
-          //            .filter(_.isCompleted)
-          //            .map(Await.result(_, 0.millisecond))
-          //            .map(_.asInstanceOf[TimeStamp])
-          //          cluster.getPtr(id, txnId, previousTime).map(_.flatMap(_.deserialize[T]()).orElse(previousValue))
-          cluster.getPtr(id, txnId).map(_.flatMap(_.deserialize[T]()))
-        })
-      ).map(_.map(_.asInstanceOf[T])))
-  }
-
-  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit] = {
-    lockOptional(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
-  }
-
-  private[stm] def lockOptional(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = {
-    writeLocks.getOrElseUpdate(id, txnId.flatMap(txnId => {
-      require(!isClosed)
-      cluster.lock(id, txnId)
-    }).map(_.isEmpty))
   }
 }

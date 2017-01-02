@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2017 by Andrew Charneski.
+ *
+ * The author licenses this file to you under the
+ * Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy
+ * of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package stm
 
 import storage.Restm.PointerType
@@ -30,16 +49,16 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     optValue.map(_ => Future.successful(this)).getOrElse(write(default).map(_ => this))
   })
 
+  def initOrUpdate(default: => T, upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+    val x = optValue.map(upadater).getOrElse(default)
+    write(x).map(_ => this)
+  })
+
   def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = Util.chainEx(s"failed readOpt to $id") {
     ctx.readOpt[T](id).flatMap(_.map(value => Future.successful(Option(value))).getOrElse(default))
   }
 
   def default: Future[Option[T]] = Future.successful(None)
-
-  def initOrUpdate(default: => T, upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
-    val x = optValue.map(upadater).getOrElse(default)
-    write(x).map(_ => this)
-  })
 
   def update(upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
     write(upadater(optValue.get)).map(_ => this)
@@ -57,12 +76,12 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     STMPtr.this.write(value)
   }
 
+  def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
+    .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
+
   def <=(value: Option[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = {
     value.map(STMPtr.this.write).getOrElse(STMPtr.this.delete())
   }
-
-  def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
-    .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
 
   def delete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.delete(id)
     .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
@@ -125,6 +144,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
       def write(value: T)(implicit classTag: ClassTag[T]): Unit = sync(AtomicApi.this.write(value))
     }
+
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {

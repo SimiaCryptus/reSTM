@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2017 by Andrew Charneski.
+ *
+ * The author licenses this file to you under the
+ * Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy
+ * of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package stm.task
 
 import java.util.UUID
@@ -34,6 +53,7 @@ object Task {
   final case class TaskSuccess[T](value: T) extends TaskResult[T]
 
   final case class TaskContinue[T](queue: StmExecutionQueue, newFunction: (Restm, ExecutionContext) => TaskResult[T], newTriggers: List[Task[T]] = List.empty) extends TaskResult[T]
+
 }
 
 import stm.task.Task._
@@ -94,6 +114,8 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
     (c, e) => function(Task.this.atomic()(c, e).sync.result(), c, e)
   }
 
+  def atomic(priority: Duration = 0.seconds)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority)
+
   def initTriggers(queue: StmExecutionQueue)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit.type] = {
     root.read.flatMap(_.initTriggers(Task.this, queue)).map(_ => Unit)
   }
@@ -111,8 +133,6 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
     promise.future.onComplete(_ => schedule.cancel(false))
     promise.future
   }).asInstanceOf[Future[T]]
-
-  def atomic(priority: Duration = 0.seconds)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority)
 
   def obtainTask(executorId: String = UUID.randomUUID().toString)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[(Restm, ExecutionContext) => TaskResult[T]]] = {
     require(null != root)
@@ -311,6 +331,7 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
         AtomicApi.this.map(queue, function)
       }
     }
+
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
@@ -338,6 +359,7 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
       Task.this.obtainTask(executorId)
     }
   }
+
 }
 
 case class TaskSubscription(task: Task[_], queue: StmExecutionQueue)
