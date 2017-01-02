@@ -13,7 +13,7 @@ object RestmImpl {
 
 class RestmImpl(val internal: RestmInternal)(implicit executionContext: ExecutionContext) extends Restm {
 
-  val txnTimeout = 7.seconds
+  val txnTimeout: FiniteDuration = 7.seconds
 
   override def getPtr(id: PointerType): Future[Option[ValueType]] = internal._getValue(id).recoverWith({
     case e: TransactionConflict if e.conflitingTxn.age > txnTimeout =>

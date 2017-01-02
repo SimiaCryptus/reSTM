@@ -32,10 +32,10 @@ object Util {
     codeMetricsData.clear()
   }
 
-  def now = System.nanoTime().nanoseconds
+  def now: FiniteDuration = System.nanoTime().nanoseconds
   val codeMetricsData = new TrieMap[String, CodeMetrics]()
   val scalarData = new TrieMap[String, AtomicDouble]()
-  def delta(name:String, delta:Double) = scalarData.getOrElseUpdate(name,new AtomicDouble(0)).addAndGet(delta)
+  def delta(name:String, delta:Double): Double = scalarData.getOrElseUpdate(name,new AtomicDouble(0)).addAndGet(delta)
 
 
   def monitorBlock[T](name:String)(f: =>T):T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
@@ -56,7 +56,7 @@ object Util {
   }
 
 
-  def getMetrics() = Map(
+  def getMetrics = Map(
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
     "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )

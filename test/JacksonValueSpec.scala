@@ -9,16 +9,16 @@ class JacksonValueSpec extends WordSpec with MustMatchers {
 
   "JacksonValue" should {
     "serialize values" in {
-      val input: TestObj = new TestObj("foo")
+      val input: TestObj = TestObj("foo")
       val string: String = JacksonValue(input).toString
       val output: TestObj = new JacksonValue(string).deserialize[TestObj]().get
       input mustBe output
     }
     "serialize generic values" in {
-      verify[TestObj](new TestObj("foo"))
-      verify[Option[TestObj]](Option(new TestObj("foo")))
+      verify[TestObj](TestObj("foo"))
+      verify[Option[TestObj]](Option(TestObj("foo")))
       verify[Option[TestObj]](None)
-      verify(Option(List(new TestObj("foo"))))
+      verify(Option(List(TestObj("foo"))))
       //verify[List[Option[TestObj]]](List(Option(new TestObj("foo"))))
     }
   }
@@ -34,20 +34,20 @@ class KryoValueSpec extends WordSpec with MustMatchers {
 
   "KryoValue" should {
     "serialize values" in {
-      val input: TestObj = new TestObj("foo")
+      val input: TestObj = TestObj("foo")
       val string: String = KryoValue(input).toString
       val output: TestObj = new KryoValue[TestObj](string).deserialize().get
       input mustBe output
     }
     "serialize generic values" in {
-      verify[TestObj](new TestObj("foo"))
-      verify[Option[TestObj]](Option(new TestObj("foo")))
+      verify[TestObj](TestObj("foo"))
+      verify[Option[TestObj]](Option(TestObj("foo")))
       verify[Option[TestObj]](None)
       verify("foo")
       verify(List("foo"))
-      verify(List(new TestObj("foo")))
-      verify(Option(List(new TestObj("foo"))))
-      verify[List[Option[TestObj]]](List(Option(new TestObj("foo"))))
+      verify(List(TestObj("foo")))
+      verify(Option(List(TestObj("foo"))))
+      verify[List[Option[TestObj]]](List(Option(TestObj("foo"))))
     }
   }
 

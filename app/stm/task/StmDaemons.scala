@@ -12,22 +12,22 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 object DaemonConfig {
-  def apply(name:String, f:(Restm, ExecutionContext)=>Unit) = {
+  def apply(name:String, f:(Restm, ExecutionContext)=>Unit): DaemonConfig = {
     new DaemonConfig(name, KryoValue[(Restm, ExecutionContext)=>Unit](f))
   }
 }
 case class DaemonConfig(name: String, impl: KryoValue[(Restm, ExecutionContext)=>Unit]) {
-  def deserialize() = impl.deserialize()
+  def deserialize(): Option[(Restm, ExecutionContext) => Unit] = impl.deserialize()
 }
 
 object StmDaemons {
 
-  val config = SimpleLinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
+  val config: SimpleLinkedList[DaemonConfig] = SimpleLinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String,Thread]
   private[this] var mainThread: Option[Thread] = None
 
   def start()(implicit cluster: Restm) : Unit = {
-    if(!mainThread.filter(_.isAlive).isDefined) mainThread = Option({
+    if(mainThread.filter(_.isAlive).isEmpty) mainThread = Option({
 
 
 
@@ -57,15 +57,15 @@ object StmDaemons {
     })
   }
 
-  def stop()(implicit executionContext: ExecutionContext) = {
+  def stop()(implicit executionContext: ExecutionContext): Future[Unit] = {
     mainThread.foreach(_.interrupt())
     join()
   }
 
   def join()(implicit executionContext: ExecutionContext): Future[Unit] = {
     val promise: Promise[Unit] = Promise[Unit]
-    def isMainAlive: Boolean = mainThread.filter(_.isAlive).isDefined
-    def allDaemonsComplete: Boolean = daemonThreads.filter(_._2.isAlive).isEmpty
+    def isMainAlive: Boolean = mainThread.exists(_.isAlive)
+    def allDaemonsComplete: Boolean = !daemonThreads.exists(_._2.isAlive)
     val scheduledFuture = Task.scheduledThreadPool.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = if (!isMainAlive && allDaemonsComplete) promise.success(Unit)
     }, 100, 100, TimeUnit.MILLISECONDS)

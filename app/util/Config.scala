@@ -14,9 +14,9 @@ object Config {
     .map(FileUtils.readLines(_, "UTF-8"))
     .map(_.asScala.toList).getOrElse(List.empty)
     .map(_.trim).filterNot(_.startsWith("//"))
-    .map(_.split("=").map(_.trim)).filter(2 == _.size)
+    .map(_.split("=").map(_.trim)).filter(2 == _.length)
     .map(split => split(0) -> split(1)).toMap
-  def getConfig(key:String) = {
+  def getConfig(key:String): Option[String] = {
     configFile.get(key).orElse(properties.get(key))
   }
 }

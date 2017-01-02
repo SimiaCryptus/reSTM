@@ -9,17 +9,17 @@ import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration.{Duration, _}
 
 object TxnTime {
-  val start = timeVal()
+  val start: Long = timeVal()
 
   def timeVal(): Long = System.currentTimeMillis()
 
   val recent: TrieMap[TxnTime, AnyRef] = new scala.collection.concurrent.TrieMap[TxnTime, AnyRef]()
 
-  def now = timeVal() - start
+  def now: Long = timeVal() - start
 
   val safeLast: AtomicLong = new AtomicLong(0)
 
-  def safeNow = safeLast.updateAndGet(new LongUnaryOperator {
+  def safeNow: Long = safeLast.updateAndGet(new LongUnaryOperator {
     override def applyAsLong(prev: Long): Long = Math.max(now, prev)
   })
 
@@ -45,7 +45,7 @@ case class TxnTime(epochMs: Long, sequence: Int) extends Ordered[TxnTime] {
     java.lang.Long.parseLong(str.split(",")(0)),
     java.lang.Integer.parseInt(str.split(",")(1)))
 
-  def next = copy(sequence = sequence + 1)
+  def next: TxnTime = copy(sequence = sequence + 1)
 
   override def compare(o: TxnTime): Int = {
     if (epochMs != o.epochMs) {

@@ -55,7 +55,7 @@ object BatchedTreeCollection {
       })
     }
 
-    private def unlinkParent[T](self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+    private def unlinkParent(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
       parent.map(parentPtr => {
         parentPtr.read().flatMap(parentValue => {
           if (parentValue.left == Option(self)) {
@@ -76,7 +76,7 @@ object BatchedTreeCollection {
           leftPtr.read.flatMap(_.add(newValue, leftPtr))
         }).getOrElse({
           STMPtr.dynamic(KryoValue(newValue))
-            .flatMap(ptr => STMPtr.dynamic(new TreeCollectionNode(Some(self), ptr)))
+            .flatMap(ptr => STMPtr.dynamic(TreeCollectionNode(Some(self), ptr)))
             .flatMap(x =>self.write(this.copy(left = Option(x))))
         })
       } else {
@@ -84,7 +84,7 @@ object BatchedTreeCollection {
           rightPtr.read.flatMap(_.add(newValue, rightPtr))
         }).getOrElse({
           STMPtr.dynamic(KryoValue(newValue))
-            .flatMap(ptr => STMPtr.dynamic(new TreeCollectionNode(Some(self), ptr)))
+            .flatMap(ptr => STMPtr.dynamic(TreeCollectionNode(Some(self), ptr)))
             .flatMap(x =>self.write(this.copy(right = Option(x))))
         })
       }
@@ -135,13 +135,13 @@ object BatchedTreeCollection {
 
     def getByTreeId(cursor: Long, self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[TreeCollectionNode[T]]] = {
       require(0 <= cursor)
-      var path = Util.toDigits(cursor, 2).tail
+      val path = Util.toDigits(cursor, 2).tail
       getByTreePath(self, path)
     }
 
     def getTreeBit(node:STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Int = {
-      if(left.filter(_==node).isDefined) 0
-      else if(right.filter(_==node).isDefined) 1
+      if(left.exists(_ == node)) 0
+      else if(right.exists(_ == node)) 1
       else throw new RuntimeException()
     }
 
@@ -163,7 +163,7 @@ object BatchedTreeCollection {
   def apply[T]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     new BatchedTreeCollection(STMPtr.dynamicSync[TreeCollectionNode[T]](null))
 
-  def create[T]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+  def create[T]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[BatchedTreeCollection[T]] =
     STMPtr.dynamic[TreeCollectionNode[T]](null).map(new BatchedTreeCollection(_))
 
 }
@@ -171,28 +171,29 @@ object BatchedTreeCollection {
 class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
 
   def this(ptr:PointerType) = this(new STMPtr[TreeCollectionNode[T]](ptr))
+  //noinspection ScalaUnusedSymbol
   private def this() = this(new PointerType)
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def get() = sync { AtomicApi.this.get() }
-      def size()(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.size() }
-      def apxSize() = sync { AtomicApi.this.apxSize() }
-      def nextBlock(cursor:Long) = sync { AtomicApi.this.nextBlock(cursor) }
-      def add(value: List[T]) = sync { AtomicApi.this.add(value) }
-      def stream()(implicit classTag: ClassTag[T]) = AtomicApi.this.stream()
+      def get(): Option[List[T]] = sync { AtomicApi.this.get() }
+      def size()(implicit classTag: ClassTag[T]): Long = sync { AtomicApi.this.size() }
+      def apxSize(): Long = sync { AtomicApi.this.apxSize() }
+      def nextBlock(cursor:Long): (Long, List[T]) = sync { AtomicApi.this.nextBlock(cursor) }
+      def add(value: List[T]): Unit = sync { AtomicApi.this.add(value) }
+      def stream()(implicit classTag: ClassTag[T]): Stream[T] = AtomicApi.this.stream()
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
 
-    def size()(implicit classTag: ClassTag[T]) = atomic { BatchedTreeCollection.this.size()(_,executionContext,classTag) }
-    def get() = atomic { BatchedTreeCollection.this.get()(_,executionContext) }
-    def add(value: List[T]) = atomic { BatchedTreeCollection.this.add(value)(_,executionContext) }
-    def apxSize() = atomic { BatchedTreeCollection.this.apxSize()(_,executionContext) }
-    def nextBlock(cursor:Long) = atomic { BatchedTreeCollection.this.nextBlock(cursor)(_,executionContext) }
+    def size()(implicit classTag: ClassTag[T]): Future[Long] = atomic { BatchedTreeCollection.this.size()(_,executionContext,classTag) }
+    def get(): Future[Option[List[T]]] = atomic { BatchedTreeCollection.this.get()(_,executionContext) }
+    def add(value: List[T]): Future[Unit] = atomic { BatchedTreeCollection.this.add(value)(_,executionContext) }
+    def apxSize(): Future[Long] = atomic { BatchedTreeCollection.this.apxSize()(_,executionContext) }
+    def nextBlock(cursor:Long): Future[(Long, List[T])] = atomic { BatchedTreeCollection.this.nextBlock(cursor)(_,executionContext) }
 
-    def stream()(implicit classTag: ClassTag[T]) = {
+    def stream()(implicit classTag: ClassTag[T]): Stream[T] = {
       Stream.iterate((0l,List.empty[T]))(t=>sync.nextBlock(t._1)).takeWhile(_._1 > -2).flatMap(_._2)
     }
 
@@ -200,12 +201,12 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { BatchedTreeCollection.this.get() }
-    def apxSize()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { BatchedTreeCollection.this.apxSize() }
-    def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.size() }
-    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = BatchedTreeCollection.this.stream()
-    def add(value: List[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.add(value) }
-    def nextBlock(cursor:Long)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]) = sync { BatchedTreeCollection.this.nextBlock(cursor) }
+    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[List[T]] = sync { BatchedTreeCollection.this.get() }
+    def apxSize()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Long = sync { BatchedTreeCollection.this.apxSize() }
+    def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Long = sync { BatchedTreeCollection.this.size() }
+    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Stream[T] = BatchedTreeCollection.this.stream()
+    def add(value: List[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Unit = sync { BatchedTreeCollection.this.add(value) }
+    def nextBlock(cursor:Long)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): (Long, List[T]) = sync { BatchedTreeCollection.this.nextBlock(cursor) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -217,7 +218,8 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
         .getOrElse({
           STMPtr.dynamic(KryoValue(value))
             .map(new TreeCollectionNode[T](None, _))
-            .flatMap(rootPtr.write(_))
+            .flatMap(
+              rootPtr.write)
         })
     })
   }

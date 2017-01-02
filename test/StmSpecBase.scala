@@ -1,4 +1,3 @@
-import java.util.UUID
 import java.util.concurrent.Executors
 
 import _root_.util.Util
@@ -24,11 +23,11 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
   }
 
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Transactional Pointers" should {
-    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
+//    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
     "support basic operations" in {
       val id: PointerType = new PointerType
       Await.result(new STMTxn[String] {
@@ -106,9 +105,9 @@ class LocalStmSpec extends StmSpecBase with BeforeAndAfterEach {
 }
 
 class LocalClusterStmSpec extends StmSpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-  val shards = (0 until 8).map(_ => new RestmActors()).toList
+//  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+//    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
+  val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     super.beforeEach()

@@ -46,19 +46,19 @@ case class DefaultClassificationStrategy(
       rules_Levenshtein(valuesList, field) ++ rules_SimpleScalar(valuesList, field)
     })
     val rules = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
-    if(!rules.isEmpty) rules.maxBy(_._2)._1
+    if(rules.nonEmpty) rules.maxBy(_._2)._1
     else null
   }
 
   private def rules_SimpleScalar(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
     metricRules(values,
-      _.value.attributes.get(field).filter(_.isInstanceOf[Number]).isDefined,
+      _.value.attributes.get(field).exists(_.isInstanceOf[Number]),
       _.attributes(field).asInstanceOf[Number].doubleValue())
   }
 
   private def rules_Levenshtein(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_Levenshtein") {
     distanceRules(values,
-      _.value.attributes.get(field).filter(_.isInstanceOf[String]).isDefined,
+      _.value.attributes.get(field).exists(_.isInstanceOf[String]),
       _.attributes(field).toString(),
       (a: String,b: String) => LevenshteinDistance.getDefaultInstance.apply(a,b))
   }
@@ -95,7 +95,7 @@ case class DefaultClassificationStrategy(
             metric(item)
           ) <= value.asInstanceOf[Number].doubleValue()
         }
-        rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment.toMap, exceptionCounts)
+        rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
       })
     })
   }
@@ -103,7 +103,7 @@ case class DefaultClassificationStrategy(
   private def metricRules(values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
     val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter).map(item => item.label -> metric(item.value))
-      .map(item => item._1 -> item._2.asInstanceOf[Number].doubleValue().toDouble)
+      .map(item => item._1 -> item._2.toDouble)
       .sortBy(_._2)
 
     val labelCounters: Map[String, mutable.Map[Double, Int]] = valueSortMap.groupBy(_._1)
@@ -123,7 +123,7 @@ case class DefaultClassificationStrategy(
       val rule: (ClassificationTreeItem) => Boolean = item => {
         metric(item) <= threshold
       }
-      rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment.toMap, exceptionCounts)
+      rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
     })
   }
 

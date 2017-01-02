@@ -12,7 +12,7 @@ object TreeMap {
     override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T,V]] = create[T,V]
   }
 
-  def create[T <: Comparable[T],V](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = STMPtr.dynamic[Option[BinaryTreeMapNode[T,V]]](None).map(new TreeMap(_))
+  def create[T <: Comparable[T],V](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T, V]] = STMPtr.dynamic[Option[BinaryTreeMapNode[T,V]]](None).map(new TreeMap(_))
 
 }
 
@@ -24,35 +24,35 @@ class TreeMap[T <: Comparable[T],V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T,V
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(key: T, value: V) = sync { AtomicApi.this.add(key, value) }
-      def remove(value: T) = sync { AtomicApi.this.remove(value) }
-      def contains(value: T) = sync { AtomicApi.this.contains(value) }
-      def get(value: T) = sync { AtomicApi.this.get(value) }
+      def add(key: T, value: V): Unit.type = sync { AtomicApi.this.add(key, value) }
+      def remove(value: T): Unit = sync { AtomicApi.this.remove(value) }
+      def contains(value: T): Boolean = sync { AtomicApi.this.contains(value) }
+      def get(value: T): Option[V] = sync { AtomicApi.this.get(value) }
     }
 
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
 
-    def add(key: T, value: V) = atomic { TreeMap.this.add(key, value)(_,executionContext).map(_ => Unit) }
-    def remove(key: T) = atomic { TreeMap.this.remove(key)(_,executionContext) }
-    def contains(key: T) = atomic { TreeMap.this.contains(key)(_,executionContext) }
-    def get(key: T) = atomic { TreeMap.this.get(key)(_,executionContext) }
+    def add(key: T, value: V): Future[Unit.type] = atomic { TreeMap.this.add(key, value)(_,executionContext).map(_ => Unit) }
+    def remove(key: T): Future[Unit] = atomic { TreeMap.this.remove(key)(_,executionContext) }
+    def contains(key: T): Future[Boolean] = atomic { TreeMap.this.contains(key)(_,executionContext) }
+    def get(key: T): Future[Option[V]] = atomic { TreeMap.this.get(key)(_,executionContext) }
   }
 
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
-  def add(key: T, value: V)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def add(key: T, value: V)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(r => r += key -> value).getOrElse(new BinaryTreeMapNode[T,V](key, value))
     }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
-  def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     rootPtr.readOpt().map(_.flatten).map(_.flatMap(r => r -= value))
       .flatMap(newRootData => rootPtr.write(newRootData))
   }
 
-  def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
     rootPtr.readOpt().map(_.flatten).map(_.exists(_.contains(value)))
   }
 
@@ -60,11 +60,11 @@ class TreeMap[T <: Comparable[T],V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T,V
     rootPtr.readOpt().map(_.flatten).flatMap(_.map(_.get(value)).getOrElse(Future.successful(None)))
   }
 
-  def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Product with Serializable] = {
     rootPtr.readOpt().map(_.flatten).map(_.map(_.min()).getOrElse(None))
   }
 
-  def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Product with Serializable] = {
     rootPtr.readOpt().map(_.flatten).map(_.map(_.max()).getOrElse(None))
   }
 }

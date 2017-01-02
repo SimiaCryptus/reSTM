@@ -14,7 +14,7 @@ object TaskUtil {
     def now = new Date()
 
     val timeout = new Date(now.getTime + taskTimeout.toMillis)
-    var continueLoop = true
+    val continueLoop = true
     var lastSummary = ""
     var lastChanged = now
     while (!sortTask.future.isCompleted && continueLoop) {
@@ -23,7 +23,7 @@ object TaskUtil {
       System.out.println(s"Checking Status at ${new Date()}...")
       val statusTrace = sortTask.atomic(-0.milliseconds).sync(diagnosticsTimeout).getStatusTrace(StmExecutionQueue.get())
 
-      def isOrphaned(node: TaskStatusTrace): Boolean = (node.status.isInstanceOf[Orphan]) || node.children.exists(isOrphaned(_))
+      def isOrphaned(node: TaskStatusTrace): Boolean = node.status.isInstanceOf[Orphan] || node.children.exists(isOrphaned)
 
       def statusSummary(node: TaskStatusTrace = statusTrace): Map[String, Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
         .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ + _).getOrElse(0))
@@ -33,16 +33,16 @@ object TaskUtil {
 
       val summary = JacksonValue.simple(statusSummary()).pretty
       if (lastSummary == summary) {
-        System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
+        System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
         require(lastChanged.compareTo(new Date(now.getTime - 10.minutes.toMillis)) > 0)
       } else if (isOrphaned(statusTrace)) {
         //println(JacksonValue.simple(statusTrace).pretty)
-        System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
+        System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
         //continueLoop = false
       } else if (numQueued > 0 || numRunning > 0) {
-        System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
+        System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
       } else {
-        System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - ${summary}")
+        System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
         //continueLoop = false
       }
       if(lastSummary != summary) {

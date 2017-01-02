@@ -17,7 +17,7 @@ object DistributedScalar {
     values : List[STMPtr[java.lang.Double]] = List.empty
   ) {
 
-    def add(value: Double, rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    def add(value: Double, rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
       val shuffledLists = values.map(_->Random.nextDouble()).sortBy(_._2).map(_._1)
       def add(list : Seq[STMPtr[java.lang.Double]] = shuffledLists): Future[Unit] = {
         if(list.isEmpty) throw new TransactionConflict("Could not lock any queue") else {
@@ -45,10 +45,10 @@ object DistributedScalar {
   }
   def create(size : Int = 8)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[DistributedScalar] =
     Future.sequence((1 to size).map(_=>STMPtr.dynamic(Double.valueOf(0.0)))).flatMap(ptrs=>{
-      STMPtr.dynamic(new DistributedScalar.ScalarData(ptrs.toList)).map(new DistributedScalar(_))
+      STMPtr.dynamic(DistributedScalar.ScalarData(ptrs.toList)).map(new DistributedScalar(_))
     })
 
-  def createSync(size : Int = 8)(implicit cluster: Restm, executionContext: ExecutionContext) =
+  def createSync(size : Int = 8)(implicit cluster: Restm, executionContext: ExecutionContext): DistributedScalar =
     Await.result(new STMTxn[DistributedScalar] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[DistributedScalar] = {
         create(size)
@@ -59,29 +59,29 @@ object DistributedScalar {
 
 class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
   private def this() = this(null:STMPtr[DistributedScalar.ScalarData])
-  def id = rootPtr.id.toString
+  def id: String = rootPtr.id.toString
 
   def this(ptr:PointerType) = this(new STMPtr[DistributedScalar.ScalarData](ptr))
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(value:Double) = sync { AtomicApi.this.add(value) }
-      def get() = sync { AtomicApi.this.get() }
+      def add(value:Double): Unit.type = sync { AtomicApi.this.add(value) }
+      def get(): scala.Double = sync { AtomicApi.this.get() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
-    def add(value:Double) = atomic { DistributedScalar.this.add(value)(_,executionContext).map(_ => Unit) }
-    def get() = atomic { DistributedScalar.this.get()(_,executionContext) }
+    def add(value:Double): Future[Unit.type] = atomic { DistributedScalar.this.add(value)(_,executionContext).map(_ => Unit) }
+    def get(): Future[scala.Double] = atomic { DistributedScalar.this.get()(_,executionContext) }
   }
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add(value:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { DistributedScalar.this.add(value) }
-    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { DistributedScalar.this.get() }
+    def add(value:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync { DistributedScalar.this.add(value) }
+    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): scala.Double = sync { DistributedScalar.this.get() }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
-  def add(value:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def add(value:Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     getInner().flatMap(inner => {
       inner.add(value, rootPtr)
     })
@@ -89,12 +89,12 @@ class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
 
   def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[scala.Double] = {
     getInner().flatMap(inner => {
-      inner.get(rootPtr).map(_.toDouble)
+      inner.get(rootPtr)
     })
   }
 
   private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.orElse(Option(new DistributedScalar.ScalarData()))).map(_.get)
+    rootPtr.readOpt().map(_.orElse(Option(DistributedScalar.ScalarData()))).map(_.get)
   }
 }
 

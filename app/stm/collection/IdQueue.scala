@@ -23,7 +23,7 @@ object IdQueue {
     index: TreeSet[String],
     queues : List[SimpleLinkedList[T]] = List.empty
   ) {
-    def add(value:T, self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+    def add(value:T, self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
       val shuffledLists = queues.map(_->Random.nextDouble()).sortBy(_._2).map(_._1)
       def add(list : Seq[SimpleLinkedList[T]] = shuffledLists): Future[Unit] = {
         if(list.isEmpty) throw new TransactionConflict("Could not lock any queue") else {
@@ -69,8 +69,8 @@ object IdQueue {
       }
       take()
     }
-    def grow(self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-      SimpleLinkedList.create[T].map((newList: SimpleLinkedList[T]) => copy(queues=queues ++ List(newList))).flatMap(self.write(_))
+    def grow(self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+      SimpleLinkedList.create[T].map((newList: SimpleLinkedList[T]) => copy(queues=queues ++ List(newList))).flatMap(self.write)
     }
   }
   def create[T <: Identifiable](size: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[IdQueue[T]] = {
@@ -78,7 +78,7 @@ object IdQueue {
   }
 
   private def createInnerData[T <: Identifiable](size: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
-    Future.sequence((1 to size).map(i => SimpleLinkedList.create[T])).flatMap(queues => {
+    Future.sequence((1 to size).map(_ => SimpleLinkedList.create[T])).flatMap(queues => {
       DistributedScalar.create(size).flatMap((counter: DistributedScalar) => {
         TreeSet.create[String]().map((index: TreeSet[String]) => {
           new IdQueue.MultiQueueData[T](counter, index, queues.toList)
@@ -97,29 +97,29 @@ object IdQueue {
 
 class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
   private def this() = this(null:STMPtr[IdQueue.MultiQueueData[T]])
-  def id = rootPtr.id.toString
+  def id: String = rootPtr.id.toString
 
 
   def this(ptr:PointerType) = this(new STMPtr[IdQueue.MultiQueueData[T]](ptr))
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(value:T)(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.add(value) }
+      def add(value:T)(implicit classTag: ClassTag[T]): Unit.type = sync { AtomicApi.this.add(value) }
       def take()(implicit classTag: ClassTag[T]): Option[T] = sync { AtomicApi.this.take() }
-      def size()(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.size() }
+      def size()(implicit classTag: ClassTag[T]): Int = sync { AtomicApi.this.size() }
       def take(minEmpty : Int)(implicit classTag: ClassTag[T]): Option[T] = sync { AtomicApi.this.take(minEmpty) }
-      def contains(id : String)(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.contains(id) }
-      def grow()(implicit classTag: ClassTag[T]) = sync { AtomicApi.this.grow() }
+      def contains(id : String)(implicit classTag: ClassTag[T]): Boolean = sync { AtomicApi.this.contains(id) }
+      def grow()(implicit classTag: ClassTag[T]): Unit.type = sync { AtomicApi.this.grow() }
       def stream()(implicit classTag: ClassTag[T]): Stream[T] = sync { AtomicApi.this.stream() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
-    def add(value:T)(implicit classTag: ClassTag[T]) = atomic { IdQueue.this.add(value)(_,executionContext).map(_ => Unit) }
+    def add(value:T)(implicit classTag: ClassTag[T]): Future[Unit.type] = atomic { IdQueue.this.add(value)(_,executionContext).map(_ => Unit) }
     def take()(implicit classTag: ClassTag[T]): Future[Option[T]] = atomic { IdQueue.this.take()(_,executionContext) }
-    def size()(implicit classTag: ClassTag[T]) = atomic { IdQueue.this.size()(_,executionContext) }
+    def size()(implicit classTag: ClassTag[T]): Future[Int] = atomic { IdQueue.this.size()(_,executionContext) }
     def take(minEmpty : Int)(implicit classTag: ClassTag[T]): Future[Option[T]] = atomic { IdQueue.this.take(minEmpty)(_,executionContext) }
-    def contains(id : String)(implicit classTag: ClassTag[T]) = atomic { IdQueue.this.contains(id)(_,executionContext) }
-    def grow()(implicit classTag: ClassTag[T]) = atomic { IdQueue.this.grow()(_,executionContext).map(_ => Unit) }
+    def contains(id : String)(implicit classTag: ClassTag[T]): Future[Boolean] = atomic { IdQueue.this.contains(id)(_,executionContext) }
+    def grow()(implicit classTag: ClassTag[T]): Future[Unit.type] = atomic { IdQueue.this.grow()(_,executionContext).map(_ => Unit) }
 
     def stream()(implicit classTag: ClassTag[T]): Future[Stream[T]] = {
       val opt: Option[MultiQueueData[T]] = rootPtr.atomic.sync.readOpt
@@ -137,13 +137,13 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
   }
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority,maxRetries)
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add(value:T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { IdQueue.this.add(value) }
+    def add(value:T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync { IdQueue.this.add(value) }
     def take()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[T] = sync { IdQueue.this.take() }
-    def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { IdQueue.this.size() }
+    def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Int = sync { IdQueue.this.size() }
     def take(minEmpty : Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[T] = sync { IdQueue.this.take(minEmpty) }
-    def contains(id : String)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { IdQueue.this.contains(id) }
-    def grow()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { IdQueue.this.grow() }
-    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { IdQueue.this.stream() }
+    def contains(id : String)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync { IdQueue.this.contains(id) }
+    def grow()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync { IdQueue.this.grow() }
+    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Stream[T] = sync { IdQueue.this.stream() }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
@@ -164,10 +164,7 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
         if(x.isDefined) {
           inner.size.add(-1.0)
             .flatMap(_=>inner.index.remove(x.get.id))
-            .map(found=>{
-              //require(found)
-              x
-            })
+            .map(_ =>x)
         } else {
           Future.successful(x)
         }
@@ -179,7 +176,7 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
     getInner().flatMap(inner => {
       inner.take(rootPtr).flatMap(x=>{
         if(x.isDefined) {
-          inner.size.add(-1.0).flatMap(_=>inner.index.remove(x.get.id).map(require(_)).map(_=>x))
+          inner.size.add(-1.0).flatMap(_=>inner.index.remove(x.get.id).map(require).map(_=>x))
         } else {
           Future.successful(x)
         }
@@ -206,7 +203,7 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
   }
 
   private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
-    rootPtr.readOpt().flatMap(_.map(Future.successful(_)).getOrElse(IdQueue.createInnerData[T](8)
+    rootPtr.readOpt().flatMap(_.map(Future.successful).getOrElse(IdQueue.createInnerData[T](8)
       .flatMap((x: MultiQueueData[T]) => rootPtr.write(x).map(_=>x))))
   }
 

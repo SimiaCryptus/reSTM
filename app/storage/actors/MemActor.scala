@@ -24,7 +24,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   private[this] var staleCommit: Option[TimeStamp] = None
   private[this] var queuedValue: Option[ValueType] = None
 
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext) = log(s"$this $msg")
+  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
   private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
   override def toString = s"ptr@$objId:$name#${history.size}#$messageNumber"
 
@@ -33,7 +33,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_.time))
         .map(record=>record.time->record.value)
     }.andThen({
-      case Success(result) =>
+      case Success(_) =>
         logMsg(s"getCurrentValue")
       case Failure(e) => logMsg(s"getCurrentValue failed - $e")
     })
@@ -59,7 +59,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         result
       }
     } else {
-      if(lastRead.filter(_ >= time).isDefined) {
+      if(lastRead.exists(_ >= time)) {
         val record: Option[HistoryRecord] = history.synchronized {
           Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
         }
@@ -84,7 +84,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
-  def init(time: TimeStamp, value: ValueType) = Util.monitorFuture("MemActor.init") {
+  def init(time: TimeStamp, value: ValueType): Future[Boolean] = Util.monitorFuture("MemActor.init") {
     {
       withActor {
         if (history.nonEmpty) {
@@ -104,7 +104,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
       }.andThen({
         case Success(result) =>
           logMsg(s"init($time, $value) $result")
-        case e: Throwable => logMsg(s"Init failed - $e")
+        case Failure(e) => logMsg(s"Init failed - $e")
       })
     }
   }
@@ -168,7 +168,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
           } else {
             logMsg(s"writeBlob($time, $value) queued")
           }
-        case e: Throwable => logMsg(s"writeBlob failed - $e")
+        case Failure(e) => logMsg(s"writeBlob failed - $e")
       }).map(_ => Unit)
     }
   }
@@ -200,7 +200,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
           } else {
             logMsg(s"delete($time) queued")
           }
-        case e: Throwable => logMsg(s"delete failed - $e")
+        case Failure(e) => logMsg(s"delete failed - $e")
       }).map(_ => Unit)
     }
   }
@@ -250,7 +250,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         queuedValue = None
         staleCommit = None
       }.andThen({
-        case Success(result) =>
+        case Success(_) =>
           logMsg(s"writeReset($time)")
         case _ =>
       })

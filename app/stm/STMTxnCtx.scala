@@ -125,7 +125,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     lockOptional(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
   }
 
-  override def toString = {
+  override def toString: String = {
     "txn@" + Option(txnId).filter(_.isCompleted).map(future => Await.result(future, 1.second))
       .map(_.toString).getOrElse("???")
   }

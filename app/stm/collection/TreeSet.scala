@@ -125,57 +125,57 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[TreeSetNode[T]]) {
   class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(key: T) = sync { AtomicApi.this.add(key) }
-      def remove(value: T) = sync { AtomicApi.this.remove(value) }
-      def contains(value: T) = sync { AtomicApi.this.contains(value) }
+      def add(key: T): Unit.type = sync { AtomicApi.this.add(key) }
+      def remove(value: T): Boolean = sync { AtomicApi.this.remove(value) }
+      def contains(value: T): Boolean = sync { AtomicApi.this.contains(value) }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
 
-    def add(key: T) = atomic { TreeSet.this.add(key)(_,executionContext).map(_ => Unit) }
-    def remove(key: T) = atomic { TreeSet.this.remove(key)(_,executionContext) }
-    def contains(key: T) = atomic { TreeSet.this.contains(key)(_,executionContext) }
+    def add(key: T): Future[Unit.type] = atomic { TreeSet.this.add(key)(_,executionContext).map(_ => Unit) }
+    def remove(key: T): Future[Boolean] = atomic { TreeSet.this.remove(key)(_,executionContext) }
+    def contains(key: T): Future[Boolean] = atomic { TreeSet.this.contains(key)(_,executionContext) }
   }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeSet.this.add(key) }
-    def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeSet.this.remove(value) }
-    def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = sync { TreeSet.this.contains(value) }
+    def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync { TreeSet.this.add(key) }
+    def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync { TreeSet.this.remove(value) }
+    def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync { TreeSet.this.contains(value) }
   }
   def sync(duration: Duration) = new SyncApi(duration)
   def sync = new SyncApi(10.seconds)
 
 
-  def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     rootPtr.readOpt().flatMap(
       _.map(_.add(value,rootPtr))
         .getOrElse(rootPtr.write(TreeSetNode(value))))
   }
 
-  def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
     rootPtr.readOpt().flatMap(
       _.map(r =>{
         try {
-          r.remove(value, rootPtr).map(_=>true).recover({case e:NoSuchElementException=>false})
+          r.remove(value, rootPtr).map(_=>true).recover({case _:NoSuchElementException=>false})
         } catch {
-          case e:NoSuchElementException=>Future.successful(false)
+          case _:NoSuchElementException=>Future.successful(false)
         }
       }).getOrElse(Future.successful(false)
     ))
   }
 
-  def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
     rootPtr.readOpt().flatMap(_.map(_.contains(value)).getOrElse(Future.successful(false)))
   }
 
-  def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
     rootPtr.readOpt().flatMap(prev => {
       prev.map(_.min().map(Option(_))).getOrElse(Future.successful(None))
     })
   }
 
-  def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
     rootPtr.readOpt().flatMap(prev => {
       prev.map(_.max().map(Option(_))).getOrElse(Future.successful(None))
     })

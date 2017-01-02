@@ -21,7 +21,7 @@ import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 
 abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Task management" should {
@@ -46,7 +46,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
       val threads = (0 to 20).map(_ => new Thread(new Runnable {
         override def run(): Unit = {
           input.filter(x=>inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
-            collection.atomic(maxRetries = 1000).sync(1.minutes).add(input)
+            collection.atomic().sync(1.minutes).add(input)
           })
         }
       }))
@@ -58,7 +58,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
         Thread.sleep(100)
       }
       System.out.println(s"Input Prepared at ${new Date()}")
-      println(JacksonValue.simple(Util.getMetrics()).pretty)
+      println(JacksonValue.simple(Util.getMetrics).pretty)
       Util.clearMetrics()
 
       val sortTask: Task[SimpleLinkedList[String]] = collection.atomic().sync.sort()
@@ -72,7 +72,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
           TaskUtil.awaitTask(sortTask, taskTimeout, diagnosticsOperationTimeout)
         } finally {
           System.out.println(s"Final Data at ${new Date()}")
-          println(JacksonValue.simple(Util.getMetrics()).pretty)
+          println(JacksonValue.simple(Util.getMetrics).pretty)
           println(JacksonValue.simple(sortTask.atomic().sync(60.seconds).getStatusTrace(StmExecutionQueue.get())).pretty)
 
           System.out.println("Stopping Execution Engine")
@@ -93,9 +93,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 
 
 class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach with BeforeAndAfterAll  {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-  val shards = (0 until 8).map(_ => new RestmActors(new BdbColdStorage(path = "testDb", dbname = UUID.randomUUID().toString))).toList
+  val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors(new BdbColdStorage(path = "testDb", dbname = UUID.randomUUID().toString))).toList
 
   override def beforeEach() {
     //shards.foreach(_.clear())

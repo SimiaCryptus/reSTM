@@ -14,7 +14,7 @@ class RestmInternalRestmHttpClient(val baseUrl: String)(implicit executionContex
   }
 
   override def _resetValue(id: PointerType, time: TimeStamp): Future[Unit] = monitorFuture("RestmInternalRestmHttpClient._resetValue") {
-    var req: Req = (url(baseUrl) / "_mem" / "reset" / id.toString).addQueryParameter("time", time.toString)
+    val req: Req = (url(baseUrl) / "_mem" / "reset" / id.toString).addQueryParameter("time", time.toString)
     Http(req.POST > { _ => Unit }).map(_ => {})
   }
 
@@ -25,7 +25,7 @@ class RestmInternalRestmHttpClient(val baseUrl: String)(implicit executionContex
   }
 
   override def _commitValue(id: PointerType, time: TimeStamp): Future[Unit] = monitorFuture("RestmInternalRestmHttpClient._commitValue") {
-    var req: Req = (url(baseUrl) / "_mem" / "commit" / id.toString).addQueryParameter("time", time.toString)
+    val req: Req = (url(baseUrl) / "_mem" / "commit" / id.toString).addQueryParameter("time", time.toString)
     Http(req.POST > { _ => Unit }).map(_ => {})
   }
 
@@ -57,7 +57,7 @@ class RestmInternalRestmHttpClient(val baseUrl: String)(implicit executionContex
   }
 
   override def _addLock(id: PointerType, time: TimeStamp): Future[String] = monitorFuture("RestmInternalRestmHttpClient._addLock") {
-    var req: Req = (url(baseUrl) / "_txn" / "addLock" / time.toString).addQueryParameter("id", id.toString)
+    val req: Req = (url(baseUrl) / "_txn" / "addLock" / time.toString).addQueryParameter("id", id.toString)
     Http(req.POST > { response => response.getResponseBody })
   }
 

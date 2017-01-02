@@ -10,14 +10,14 @@ import stm.task.{StmDaemons, StmExecutionQueue}
 import storage.remote.RestmHttpClient
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 
 
 class ServletUtilitySpec extends WordSpec with MustMatchers with OneServerPerTest {
   private val baseUrl = s"http://localhost:$port"
   implicit val cluster = new RestmHttpClient(baseUrl)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
 

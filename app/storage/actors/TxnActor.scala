@@ -13,7 +13,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
   private[this] var state = "OPEN"
 
   private def objId = Integer.toHexString(System.identityHashCode(TxnActor.this))
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext) = log(s"$this $msg")
+  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
   override def toString = s"txn@$objId:$name#$messageNumber"
 
   def addLock(id: PointerType): Future[String] = Util.monitorFuture("TxnActor.addLock") {
@@ -47,7 +47,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
     }
   }
 
-  def getState = Util.monitorFuture("TxnActor.getState") {
+  def getState: Future[String] = Util.monitorFuture("TxnActor.getState") {
     {
       withActor {
         state

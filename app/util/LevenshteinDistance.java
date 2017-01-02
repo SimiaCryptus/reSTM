@@ -35,6 +35,7 @@ import java.util.Arrays;
  *
  * @since 1.0
  */
+@SuppressWarnings("ALL")
 public class LevenshteinDistance {
 
     /**
@@ -55,7 +56,7 @@ public class LevenshteinDistance {
      *
      * @see LevenshteinDistance#getDefaultInstance()
      */
-    public LevenshteinDistance() {
+    private LevenshteinDistance() {
         this(null);
     }
 
@@ -69,7 +70,7 @@ public class LevenshteinDistance {
      *        If this is null then distances calculations will not be limited.
      *        This may not be negative.
      */
-    public LevenshteinDistance(final Integer threshold) {
+    private LevenshteinDistance(final Integer threshold) {
         if (threshold != null && threshold < 0) {
             throw new IllegalArgumentException("Threshold must not be negative");
         }

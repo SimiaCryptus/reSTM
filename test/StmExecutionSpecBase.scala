@@ -18,23 +18,23 @@ import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Futu
 
 object StmExecutionSpecBase {
   def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
-    val x = Await.result(new STMTxn[Int] {
+    Await.result(new STMTxn[Int] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
         counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
       }
     }.txnRun(cluster)(executionContext), 100.milliseconds)
     if (n>1) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter,n-1) _
-      new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
+      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
     } else {
-      new Task.TaskSuccess("foo")
+      Task.TaskSuccess("foo")
     }
   }
 }
 
 abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "TreeCollection" should {
@@ -44,7 +44,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support sorting" in {
       StmDaemons.start()
       try {
-        StmExecutionQueue.get().registerDaemons(1)
+        StmExecutionQueue.get().registerDaemons()
         val input = randomUUIDs.take(20).toSet
         input.foreach(collection.atomic().sync.add(_))
         val sortTask = collection.atomic().sort().flatMap(_.future)
@@ -61,16 +61,16 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support queued and chained operations" in {
       StmDaemons.start()
       try {
-        StmExecutionQueue.get().registerDaemons(1)
+        StmExecutionQueue.get().registerDaemons()
         val hasRun = new STMPtr[java.lang.Integer](new PointerType)
         hasRun.atomic.sync.init(0)
         Await.result(StmExecutionQueue.get().atomic.sync.add((cluster, executionContext) => {
           hasRun.atomic(cluster, executionContext).sync.write(1)
-          new Task.TaskSuccess("foo")
+          Task.TaskSuccess("foo")
         }).atomic().sync.map(StmExecutionQueue.get(), (value, cluster, executionContext) => {
           require(value=="foo")
           hasRun.atomic(cluster, executionContext).sync.write(2)
-          new Task.TaskSuccess("bar")
+          Task.TaskSuccess("bar")
         }).future, 10.seconds)
         hasRun.atomic.sync.readOpt mustBe Some(2)
       } finally {
@@ -80,12 +80,12 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support futures" in {
       StmDaemons.start()
       try {
-        StmExecutionQueue.get().registerDaemons(1)
+        StmExecutionQueue.get().registerDaemons()
         val hasRun = new STMPtr[java.lang.Integer](new PointerType)
         hasRun.atomic.sync.init(0)
         val task: Task[String] = StmExecutionQueue.get().atomic.sync.add((cluster, executionContext) => {
           hasRun.atomic(cluster, executionContext).sync.write(1)
-          new Task.TaskSuccess("foo")
+          Task.TaskSuccess("foo")
         })
         Await.result(task.future, 30.seconds) mustBe "foo"
         hasRun.atomic.sync.readOpt mustBe Some(1)
@@ -96,7 +96,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
     "support continued operations" in {
       StmDaemons.start()
       try {
-        StmExecutionQueue.get().registerDaemons(1)
+        StmExecutionQueue.get().registerDaemons()
         val counter = new STMPtr[java.lang.Integer](new PointerType)
         counter.atomic.sync.init(0)
         val count = 20
@@ -153,7 +153,7 @@ class LocalStmExecutionSpec extends StmExecutionSpecBase with BeforeAndAfterEach
 class LocalClusterStmExecutionSpec extends StmExecutionSpecBase with BeforeAndAfterEach {
 //  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
 //    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-  val shards = (0 until 8).map(_ => new RestmActors()).toList
+  val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())

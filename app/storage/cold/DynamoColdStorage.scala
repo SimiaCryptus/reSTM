@@ -37,7 +37,7 @@ class DynamoColdStorage(tableName:String,
     )
     dynamoDB.getTable(tableName)
   }
-  def store(id: PointerType, data : Map[TimeStamp, ValueType]) = {
+  def store(id: PointerType, data : Map[TimeStamp, ValueType]): Unit = {
     for(d <- data) {
       table.putItem(new Item()
         .withPrimaryKey(new PrimaryKey().addComponent("ptrId",id.toString).addComponent("txnTime",d._1.toString))

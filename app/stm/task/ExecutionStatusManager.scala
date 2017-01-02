@@ -1,7 +1,7 @@
 package stm.task
 
 import java.net.InetAddress
-import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
+import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 
@@ -9,7 +9,7 @@ import scala.collection.Map
 import scala.collection.concurrent.TrieMap
 
 object ExecutionStatusManager {
-  def end(executorName: String, task: Task[AnyRef]) = {
+  def end(executorName: String, task: Task[AnyRef]): ScheduledFuture[_] = {
     val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String,String]())
     executorRecord.put(task.id, "Complete")
     println(s"Task completed: $task on $executorName")
@@ -21,21 +21,21 @@ object ExecutionStatusManager {
     }, 10, TimeUnit.SECONDS)
   }
 
-  def start(executorName: String, task: Task[AnyRef]) = {
+  def start(executorName: String, task: Task[AnyRef]): Unit = {
     val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String,String]())
     executorRecord.put(task.id, "Started")
     println(s"Task started: $task on $executorName")
   }
 
-  def check(executorId: String, taskId: String) = {
+  def check(executorId: String, taskId: String): Boolean = {
     currentStatus(executorId).contains(taskId)
   }
 
-  def currentlyRunning() = currentStatus.filterNot(_._2.filter(_._2=="Started").isEmpty).size
+  def currentlyRunning(): Int = currentStatus.filterNot(!_._2.exists(_._2 == "Started")).size
 
   def status(): Map[String, Map[String, String]] = currentStatus.mapValues(_.filter(_._2=="Started").toMap)
 
-  def getName(): String = localName + ":" + Thread.currentThread().getName
+  def getName: String = localName + ":" + Thread.currentThread().getName
 
   private[this] val pool: ScheduledExecutorService = Executors.newScheduledThreadPool(1,
     new ThreadFactoryBuilder().setNameFormat("exe-status-pool-%d").build())

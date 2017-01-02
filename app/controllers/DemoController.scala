@@ -15,7 +15,7 @@ import scala.concurrent.ExecutionContext
 @Singleton
 class DemoController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
-  def demoSort(n: Int) = Action.async {
+  def demoSort(n: Int): Action[AnyContent] = Action.async {
     Util.monitorFuture("DemoController.demoSort") {
       val collection = new TreeCollection[String](new PointerType)
       Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x:String)=>collection.atomic()(storageService,exec).sync.add(x))

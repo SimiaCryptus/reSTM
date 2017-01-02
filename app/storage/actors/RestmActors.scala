@@ -1,6 +1,6 @@
 package storage.actors
 
-import java.util.concurrent.{Executors, TimeUnit}
+import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
 
 import _root_.util.Util
 import _root_.util.Util._
@@ -10,8 +10,8 @@ import storage.RestmInternal
 import storage.cold.{ColdStorage, HeapColdStorage}
 
 import scala.collection.concurrent.TrieMap
+import scala.concurrent._
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.util.Success
 
 object RestmActors {
@@ -19,14 +19,14 @@ object RestmActors {
 }
 
 class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends RestmInternal {
-  implicit val executionContext = ExecutionContext.fromExecutor(
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(
       // Executors.newCachedThreadPool(
         Executors.newFixedThreadPool(32,
     new ThreadFactoryBuilder().setNameFormat("storage-actor-pool-%d").build()))
 
-  protected var expireQueue = Executors.newScheduledThreadPool(1)
+  protected var expireQueue: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
   protected val freezeQueue = new java.util.concurrent.LinkedBlockingDeque[AnyRef]()
-  private val freezeThread: Thread = {
+  val freezeThread: Thread = {
     val thread: Thread = new Thread(new Runnable {
       override def run(): Unit = {
         while(!Thread.interrupted()) {
@@ -37,8 +37,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends Restm
                   val task = getPtrActor(id).map(actor=>{
                     val prevTxns: Set[TimeStamp] = actor.history.map(_.time).toArray.toSet
                     val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
-                    // TODO: Seems to be a problem enabling this
-                    if(!recordsToUpload.isEmpty) monitorBlock("Restm.coldStorage.store") {
+                    if(recordsToUpload.nonEmpty) monitorBlock("Restm.coldStorage.store") {
                       coldStorage.store(id, recordsToUpload.map(record=>record.time->record.value).toMap)
                       recordsToUpload.foreach(_.coldStorageTs = Option(System.currentTimeMillis()))
                       ActorLog.log(s"$actor Persisted")
@@ -66,7 +65,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends Restm
                 } catch {
                   case e : Throwable => e.printStackTrace()
                 }
-              case p : Promise[Unit] => p.success(Unit)
+              case p : Promise[_] => p.asInstanceOf[Promise[Unit]].success(Unit)
             }
           }
           Thread.sleep(10)
@@ -123,7 +122,7 @@ class RestmActors(coldStorage : ColdStorage = new HeapColdStorage) extends Restm
     }
   )}
 
-  def clear() = {
+  def clear(): Unit = {
     expireQueue.shutdownNow()
     expireQueue = Executors.newScheduledThreadPool(1)
     ptrs2.clear()

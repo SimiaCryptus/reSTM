@@ -19,40 +19,40 @@ import scala.util.Try
 
 object StmRecoverySpecBase {
   def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
-    val x = Await.result(new STMTxn[Int] {
+    Await.result(new STMTxn[Int] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
         counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
       }
     }.txnRun(cluster)(executionContext), 100.milliseconds)
     if (n>1) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter,n-1) _
-      new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
+      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
     } else {
-      new Task.TaskSuccess("foo")
+      Task.TaskSuccess("foo")
     }
   }
 }
 
 abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Transactional Pointers" should {
     "basic writes" in {
       val ptr = new STMPtr[String](new PointerType)
       Await.result(new STMTxn[Option[String]] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[String]] = {
           ptr.readOpt()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
       Await.result(new STMTxn[Unit] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
           ptr.write("true")
         }
       }.txnRun(cluster)(executionContext), 30.seconds)
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
           ptr.read()
         }
       }.txnRun(cluster)(executionContext), 30.seconds) mustBe "true"
@@ -133,9 +133,9 @@ class LocalStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
 }
 
 class LocalClusterStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
-  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-  val shards = (0 until 8).map(_ => new RestmActors()).toList
+//  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+//    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
+  val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     shards.foreach(_.clear())

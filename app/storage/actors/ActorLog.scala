@@ -13,8 +13,8 @@ object ActorLog extends ActorQueue {
 
   private val file: File = new File(s"logs/actors.$now.log")
   private lazy val writer: PrintWriter = new PrintWriter(new FileOutputStream(file))
-  var enabled = Config.getConfig("ActorLog").map(java.lang.Boolean.parseBoolean(_)).getOrElse(false)
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext) = log(s"ActorLog: $msg")
+  val enabled: Boolean = Config.getConfig("ActorLog").exists(java.lang.Boolean.parseBoolean)
+  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"ActorLog: $msg")
 
   private val start = now
   private def elapsed = (now - start) / 1000.0

@@ -8,7 +8,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 object SimpleLinkedList {
-  def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+  def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[SimpleLinkedList[T]] =
     STMPtr.dynamic[SimpleLinkedListHead[T]](new SimpleLinkedListHead[T]()).map(new SimpleLinkedList(_))
 
   def static[T](id: PointerType) = new SimpleLinkedList(new STMPtr[SimpleLinkedListHead[T]](id))
@@ -16,12 +16,12 @@ object SimpleLinkedList {
 
 class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
 
-  def id = rootPtr.id.toString
+  def id: String = rootPtr.id.toString
   class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries){
-    def add(value: T) = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.add(value)(ctx, executionContext) }
-    def remove() = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.remove()(ctx, executionContext) }
-    def size() = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.size()(ctx, executionContext) }
-    def stream()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+    def add(value: T): Future[Unit] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.add(value)(ctx, executionContext) }
+    def remove(): Future[Option[T]] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.remove()(ctx, executionContext) }
+    def size(): Future[Int] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.size()(ctx, executionContext) }
+    def stream()(implicit cluster: Restm, executionContext: ExecutionContext): Future[Stream[T]] = {
       rootPtr.atomic.readOpt.map(_
         .flatMap(_.tail)
         .map(tail=>tail.atomic.sync.readOpt.map(node => node.value -> node.next))
@@ -33,29 +33,29 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
         }).getOrElse(Stream.empty))
     }
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(value: T) = sync { AtomicApi.this.add(value) }
-      def remove() = sync { AtomicApi.this.remove() }
-      def stream() = sync { AtomicApi.this.stream() }
-      def size() = sync { AtomicApi.this.size() }
+      def add(value: T): Unit = sync { AtomicApi.this.add(value) }
+      def remove(): Option[T] = sync { AtomicApi.this.remove() }
+      def stream(): Stream[T] = sync { AtomicApi.this.stream() }
+      def size(): Int = sync { AtomicApi.this.size() }
     }
     def sync(duration: Duration) = new SyncApi(duration)
     def sync = new SyncApi(10.seconds)
   }
   def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
   class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
-    def add(value: T)(implicit ctx: STMTxnCtx) = sync { SimpleLinkedList.this.add(value) }
-    def remove()(implicit ctx: STMTxnCtx) = sync { SimpleLinkedList.this.remove() }
-    def stream()(implicit ctx: STMTxnCtx) = sync { SimpleLinkedList.this.stream() }
-    def size()(implicit ctx: STMTxnCtx) = sync { SimpleLinkedList.this.size() }
+    def add(value: T)(implicit ctx: STMTxnCtx): Unit = sync { SimpleLinkedList.this.add(value) }
+    def remove()(implicit ctx: STMTxnCtx): Option[T] = sync { SimpleLinkedList.this.remove() }
+    def stream()(implicit ctx: STMTxnCtx): Stream[T] = sync { SimpleLinkedList.this.stream() }
+    def size()(implicit ctx: STMTxnCtx): Int = sync { SimpleLinkedList.this.size() }
   }
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
 
-  def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
     stream().map(_.size)
   }
 
-  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Stream[T]] = {
     rootPtr.readOpt.map(_
       .flatMap(_.tail)
       .map(_.sync.readOpt.map(node => node.value -> node.next))
@@ -88,7 +88,7 @@ private case class SimpleLinkedListHead[T]
   def add(newValue: T, self: STMPtr[SimpleLinkedListHead[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     val ifDefinedFuture: Option[Future[Unit]] = head.map(nodePtr => {
       nodePtr.read.flatMap(currentValue => {
-        require(currentValue.next == None)
+        require(currentValue.next.isEmpty)
         val node = SimpleLinkedListNode(newValue, prev = Option(nodePtr), next = None)
         STMPtr.dynamic(node).flatMap(newPtr => {
           nodePtr.write(currentValue.copy(next = Option(newPtr)))
@@ -99,7 +99,7 @@ private case class SimpleLinkedListHead[T]
       })
     })
     ifDefinedFuture.getOrElse({
-      require(tail == None)
+      require(tail.isEmpty)
       val ptrFuture = STMPtr.dynamic(SimpleLinkedListNode(newValue))
       ptrFuture.flatMap(newNode => self.write(copy(head = Option(newNode), tail = Option(newNode))))
     })
@@ -109,13 +109,13 @@ private case class SimpleLinkedListHead[T]
     if (tail.isDefined) {
       val tailPtr: STMPtr[SimpleLinkedListNode[T]] = tail.get
       tailPtr.read.flatMap(tailValue=>{
-        require(tailValue.prev == None)
+        require(tailValue.prev.isEmpty)
         if (tailValue.next.isDefined) {
           val nextPtr = tailValue.next.get
           val writeFuture: Future[Unit] = nextPtr.read.map(nextValue=>{
             require(nextValue.prev == tail)
             nextValue.copy(prev = None)
-          }).flatMap(nextPtr.write(_))
+          }).flatMap(nextPtr.write)
             .flatMap(_ => self.write(copy(tail = Option(nextPtr))))
           writeFuture.map(_=>Option(tailValue.value))
         } else {
@@ -124,7 +124,7 @@ private case class SimpleLinkedListHead[T]
         }
       })
     } else {
-      require(head == None)
+      require(head.isEmpty)
       Future.successful(None)
     }
   }

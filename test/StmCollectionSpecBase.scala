@@ -22,16 +22,16 @@ import scala.util.Random
 
 object StmCollectionSpecBase {
   def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
-    val x = Await.result(new STMTxn[Int] {
+    Await.result(new STMTxn[Int] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
         counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
       }
     }.txnRun(cluster)(executionContext), 100.milliseconds)
     if (n>1) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter,n-1) _
-      new Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
+      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
     } else {
-      new Task.TaskSuccess("foo")
+      Task.TaskSuccess("foo")
     }
   }
 }
@@ -43,7 +43,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
   implicit def cluster: Restm
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
 
@@ -55,11 +55,11 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         val collection = new BatchedTreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).sorted.toList
         input.map(List(_)).foreach(collection.atomic().sync.add(_))
-        val output = Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).map(_.get).flatten.sorted.toList
+        val output = Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).flatMap(_.get).sorted.toList
         output mustBe input
         output.size mustBe input.size
         output.toSet mustBe input.toSet
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
     List(10,100,1000).foreach(items=> {
@@ -70,7 +70,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         val output = collection.atomic().stream().toSet
         output.size mustBe input.size
         output mustBe input
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
   }
@@ -80,13 +80,13 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     List(1, 10, 100).foreach(items=>{
       s"accumulates $items values" in {
         def randomStream = Stream.continually(Random.nextDouble())
-        val collection = DistributedScalar.createSync(8)
+        val collection = DistributedScalar.createSync()
         val input = randomStream.take(items).sorted.toList
         input.foreach(collection.atomic().sync.add(_))
         val outputSum = collection.atomic().sync.get()
-        val inputSum = input.reduce(_+_)
+        val inputSum = input.sum
         outputSum mustBe inputSum +- 0.000001
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
   }
@@ -108,7 +108,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         collection.atomic.sync.contains(item) mustBe false
 //        println(s"Deleted $item")
       }
-      println(JacksonValue.simple(Util.getMetrics()).pretty)
+      println(JacksonValue.simple(Util.getMetrics).pretty)
     })
     List(1,5,10).foreach(threads=>
       s"concurrent add, verify, and remove with $threads threads" in {
@@ -127,7 +127,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         val futures = for (item <- randomUUIDs.take(200).distinct) yield Future {
           try {
             sync.contains(item) mustBe false
-            for (i <- 0 until 10) {
+            for (_ <- 0 until 10) {
               sync.add(item)
               sync.contains(item) mustBe true
               sync.remove(item) mustBe true
@@ -138,7 +138,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
           }
         }(executionContext2)
         Await.result(Future.sequence(futures), 1.minutes)
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
         threadPool.shutdown()
         threadPool.awaitTermination(1, TimeUnit.MINUTES)
       }
@@ -157,7 +157,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         input.foreach(collection.atomic().sync.add(_))
         val output = Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).map(_.get).toSet
         output mustBe input
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
     List(10,100,1000).foreach(items=> {
@@ -166,7 +166,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         val input = randomUUIDs.take(items).toSet
         input.foreach(collection.atomic().sync.add(_))
         collection.atomic().sync.toList().toSet mustBe input
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
   }
@@ -263,7 +263,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         input.foreach(collection.atomic().sync.add(_))
         val output = Stream.continually(collection.atomic().sync.remove()).takeWhile(_.isDefined).map(_.get).toList
         output mustBe input
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
     List(10,100,1000).foreach(items=> {
@@ -293,10 +293,10 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
           if (!timeout.after(now)) throw new RuntimeException("Time Out")
           Thread.sleep(100)
         }
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
         input.size mustBe output.size
         input mustBe output
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
     List(10,100,1000).foreach(items=> {
@@ -306,7 +306,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         input.foreach(collection.atomic().sync.add(_))
         val output = collection.atomic().sync.stream().toList
         input mustBe output
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
   }
@@ -321,7 +321,8 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         collection.atomic().sync.size() mustBe items
         collection.atomic().sync.stream().map((item: TestValue) =>{
           collection.atomic().sync.contains(item.id) mustBe true
-        }).size mustBe items
+          1
+        }).sum mustBe items
         val output = Stream.continually(collection.atomic().sync.take()).takeWhile(_.isDefined).map(_.get).toList
         output.toSet mustBe input.toSet
         collection.atomic().sync.size() mustBe 0
@@ -330,22 +331,19 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
           if(contains) println(s"Found ghost: ${item.id}")
           contains
         }) mustBe 0
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
     List(10,100,1000).foreach(items=> {
       s"concurrent add and remove with $items items" in {
-        val threadCount = 20
         val syncTimeout = 60.seconds
-        val maxRetries = 1000
-        val totalTimeout = 5.minutes
 
         val input = randomUUIDs.take(items).toList.map(new TestValue(_))
         val pool = Executors.newFixedThreadPool(20)
         val exeCtx = ExecutionContext.fromExecutor(pool)
         val collection = IdQueue.createSync[TestValue](8)
-        val shuffled = input.map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1).toList
-        input.size mustBe (shuffled.size)
+        val shuffled = input.map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1)
+        input.size mustBe shuffled.size
         val future: Future[List[TestValue]] = Future.sequence(
           input.map(input => Future {
             collection.atomic().sync(syncTimeout).add(input)
@@ -359,7 +357,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         }).takeWhile(_.isDefined).toList.map(_.get)
         output.size mustBe input.size
         output.toSet mustBe input.toSet
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
 
       }
     })
@@ -370,7 +368,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         input.foreach(collection.atomic().sync.add(_))
         val output = collection.atomic().sync.stream().toList
         input.toSet mustBe output.toSet
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
   }
@@ -386,9 +384,7 @@ class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEa
 }
 
 class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
-//  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-//    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-  val shards = (0 until 8).map(_ => new RestmActors()).toList
+  val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     super.beforeEach()
@@ -411,7 +407,7 @@ class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServer
 }
 
 class TestValue(val id: String = null) extends Identifiable {
-  override def toString = id
+  override def toString: String = id
 
   def canEqual(other: Any): Boolean = other.isInstanceOf[TestValue]
 

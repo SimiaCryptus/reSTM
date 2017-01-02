@@ -15,7 +15,7 @@ import scala.concurrent.{ExecutionContext, Future}
 @Singleton
 class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
-  def taskResult(id: String) = Action.async {
+  def taskResult(id: String): Action[AnyContent] = Action.async {
     Util.monitorFuture("ExecutionController.taskResult") {
       val task: Task[AnyRef] = new Task[AnyRef](new PointerType(id))
       val future: Future[AnyRef] = task.future(storageService, exec)
@@ -23,7 +23,7 @@ class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: Exe
     }
   }
 
-  def taskInfo(id: String) = Action.async {
+  def taskInfo(id: String): Action[AnyContent] = Action.async {
     Util.monitorFuture("ExecutionController.taskInfo") {
       val task: Task[AnyRef] = new Task(new PointerType(id))
       val trace: Future[TaskStatusTrace] = task.atomic()(storageService, exec).getStatusTrace(StmExecutionQueue.get())

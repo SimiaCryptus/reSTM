@@ -11,11 +11,11 @@ import scala.util.Try
 trait ActorQueue {
   private[this] val queue = new java.util.concurrent.ConcurrentLinkedQueue[() => Unit]()
   private[this] val guard = new AtomicBoolean(false)
-  protected def messageNumber() = processedMessages
+  protected def messageNumber: Int = processedMessages
   private[this] var processedMessages = 0
 
   private[this] var closed = false
-  def close() = closed = true
+  def close(): Unit = closed = true
   def logMsg(msg: String)(implicit exeCtx: ExecutionContext)
 
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {

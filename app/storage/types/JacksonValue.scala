@@ -12,8 +12,8 @@ import scala.reflect._
 
 object JacksonValue {
   val utf8: Charset = java.nio.charset.Charset.forName("UTF-8")
-  val mapper = new ObjectMapper().registerModule(DefaultScalaModule).enableDefaultTyping(DefaultTyping.NON_FINAL)
-  val simpleMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+  val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule).enableDefaultTyping(DefaultTyping.NON_FINAL)
+  val simpleMapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
 
   def simple(value: Any) = new JacksonValue( // Util.monitorBlock("JacksonValue.simple")
   {
@@ -81,7 +81,7 @@ class JacksonValue(val data: String) {
           def prototype = classTag[T].runtimeClass.asInstanceOf[Class[T]]
           mapper.readValue[T](json, prototype)
         } catch {
-          case e : Throwable => throw new IllegalArgumentException(s"Error deserializing to ${runtimeClass}: $pretty",e)
+          case e : Throwable => throw new IllegalArgumentException(s"Error deserializing to $runtimeClass: $pretty",e)
         }
       })
     }

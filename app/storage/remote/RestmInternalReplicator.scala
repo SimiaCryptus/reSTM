@@ -14,8 +14,8 @@ trait RestmInternalReplicator extends RestmInternal {
 
   override def _lockValue(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] =
     Future.sequence(inner().map(_._lockValue(id, time))).map(_.reduceOption(_.orElse(_)).flatten).flatMap(result=>{
-      result.map(conflictId=>_resetValue(id, time))
-        .getOrElse(Future.successful()).map(_=>result)
+      result.map(_ =>_resetValue(id, time))
+        .getOrElse(Future.successful(Unit)).map(_=>result)
     })
 
   override def _commitValue(id: PointerType, time: TimeStamp): Future[Unit] =
@@ -60,5 +60,5 @@ trait RestmInternalReplicator extends RestmInternal {
 
 class RestmInternalStaticListReplicator(val shards: Seq[RestmInternal])(implicit val executionContext: ExecutionContext) extends RestmInternalReplicator {
 
-  override def inner() = shards
+  override def inner(): Seq[RestmInternal] = shards
 }

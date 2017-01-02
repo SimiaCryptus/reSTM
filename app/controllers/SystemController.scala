@@ -17,7 +17,7 @@ import scala.concurrent.ExecutionContext
 
 @Singleton
 class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
-  def shutdown() = Action.async {
+  def shutdown(): Action[AnyContent] = Action.async {
     Util.monitorFuture("SystemController.shutdown") {
       StmDaemons.stop().map(_=>Ok("Node down"))
     }
@@ -27,14 +27,14 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     Util.monitorBlock("SystemController.threadDump") {
       import scala.collection.JavaConverters._
       Ok(JacksonValue.simple(
-        Thread.getAllStackTraces().asScala.mapValues(_.map(s=>s"${s.getClass.getCanonicalName}.${s.getMethodName}(${s.getFileName}:${s.getLineNumber})"))
+        Thread.getAllStackTraces.asScala.mapValues(_.map(s=>s"${s.getClass.getCanonicalName}.${s.getMethodName}(${s.getFileName}:${s.getLineNumber})"))
       ).pretty).as("application/json")
     }
   }
 
   def metrics() = Action {
     Util.monitorBlock("SystemController.metrics") {
-      Ok(JacksonValue.simple(Util.getMetrics()).pretty).as("application/json")
+      Ok(JacksonValue.simple(Util.getMetrics).pretty).as("application/json")
     }
   }
 
@@ -49,7 +49,7 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     }
   }
 
-  private[this] val workers = getConfig("workers").map(Integer.parseInt(_)).getOrElse(8)
+  private[this] val workers = getConfig("workers").map(Integer.parseInt).getOrElse(8)
 
   def init() = Action {
     Util.monitorBlock("SystemController.init") {

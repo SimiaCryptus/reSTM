@@ -38,7 +38,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
   }
   override def afterEach() {
     super.afterEach()
-    val cleanup = {
+    val _ = {
       implicit val executionContext = ExecutionContext.fromExecutor(pool)
       Await.result(StmDaemons.stop(), 30.seconds)
       Util.clearMetrics()
@@ -49,7 +49,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 
   def cluster: Restm
 
-  private var pool: ExecutorService = null
+  private var pool: ExecutorService = _
 
   "ClassificationTree" should {
     List(5,10,100, 1000).foreach(items=> {
@@ -60,7 +60,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         StmExecutionQueue.get().registerDaemons(8)
         val collection = new ClassificationTree(new PointerType)
         collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(1))
-        val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
+        val input = Stream.continually(ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
         input.foreach(collection.atomic().sync.add("data", _))
 
         def now = System.currentTimeMillis()
@@ -191,10 +191,10 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       List("Cover_Type") // (7 types)                    integer         1 to 7                       Forest Cover Type designation
     ).flatten.toArray
     lazy val dataSet = IOUtils.readLines(new FileInputStream("covtype.data.txt"), "UTF8").asScala
-      .map(_.trim).filterNot(_.isEmpty).toList.toParArray.map(_.split(",").map(Integer.parseInt(_)).toArray)
+      .map(_.trim).filterNot(_.isEmpty).toList.toParArray.map(_.split(",").map(Integer.parseInt).toArray)
       .map((values: Array[Int]) =>{
         val combined = fields.zip(values).toMap
-        new ClassificationTreeItem(combined)
+        ClassificationTreeItem(combined)
       }).filter(_.attributes.contains("Cover_Type")).map(_->Random.nextDouble()).toList.sortBy(_._2).map(_._1).toArray.toStream
     List(1,100,10000,1000000).foreach(items=> {
       s"modeling on $items items from forest cover" in {
@@ -207,9 +207,9 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         val collection = new ClassificationTree(new PointerType)
         collection.atomic().sync.setClusterStrategy(new NoBranchStrategy())
         val testingSet = dataSet.take(100)
-        val trainingSet = dataSet.drop(100).take(items)
-        require(!testingSet.isEmpty)
-        require(!trainingSet.isEmpty)
+        val trainingSet = dataSet.slice(100, items + 100)
+        require(testingSet.nonEmpty)
+        require(trainingSet.nonEmpty)
 
         print(s"Populating tree at ${new Date()}")
         val insertFutures = trainingSet.groupBy(_.attributes("Cover_Type")).map(t => Future {
@@ -261,7 +261,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
           }
         }).sum
         println(s"$correct correct out of 100")
-        println(JacksonValue.simple(Util.getMetrics()).pretty)
+        println(JacksonValue.simple(Util.getMetrics).pretty)
         Util.clearMetrics()
       }
     })
@@ -279,7 +279,7 @@ class LocalClassificationTreeTest extends ClassificationTreeTestBase with Before
 }
 
 class LocalClusterClassificationTreeTest extends ClassificationTreeTestBase with BeforeAndAfterEach with BeforeAndAfterAll {
-  val shards = (0 until 8).map(_ => new RestmActors()).toList
+  val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
 
   override def beforeEach() {
     super.beforeEach()
@@ -289,7 +289,7 @@ class LocalClusterClassificationTreeTest extends ClassificationTreeTestBase with
     restmPool.shutdown()
   }
 
-  val restmPool = Executors.newFixedThreadPool(8, new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())
+  val restmPool: ExecutorService = Executors.newFixedThreadPool(8, new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())
   val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(restmPool))
 }
 

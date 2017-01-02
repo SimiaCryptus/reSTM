@@ -22,14 +22,14 @@ class ApplicationSpec extends PlaySpec with OneAppPerTest {
       require(!txnA.isEmpty)
 
       val valId: String = UUID.randomUUID().toString
-      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnA")).map(status(_)) mustBe Some(404)
-      route(app, FakeRequest(POST, s"/mem/$valId?time=$txnA")).map(status(_)) mustBe Some(200)
-      route(app, FakeRequest(PUT, s"/mem/$valId?time=$txnA").withTextBody("TestData")).map(status(_)) mustBe Some(200)
-      route(app, FakeRequest(POST, s"/txn/$txnA").withTextBody("TestData")).map(status(_)) mustBe Some(200)
+      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnA")).map(status) mustBe Some(404)
+      route(app, FakeRequest(POST, s"/mem/$valId?time=$txnA")).map(status) mustBe Some(200)
+      route(app, FakeRequest(PUT, s"/mem/$valId?time=$txnA").withTextBody("TestData")).map(status) mustBe Some(200)
+      route(app, FakeRequest(POST, s"/txn/$txnA").withTextBody("TestData")).map(status) mustBe Some(200)
 
       val txnB: String = contentAsString(route(app, FakeRequest(GET, "/txn")).get)
-      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnB")).map(status(_)) mustBe Some(200)
-      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnB")).map(contentAsString(_)) mustBe Some("TestData")
+      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnB")).map(status) mustBe Some(200)
+      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnB")).map(contentAsString) mustBe Some("TestData")
     }
 
     "discard values on rollback" in {
@@ -37,13 +37,13 @@ class ApplicationSpec extends PlaySpec with OneAppPerTest {
       require(!txnA.isEmpty)
 
       val valId: String = UUID.randomUUID().toString
-      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnA")).map(status(_)) mustBe Some(404)
-      route(app, FakeRequest(POST, s"/mem/$valId?time=$txnA")).map(status(_)) mustBe Some(200)
-      route(app, FakeRequest(PUT, s"/mem/$valId?time=$txnA").withTextBody("TestData")).map(status(_)) mustBe Some(200)
-      route(app, FakeRequest(DELETE, s"/txn/$txnA").withTextBody("TestData")).map(status(_)) mustBe Some(200)
+      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnA")).map(status) mustBe Some(404)
+      route(app, FakeRequest(POST, s"/mem/$valId?time=$txnA")).map(status) mustBe Some(200)
+      route(app, FakeRequest(PUT, s"/mem/$valId?time=$txnA").withTextBody("TestData")).map(status) mustBe Some(200)
+      route(app, FakeRequest(DELETE, s"/txn/$txnA").withTextBody("TestData")).map(status) mustBe Some(200)
 
       val txnB: String = contentAsString(route(app, FakeRequest(GET, "/txn")).get)
-      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnB")).map(status(_)) mustBe Some(404)
+      route(app, FakeRequest(GET, s"/mem/$valId?time=$txnB")).map(status) mustBe Some(404)
     }
 
   }

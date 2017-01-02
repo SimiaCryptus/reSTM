@@ -26,7 +26,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
       val nodes = (0 to 1).map(_=>new RestmActors()).toList
       val ids = randomUUIDs.take(5).toList
       addItems(nodes, ids)
-      nodes(0).clear()
+      nodes.head.clear()
       deleteItems(nodes, ids)
     }
   }
@@ -34,7 +34,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
   def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
   val collection = new TreeSet[String](new PointerType("test/ColdStorageIntegrationSpec/" + UUID.randomUUID().toString))
 
-  def addItems(nodes : Seq[RestmInternal], items : Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext) = {
+  def addItems(nodes : Seq[RestmInternal], items : Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext): Seq[String] = {
     implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))
     for (item <- items) {
       try {
@@ -48,7 +48,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
     items
   }
 
-  def deleteItems(nodes : Seq[RestmInternal], items:Seq[String])(implicit executor: ExecutionContext) = {
+  def deleteItems(nodes : Seq[RestmInternal], items:Seq[String])(implicit executor: ExecutionContext): Seq[String] = {
     implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))
     for (item <- items) {
       try {

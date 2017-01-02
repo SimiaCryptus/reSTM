@@ -23,12 +23,12 @@ trait STMTxn[+R] {
   private[this] def age = now - startTime
 
   @VisibleForTesting
-  def testAbandoned() = {
+  def testAbandoned(): STMTxn[R] = {
     allowCompletion = false
     this
   }
 
-  def toString(e: Throwable) = {
+  def toString(e: Throwable): String = {
     val out: ByteArrayOutputStream = new ByteArrayOutputStream()
     e.printStackTrace(new PrintStream(out))
     out.toString
