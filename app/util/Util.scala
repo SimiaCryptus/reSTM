@@ -13,13 +13,19 @@ import scala.util.{Failure, Success, Try}
 
 
 object Util {
-  def mod(a:Long, b:Int) : Int = {
+  val codeMetricsData = new TrieMap[String, CodeMetrics]()
+  val scalarData = new TrieMap[String, AtomicDouble]()
+  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("code-metrics-pool-%d").build()))
+
+  def mod(a: Long, b: Int): Int = {
     val result = (a % b).toInt
-    if(result < 0) result + b
+    if (result < 0) result + b
     else result
   }
-  def toDigits(number:Long, radix:Int) : List[Int] = {
-    if(number == 0) {
+
+  def toDigits(number: Long, radix: Int): List[Int] = {
+    if (number == 0) {
       List.empty
     } else {
       val bit = mod(number, radix)
@@ -33,18 +39,17 @@ object Util {
   }
 
   def now: FiniteDuration = System.nanoTime().nanoseconds
-  val codeMetricsData = new TrieMap[String, CodeMetrics]()
-  val scalarData = new TrieMap[String, AtomicDouble]()
-  def delta(name:String, delta:Double): Double = scalarData.getOrElseUpdate(name,new AtomicDouble(0)).addAndGet(delta)
 
+  def delta(name: String, delta: Double): Double = scalarData.getOrElseUpdate(name, new AtomicDouble(0)).addAndGet(delta)
 
-  def monitorBlock[T](name:String)(f: =>T):T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
-  def monitorFuture[T](name:String)(f: =>Future[T]):Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
+  def monitorBlock[T](name: String)(f: => T): T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
 
-  def chainEx[T](str: =>String, verbose:Boolean = true)(f: =>Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
+  def monitorFuture[T](name: String)(f: => Future[T]): Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
+
+  def chainEx[T](str: => String, verbose: Boolean = true)(f: => Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
     val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
     f.recover({
-      case e : TransactionConflict =>
+      case e: TransactionConflict =>
         val wrappedEx = new TransactionConflict(e.msg, e, e.conflitingTxn)
         wrappedEx.setStackTrace(stackTrace)
         throw wrappedEx
@@ -55,14 +60,12 @@ object Util {
     })
   }
 
-
   def getMetrics = Map(
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
     "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
   )
-  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("code-metrics-pool-%d").build()))
 }
+
 import util.Util._
 
 class CodeMetrics {
@@ -72,27 +75,29 @@ class CodeMetrics {
   val errorCount = new AtomicInteger(0)
   val totalTime = new AtomicDouble(0.0)
 
-  def sync[T](f: =>T):T = {
+  def sync[T](f: => T): T = {
     val start = now
     invokeCount.incrementAndGet()
-    val result: Try[T] = Try { f }
-    totalTime.addAndGet((now-start).toUnit(TimeUnit.SECONDS))
-    if(result.isFailure) errorCount.incrementAndGet()
+    val result: Try[T] = Try {
+      f
+    }
+    totalTime.addAndGet((now - start).toUnit(TimeUnit.SECONDS))
+    if (result.isFailure) errorCount.incrementAndGet()
     else successCount.incrementAndGet()
     result.get
   }
 
-  def future[T](f: =>Future[T]):Future[T] = {
+  def future[T](f: => Future[T]): Future[T] = {
     val start = now
     invokeCount.incrementAndGet()
     val result = f
     result.onComplete({
       case Success(_) =>
         successCount.incrementAndGet()
-        totalTime.addAndGet((now-start).toUnit(TimeUnit.SECONDS))
+        totalTime.addAndGet((now - start).toUnit(TimeUnit.SECONDS))
       case Failure(_) =>
         errorCount.incrementAndGet()
-        totalTime.addAndGet((now-start).toUnit(TimeUnit.SECONDS))
+        totalTime.addAndGet((now - start).toUnit(TimeUnit.SECONDS))
     })(executionContext)
     result
   }
@@ -102,6 +107,6 @@ class CodeMetrics {
     "success" -> successCount.get(),
     "failed" -> errorCount.get(),
     "totalTime" -> totalTime.get(),
-    "avgTime" -> totalTime.get()/(successCount.get()+errorCount.get())
+    "avgTime" -> totalTime.get() / (successCount.get() + errorCount.get())
   )
 }

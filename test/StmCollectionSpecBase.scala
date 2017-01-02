@@ -20,22 +20,6 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.Random
 
-object StmCollectionSpecBase {
-  def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
-    Await.result(new STMTxn[Int] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
-      }
-    }.txnRun(cluster)(executionContext), 100.milliseconds)
-    if (n>1) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
-      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
-    } else {
-      Task.TaskSuccess("foo")
-    }
-  }
-}
-
 abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach with MustMatchers {
 
   override def afterEach() {
@@ -43,14 +27,17 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
   implicit def cluster: Restm
+
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
 
   s"BatchedTreeCollection via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
+
     def randomUUIDs = Stream.continually(randomStr)
-    List(1, 10, 100).foreach(items=>{
+
+    List(1, 10, 100).foreach(items => {
       s"synchronous add and get with $items items" in {
         val collection = new BatchedTreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).sorted.toList
@@ -62,7 +49,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10,100,1000).foreach(items=> {
+    List(10, 100, 1000).foreach(items => {
       s"insert and toList with $items items" in {
         val collection = new BatchedTreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -76,10 +63,11 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
 
- s"DistributedScalar via ${getClass.getSimpleName}" must {
-    List(1, 10, 100).foreach(items=>{
+  s"DistributedScalar via ${getClass.getSimpleName}" must {
+    List(1, 10, 100).foreach(items => {
       s"accumulates $items values" in {
         def randomStream = Stream.continually(Random.nextDouble())
+
         val collection = DistributedScalar.createSync()
         val input = randomStream.take(items).sorted.toList
         input.foreach(collection.atomic().sync.add(_))
@@ -93,24 +81,25 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
   s"TreeSet via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
-    List(1,10,100).foreach(items=>s"synchronous insert and verify with $items items" in {
+
+    List(1, 10, 100).foreach(items => s"synchronous insert and verify with $items items" in {
       val collection = new TreeSet[String](new PointerType)
       val input = randomUUIDs.take(items)
       for (item <- input) {
         collection.atomic.sync.contains(item) mustBe false
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
-//        println(s"Inserted $item")
+        //        println(s"Inserted $item")
       }
       for (item <- input) {
         collection.atomic.sync.contains(item) mustBe true
         collection.atomic.sync.remove(item)
         collection.atomic.sync.contains(item) mustBe false
-//        println(s"Deleted $item")
+        //        println(s"Deleted $item")
       }
       println(JacksonValue.simple(Util.getMetrics).pretty)
     })
-    List(1,5,10).foreach(threads=>
+    List(1, 5, 10).foreach(threads =>
       s"concurrent add, verify, and remove with $threads threads" in {
         //require(false)
         val collection = new TreeSet[String](new PointerType)
@@ -134,7 +123,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
               sync.contains(item) mustBe false
             }
           } catch {
-            case e : Throwable => throw new RuntimeException(s"Error in item $item", e)
+            case e: Throwable => throw new RuntimeException(s"Error in item $item", e)
           }
         }(executionContext2)
         Await.result(Future.sequence(futures), 1.minutes)
@@ -146,11 +135,12 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
 
-
   s"TreeCollection via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
+
     def randomUUIDs = Stream.continually(randomStr)
-    List(10,100,1000).foreach(items=>{
+
+    List(10, 100, 1000).foreach(items => {
       s"synchronous add and get with $items items" in {
         val collection = new TreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -160,7 +150,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10,100,1000).foreach(items=> {
+    List(10, 100, 1000).foreach(items => {
       s"insert and toList with $items items" in {
         val collection = new TreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -172,91 +162,90 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
 
-
-
-//  s"TreeMap via ${getClass.getSimpleName}" must {
-//    val collection = new TreeMap[String,String](new PointerType)
-//    def randomStr = UUID.randomUUID().toString.take(8)
-//    def randomUUIDs: Stream[(String,String)] = Stream.continually((randomStr, randomStr))
-//    List(10,100,200).foreach(items=> {
-//      s"synchronous add and verify with $items items" in {
-//        for (item <- randomUUIDs.take(items)) {
-//          collection.atomic.sync.get(item._1) mustBe None
-//          collection.atomic.sync.contains(item._1) mustBe false
-//          collection.atomic.sync.add(item._1, item._2)
-//          collection.atomic.sync.get(item._1) mustBe Option(item._2)
-//          collection.atomic.sync.contains(item._1) mustBe true
-//        }
-//        println(JacksonValue.simple(Util.getMetrics()).pretty)
-//      }
-//    })
-//    List(10,100,200).foreach(items=> {
-//      s"concurrent add and verify with $items items" in {
-//        // Bootstrap collection synchronously to control contention
-//        for (item <- randomUUIDs.take(5)) {
-//          collection.atomic.sync.get(item._1) mustBe None
-//          collection.atomic.sync.contains(item._1) mustBe false
-//          collection.atomic.sync.add(item._1, item._2)
-//          collection.atomic.sync.get(item._1) mustBe Option(item._2)
-//          collection.atomic.sync.contains(item._1) mustBe true
-//        }
-//        // Run concurrent add/delete tests
-//        val futures = for (item <- randomUUIDs.take(items)) yield Future {
-//          try {
-//            println(item)
-//            collection.atomic.sync.get(item._1) mustBe None
-//            collection.atomic.sync.contains(item._1) mustBe false
-//            collection.atomic.sync.add(item._1, item._2)
-//            collection.atomic.sync.get(item._1) mustBe Option(item._2)
-//            collection.atomic.sync.contains(item._1) mustBe true
-//          } catch {
-//            case e => throw new RuntimeException(s"Error in item $item", e)
-//          }
-//        }
-//        Await.result(Future.sequence(futures), 1.minutes)
-//        println(JacksonValue.simple(Util.getMetrics()).pretty)
-//      }
-//    })
-//    List(10,100,200).foreach(items=> {
-//      s"concurrent add, verify, and remove with $items items" in {
-//        // Bootstrap collection synchronously to control contention
-//        for (item <- randomUUIDs.take(5)) {
-//          collection.atomic.sync.get(item._1) mustBe None
-//          collection.atomic.sync.contains(item._1) mustBe false
-//          collection.atomic.sync.add(item._1, item._2)
-//          collection.atomic.sync.get(item._1) mustBe Option(item._2)
-//          collection.atomic.sync.contains(item._1) mustBe true
-//        }
-//        val threads: Int = 10
-//        // Run concurrent add/delete tests
-//        val futures = for (item <- randomUUIDs.take(threads)) yield Future {
-//          try {
-//            println(item)
-//            for (i <- 0 until items/threads) {
-//              collection.atomic.sync.get(item._1) mustBe None
-//              collection.atomic.sync.contains(item._1) mustBe false
-//              collection.atomic.sync.add(item._1, item._2)
-//
-//              collection.atomic.sync.get(item._1) mustBe Option(item._2)
-//              collection.atomic.sync.contains(item._1) mustBe true
-//
-//              collection.atomic.sync.remove(item._1)
-//              collection.atomic.sync.get(item._1) mustBe None
-//              collection.atomic.sync.contains(item._1) mustBe false
-//            }
-//          } catch {
-//            case e => throw new RuntimeException(s"Error in item $item", e)
-//          }
-//        }
-//        Await.result(Future.sequence(futures), 1.minutes)
-//        println(JacksonValue.simple(Util.getMetrics()).pretty)
-//      }
-//    })
-//  }
+  //  s"TreeMap via ${getClass.getSimpleName}" must {
+  //    val collection = new TreeMap[String,String](new PointerType)
+  //    def randomStr = UUID.randomUUID().toString.take(8)
+  //    def randomUUIDs: Stream[(String,String)] = Stream.continually((randomStr, randomStr))
+  //    List(10,100,200).foreach(items=> {
+  //      s"synchronous add and verify with $items items" in {
+  //        for (item <- randomUUIDs.take(items)) {
+  //          collection.atomic.sync.get(item._1) mustBe None
+  //          collection.atomic.sync.contains(item._1) mustBe false
+  //          collection.atomic.sync.add(item._1, item._2)
+  //          collection.atomic.sync.get(item._1) mustBe Option(item._2)
+  //          collection.atomic.sync.contains(item._1) mustBe true
+  //        }
+  //        println(JacksonValue.simple(Util.getMetrics()).pretty)
+  //      }
+  //    })
+  //    List(10,100,200).foreach(items=> {
+  //      s"concurrent add and verify with $items items" in {
+  //        // Bootstrap collection synchronously to control contention
+  //        for (item <- randomUUIDs.take(5)) {
+  //          collection.atomic.sync.get(item._1) mustBe None
+  //          collection.atomic.sync.contains(item._1) mustBe false
+  //          collection.atomic.sync.add(item._1, item._2)
+  //          collection.atomic.sync.get(item._1) mustBe Option(item._2)
+  //          collection.atomic.sync.contains(item._1) mustBe true
+  //        }
+  //        // Run concurrent add/delete tests
+  //        val futures = for (item <- randomUUIDs.take(items)) yield Future {
+  //          try {
+  //            println(item)
+  //            collection.atomic.sync.get(item._1) mustBe None
+  //            collection.atomic.sync.contains(item._1) mustBe false
+  //            collection.atomic.sync.add(item._1, item._2)
+  //            collection.atomic.sync.get(item._1) mustBe Option(item._2)
+  //            collection.atomic.sync.contains(item._1) mustBe true
+  //          } catch {
+  //            case e => throw new RuntimeException(s"Error in item $item", e)
+  //          }
+  //        }
+  //        Await.result(Future.sequence(futures), 1.minutes)
+  //        println(JacksonValue.simple(Util.getMetrics()).pretty)
+  //      }
+  //    })
+  //    List(10,100,200).foreach(items=> {
+  //      s"concurrent add, verify, and remove with $items items" in {
+  //        // Bootstrap collection synchronously to control contention
+  //        for (item <- randomUUIDs.take(5)) {
+  //          collection.atomic.sync.get(item._1) mustBe None
+  //          collection.atomic.sync.contains(item._1) mustBe false
+  //          collection.atomic.sync.add(item._1, item._2)
+  //          collection.atomic.sync.get(item._1) mustBe Option(item._2)
+  //          collection.atomic.sync.contains(item._1) mustBe true
+  //        }
+  //        val threads: Int = 10
+  //        // Run concurrent add/delete tests
+  //        val futures = for (item <- randomUUIDs.take(threads)) yield Future {
+  //          try {
+  //            println(item)
+  //            for (i <- 0 until items/threads) {
+  //              collection.atomic.sync.get(item._1) mustBe None
+  //              collection.atomic.sync.contains(item._1) mustBe false
+  //              collection.atomic.sync.add(item._1, item._2)
+  //
+  //              collection.atomic.sync.get(item._1) mustBe Option(item._2)
+  //              collection.atomic.sync.contains(item._1) mustBe true
+  //
+  //              collection.atomic.sync.remove(item._1)
+  //              collection.atomic.sync.get(item._1) mustBe None
+  //              collection.atomic.sync.contains(item._1) mustBe false
+  //            }
+  //          } catch {
+  //            case e => throw new RuntimeException(s"Error in item $item", e)
+  //          }
+  //        }
+  //        Await.result(Future.sequence(futures), 1.minutes)
+  //        println(JacksonValue.simple(Util.getMetrics()).pretty)
+  //      }
+  //    })
+  //  }
 
   s"SimpleLinkedList via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
-    List(10,100,1000).foreach(items=> {
+
+    List(10, 100, 1000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         val collection = SimpleLinkedList.static[String](new PointerType)
         val input: List[String] = randomUUIDs.take(items).toList
@@ -266,7 +255,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10,100,1000).foreach(items=> {
+    List(10, 100, 1000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         val threadCount = 20
         val syncTimeout = 60.seconds
@@ -287,7 +276,9 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
           }
         }))
         threads.foreach(_.start())
+
         def now = new Date()
+
         val timeout = new Date(now.getTime + totalTimeout.toMillis)
         while (threads.exists(_.isAlive)) {
           if (!timeout.after(now)) throw new RuntimeException("Time Out")
@@ -299,7 +290,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10,100,1000).foreach(items=> {
+    List(10, 100, 1000).foreach(items => {
       s"stream iteration with $items items" in {
         val collection = SimpleLinkedList.static[String](new PointerType)
         val input: List[String] = randomUUIDs.take(items).toList
@@ -313,28 +304,29 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
   s"IdQueue via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
-    List(10,100,1000).foreach(items=> {
+
+    List(10, 100, 1000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         val collection = IdQueue.createSync[TestValue](8)
         val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
         input.foreach(collection.atomic().sync.add(_))
         collection.atomic().sync.size() mustBe items
-        collection.atomic().sync.stream().map((item: TestValue) =>{
+        collection.atomic().sync.stream().map((item: TestValue) => {
           collection.atomic().sync.contains(item.id) mustBe true
           1
         }).sum mustBe items
         val output = Stream.continually(collection.atomic().sync.take()).takeWhile(_.isDefined).map(_.get).toList
         output.toSet mustBe input.toSet
         collection.atomic().sync.size() mustBe 0
-        input.count((item: TestValue) =>{
+        input.count((item: TestValue) => {
           val contains = collection.atomic().sync.contains(item.id)
-          if(contains) println(s"Found ghost: ${item.id}")
+          if (contains) println(s"Found ghost: ${item.id}")
           contains
         }) mustBe 0
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10,100,1000).foreach(items=> {
+    List(10, 100, 1000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         val syncTimeout = 60.seconds
 
@@ -361,7 +353,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
       }
     })
-    List(10,100,1000).foreach(items=> {
+    List(10, 100, 1000).foreach(items => {
       s"stream iteration with $items items" in {
         val collection = IdQueue.createSync[TestValue](8)
         val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
@@ -375,24 +367,23 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 }
 
 class LocalStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
+  val cluster = LocalRestmDb()
+
   override def beforeEach() {
     super.beforeEach()
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
-
-  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAndAfterEach {
   val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 
   override def beforeEach() {
     super.beforeEach()
     shards.foreach(_.clear())
   }
-
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
@@ -401,15 +392,13 @@ class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSu
 }
 
 class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
+  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
-  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 
 class TestValue(val id: String = null) extends Identifiable {
   override def toString: String = id
-
-  def canEqual(other: Any): Boolean = other.isInstanceOf[TestValue]
 
   override def equals(other: Any): Boolean = other match {
     case that: TestValue =>
@@ -418,8 +407,26 @@ class TestValue(val id: String = null) extends Identifiable {
     case _ => false
   }
 
+  def canEqual(other: Any): Boolean = other.isInstanceOf[TestValue]
+
   override def hashCode(): Int = {
     val state = Seq(id)
     state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+  }
+}
+
+object StmCollectionSpecBase {
+  def recursiveTask(counter: STMPtr[java.lang.Integer], n: Int)(cluster: Restm, executionContext: ExecutionContext): TaskResult[String] = {
+    Await.result(new STMTxn[Int] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
+      }
+    }.txnRun(cluster)(executionContext), 100.milliseconds)
+    if (n > 1) {
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
+      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
+    } else {
+      Task.TaskSuccess("foo")
+    }
   }
 }

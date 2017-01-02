@@ -18,16 +18,14 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 object RestmController {
+  private[this] lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
+  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)
   val peers = new mutable.HashSet[String]()
   val table: Option[String] = getConfig("dynamoTable")
   val peerPort: Int = getConfig("peerPort").map(Integer.parseInt).getOrElse(898)
-
   private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
-  private[this] lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
   private[this] val coldStorage: ColdStorage = dynamo.getOrElse(new HeapColdStorage)
-  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)
 
-  def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
   def storageService(implicit exec: ExecutionContext) = new RestmImpl(new RestmInternalStaticListRouter {
     override def shards: List[RestmInternal] = {
       peerList.map(name => {
@@ -37,18 +35,21 @@ object RestmController {
     }
   })
 
-}
-import controllers.RestmController._
+  def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
+}
+
+import controllers.RestmController._
 
 
 @Singleton
 class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
 
 
-  def newValue(time: String): Action[AnyContent] = Action.async { request => Util.monitorFuture("RestmController.newValue") {
-    storageService.newPtr(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(x => Ok(x.toString))
-  }
+  def newValue(time: String): Action[AnyContent] = Action.async { request =>
+    Util.monitorFuture("RestmController.newValue") {
+      storageService.newPtr(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(x => Ok(x.toString))
+    }
   }
 
   def getValue(id: String, time: Option[String], ifModifiedSince: Option[String]): Action[AnyContent] = Action.async {
@@ -75,14 +76,16 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
     }
   }
 
-  def writeValue(id: String, time: String): Action[AnyContent] = Action.async { request => Util.monitorFuture("RestmController.writeValue") {
-    storageService.queueValue(new PointerType(id), new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(_ => Ok(""))
-  }
+  def writeValue(id: String, time: String): Action[AnyContent] = Action.async { request =>
+    Util.monitorFuture("RestmController.writeValue") {
+      storageService.queueValue(new PointerType(id), new TimeStamp(time), request.body.asText.map(new ValueType(_)).get).map(_ => Ok(""))
+    }
   }
 
-  def delValue(id: String, time: String): Action[AnyContent] = Action.async { _ => Util.monitorFuture("RestmController.delValue") {
-    storageService.delete(new PointerType(id), new TimeStamp(time)).map(_ => Ok(""))
-  }
+  def delValue(id: String, time: String): Action[AnyContent] = Action.async { _ =>
+    Util.monitorFuture("RestmController.delValue") {
+      storageService.delete(new PointerType(id), new TimeStamp(time)).map(_ => Ok(""))
+    }
   }
 
   def newTxn(priority: Int): Action[AnyContent] = Action.async {
@@ -127,10 +130,11 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
     }
   }
 
-  def _init(id: String, time: String): Action[AnyContent] = Action.async { request => Util.monitorFuture("RestmController._init") {
-    storageService.internal._initValue(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get, new PointerType(id))
-      .map(ok => if (ok) Ok("") else Conflict(""))
-  }
+  def _init(id: String, time: String): Action[AnyContent] = Action.async { request =>
+    Util.monitorFuture("RestmController._init") {
+      storageService.internal._initValue(new TimeStamp(time), request.body.asText.map(new ValueType(_)).get, new PointerType(id))
+        .map(ok => if (ok) Ok("") else Conflict(""))
+    }
   }
 
   def _getValue(id: String, time: Option[String], ifModifiedSince: Option[String]): Action[AnyContent] = Action.async {

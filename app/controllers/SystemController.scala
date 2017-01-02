@@ -17,9 +17,11 @@ import scala.concurrent.ExecutionContext
 
 @Singleton
 class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
+  private[this] val workers = getConfig("workers").map(Integer.parseInt).getOrElse(8)
+
   def shutdown(): Action[AnyContent] = Action.async {
     Util.monitorFuture("SystemController.shutdown") {
-      StmDaemons.stop().map(_=>Ok("Node down"))
+      StmDaemons.stop().map(_ => Ok("Node down"))
     }
   }
 
@@ -27,7 +29,7 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     Util.monitorBlock("SystemController.threadDump") {
       import scala.collection.JavaConverters._
       Ok(JacksonValue.simple(
-        Thread.getAllStackTraces.asScala.mapValues(_.map(s=>s"${s.getClass.getCanonicalName}.${s.getMethodName}(${s.getFileName}:${s.getLineNumber})"))
+        Thread.getAllStackTraces.asScala.mapValues(_.map(s => s"${s.getClass.getCanonicalName}.${s.getMethodName}(${s.getFileName}:${s.getLineNumber})"))
       ).pretty).as("application/json")
     }
   }
@@ -49,12 +51,10 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     }
   }
 
-  private[this] val workers = getConfig("workers").map(Integer.parseInt).getOrElse(8)
-
   def init() = Action {
     Util.monitorBlock("SystemController.init") {
       StmDaemons.start()(storageService)
-      StmExecutionQueue.get().registerDaemons(workers)(storageService,exec)
+      StmExecutionQueue.get().registerDaemons(workers)(storageService, exec)
       Ok("Node started")
     }
   }
@@ -72,12 +72,12 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     }
   }
 
-  def listLog(name: String, search:Option[String]) = Action {
+  def listLog(name: String, search: Option[String]) = Action {
     import akka.stream.scaladsl.Source
     Util.monitorBlock("SystemController.listLogs") {
-      val searchR = search.map(search=>s"(?<![01-9a-z])$search".r)
+      val searchR = search.map(search => s"(?<![01-9a-z])$search".r)
       val text = scala.io.Source.fromFile(new File(new File("logs"), name)).getLines.toStream
-        .filter(line=>searchR.isEmpty || searchR.get.findFirstIn(line).isDefined )
+        .filter(line => searchR.isEmpty || searchR.get.findFirstIn(line).isDefined)
         .map(_.replaceAll("([01-9a-f]{8,8}-[01-9a-f]{4,4}-[01-9a-f]{4,4}-[01-9a-f]{4,4}-[01-9a-f]{12,12})", """<a href="?search=$1">$1</a>"""))
         .map(_.replaceAll("([01-9]{2,},[01-9]{1,2})", """<a href="?search=$1">$1</a>"""))
         .map(_.replaceAll("([01-9a-zA-Z\\+]{32,}={0,2})", """..."""))

@@ -49,7 +49,8 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
         case 404 => Success(None)
         case 409 => Failure(new TransactionConflict(response.getResponseBody))
       }
-    }}).map(_.get)
+    }
+    }).map(_.get)
   }
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = monitorFuture("RestmHttpClient.getPtr") {
@@ -62,7 +63,8 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
         case 404 => Success(None)
         case 409 => Failure(new TransactionConflict(response.getResponseBody))
       }
-    }}).map(_.get)
+    }
+    }).map(_.get)
   }
 
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = monitorFuture("RestmHttpClient.newPtr") {

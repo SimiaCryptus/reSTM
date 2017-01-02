@@ -45,19 +45,21 @@ abstract class RestmSpecBase extends WordSpec with MustMatchers {
     }
   }
 }
+
 class LocalRestmSpec extends RestmSpecBase with BeforeAndAfterEach {
+
+  val cluster = LocalRestmDb()
 
   override def beforeEach() {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
-
-  val cluster = LocalRestmDb()
 }
+
 class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
   private val pool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
 }
 
 

@@ -17,38 +17,11 @@ object SimpleLinkedList {
 class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
 
   def id: String = rootPtr.id.toString
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries){
-    def add(value: T): Future[Unit] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.add(value)(ctx, executionContext) }
-    def remove(): Future[Option[T]] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.remove()(ctx, executionContext) }
-    def size(): Future[Int] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.size()(ctx, executionContext) }
-    def stream()(implicit cluster: Restm, executionContext: ExecutionContext): Future[Stream[T]] = {
-      rootPtr.atomic.readOpt.map(_
-        .flatMap(_.tail)
-        .map(tail=>tail.atomic.sync.readOpt.map(node => node.value -> node.next))
-        .map(seed=>{
-          Stream.iterate(seed)((prev: Option[(T, Option[STMPtr[SimpleLinkedListNode[T]]])]) => {
-            prev.get._2.flatMap((node: STMPtr[SimpleLinkedListNode[T]]) =>
-              node.atomic.sync.readOpt.map(node => node.value -> node.next))
-          }).takeWhile(_.isDefined).map(_.get._1)
-        }).getOrElse(Stream.empty))
-    }
-    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(value: T): Unit = sync { AtomicApi.this.add(value) }
-      def remove(): Option[T] = sync { AtomicApi.this.remove() }
-      def stream(): Stream[T] = sync { AtomicApi.this.stream() }
-      def size(): Int = sync { AtomicApi.this.size() }
-    }
-    def sync(duration: Duration) = new SyncApi(duration)
-    def sync = new SyncApi(10.seconds)
-  }
-  def atomic(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
-  class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
-    def add(value: T)(implicit ctx: STMTxnCtx): Unit = sync { SimpleLinkedList.this.add(value) }
-    def remove()(implicit ctx: STMTxnCtx): Option[T] = sync { SimpleLinkedList.this.remove() }
-    def stream()(implicit ctx: STMTxnCtx): Stream[T] = sync { SimpleLinkedList.this.stream() }
-    def size()(implicit ctx: STMTxnCtx): Int = sync { SimpleLinkedList.this.size() }
-  }
+
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
+
   def sync(implicit executionContext: ExecutionContext) = new SyncApi(10.seconds)
 
   def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
@@ -59,24 +32,84 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
     rootPtr.readOpt.map(_
       .flatMap(_.tail)
       .map(_.sync.readOpt.map(node => node.value -> node.next))
-      .map(seed=>
+      .map(seed =>
         Stream.iterate(seed)((prev: Option[(T, Option[STMPtr[SimpleLinkedListNode[T]]])]) =>
           prev.get._2.flatMap((node: STMPtr[SimpleLinkedListNode[T]]) =>
             node.sync.readOpt.map(node => node.value -> node.next)))
-        .takeWhile(_.isDefined).map(_.get._1))
+          .takeWhile(_.isDefined).map(_.get._1))
       .getOrElse(Stream.empty))
   }
 
-  def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
+  def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     rootPtr.readOpt().map(_.getOrElse(new SimpleLinkedListHead)).flatMap(_.add(value, rootPtr))
   }
 
   def remove()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
-    rootPtr.readOpt().flatMap(_.map(head=>head.remove(rootPtr)).getOrElse(Future.successful(None)))
+    rootPtr.readOpt().flatMap(_.map(head => head.remove(rootPtr)).getOrElse(Future.successful(None)))
   }
 
   def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
     rootPtr.lock()
+  }
+
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+    def add(value: T): Future[Unit] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.add(value)(ctx, executionContext) }
+
+    def remove(): Future[Option[T]] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.remove()(ctx, executionContext) }
+
+    def size(): Future[Int] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.size()(ctx, executionContext) }
+
+    def stream()(implicit cluster: Restm, executionContext: ExecutionContext): Future[Stream[T]] = {
+      rootPtr.atomic.readOpt.map(_
+        .flatMap(_.tail)
+        .map(tail => tail.atomic.sync.readOpt.map(node => node.value -> node.next))
+        .map(seed => {
+          Stream.iterate(seed)((prev: Option[(T, Option[STMPtr[SimpleLinkedListNode[T]]])]) => {
+            prev.get._2.flatMap((node: STMPtr[SimpleLinkedListNode[T]]) =>
+              node.atomic.sync.readOpt.map(node => node.value -> node.next))
+          }).takeWhile(_.isDefined).map(_.get._1)
+        }).getOrElse(Stream.empty))
+    }
+
+    def sync(duration: Duration) = new SyncApi(duration)
+
+    def sync = new SyncApi(10.seconds)
+
+    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+      def add(value: T): Unit = sync {
+        AtomicApi.this.add(value)
+      }
+
+      def remove(): Option[T] = sync {
+        AtomicApi.this.remove()
+      }
+
+      def stream(): Stream[T] = sync {
+        AtomicApi.this.stream()
+      }
+
+      def size(): Int = sync {
+        AtomicApi.this.size()
+      }
+    }
+  }
+
+  class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
+    def add(value: T)(implicit ctx: STMTxnCtx): Unit = sync {
+      SimpleLinkedList.this.add(value)
+    }
+
+    def remove()(implicit ctx: STMTxnCtx): Option[T] = sync {
+      SimpleLinkedList.this.remove()
+    }
+
+    def stream()(implicit ctx: STMTxnCtx): Stream[T] = sync {
+      SimpleLinkedList.this.stream()
+    }
+
+    def size()(implicit ctx: STMTxnCtx): Int = sync {
+      SimpleLinkedList.this.size()
+    }
   }
 }
 
@@ -94,7 +127,7 @@ private case class SimpleLinkedListHead[T]
           nodePtr.write(currentValue.copy(next = Option(newPtr)))
             .flatMap(_ => {
               self.write(SimpleLinkedListHead.this.copy(head = Option(newPtr)))
-          })
+            })
         })
       })
     })
@@ -108,19 +141,19 @@ private case class SimpleLinkedListHead[T]
   def remove(self: STMPtr[SimpleLinkedListHead[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
     if (tail.isDefined) {
       val tailPtr: STMPtr[SimpleLinkedListNode[T]] = tail.get
-      tailPtr.read.flatMap(tailValue=>{
+      tailPtr.read.flatMap(tailValue => {
         require(tailValue.prev.isEmpty)
         if (tailValue.next.isDefined) {
           val nextPtr = tailValue.next.get
-          val writeFuture: Future[Unit] = nextPtr.read.map(nextValue=>{
+          val writeFuture: Future[Unit] = nextPtr.read.map(nextValue => {
             require(nextValue.prev == tail)
             nextValue.copy(prev = None)
           }).flatMap(nextPtr.write)
             .flatMap(_ => self.write(copy(tail = Option(nextPtr))))
-          writeFuture.map(_=>Option(tailValue.value))
+          writeFuture.map(_ => Option(tailValue.value))
         } else {
           require(tail == head, "List header seems to be corrupt")
-          self.write(copy(tail = None, head = None)).map(_=>Option(tailValue.value))
+          self.write(copy(tail = None, head = None)).map(_ => Option(tailValue.value))
         }
       })
     } else {
@@ -137,12 +170,12 @@ private case class SimpleLinkedListNode[T]
   prev: Option[STMPtr[SimpleLinkedListNode[T]]] = None
 ) {
 
-  private def equalityFields = List(value, next, prev)
-
   override def hashCode(): Int = equalityFields.hashCode()
 
   override def equals(obj: scala.Any): Boolean = obj match {
     case x: SimpleLinkedListNode[_] => x.equalityFields == equalityFields
     case _ => false
   }
+
+  private def equalityFields = List(value, next, prev)
 }

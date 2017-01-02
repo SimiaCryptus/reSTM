@@ -11,6 +11,10 @@ import scala.concurrent.{ExecutionContext, Future}
 
 object TreeSet {
 
+  def create[T <: Comparable[T]]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeSet[T]] = {
+    STMPtr.dynamic(null: TreeSetNode[T]).map(new TreeSet[T](_))
+  }
+
   private case class TreeSetNode[T <: Comparable[T]]
   (
     value: T,
@@ -26,29 +30,29 @@ object TreeSet {
       left.map(_.read.flatMap(_.max)).getOrElse(Future.successful(value))
     }
 
-    def remove(newValue: T, self:STMPtr[TreeSetNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
+    def remove(newValue: T, self: STMPtr[TreeSetNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
       val compare: Int = value.compareTo(newValue)
       if (compare == 0) {
         if (left.isEmpty && right.isEmpty) {
-          self.delete().map(_=>true)
+          self.delete().map(_ => true)
         } else if (left.isDefined) {
           left.map(leftPtr => {
-            leftPtr.read.flatMap(leftNode=>{
-              leftNode.min().flatMap(minValue=>{
-                leftNode.remove(minValue, leftPtr).flatMap(result=>{
-                  if(result) self.write(TreeSetNode.this.copy(left = None, value = minValue)).map(_=>false)
-                  else self.write(TreeSetNode.this.copy(value = minValue)).map(_=>false)
+            leftPtr.read.flatMap(leftNode => {
+              leftNode.min().flatMap(minValue => {
+                leftNode.remove(minValue, leftPtr).flatMap(result => {
+                  if (result) self.write(TreeSetNode.this.copy(left = None, value = minValue)).map(_ => false)
+                  else self.write(TreeSetNode.this.copy(value = minValue)).map(_ => false)
                 })
               })
             })
           }).get
         } else {
           right.map(rightPtr => {
-            rightPtr.read.flatMap(rightNode=>{
-              rightNode.max().flatMap(maxValue=>{
-                rightNode.remove(maxValue, rightPtr).flatMap(result=>{
-                  if(result) self.write(TreeSetNode.this.copy(right = None, value = maxValue)).map(_=>false)
-                  else self.write(TreeSetNode.this.copy(value = maxValue)).map(_=>false)
+            rightPtr.read.flatMap(rightNode => {
+              rightNode.max().flatMap(maxValue => {
+                rightNode.remove(maxValue, rightPtr).flatMap(result => {
+                  if (result) self.write(TreeSetNode.this.copy(right = None, value = maxValue)).map(_ => false)
+                  else self.write(TreeSetNode.this.copy(value = maxValue)).map(_ => false)
                 })
               })
             })
@@ -56,8 +60,8 @@ object TreeSet {
         }
       } else if (compare < 0) {
         left.map(leftPtr => {
-          leftPtr.read.flatMap(_.remove(newValue,leftPtr).flatMap(result=>{
-            if(result) self.write(TreeSetNode.this.copy(left = None)).map(_=>false)
+          leftPtr.read.flatMap(_.remove(newValue, leftPtr).flatMap(result => {
+            if (result) self.write(TreeSetNode.this.copy(left = None)).map(_ => false)
             else Future.successful(result)
           }))
         }).getOrElse({
@@ -65,8 +69,8 @@ object TreeSet {
         })
       } else {
         right.map(rightPtr => {
-          rightPtr.read().flatMap(_.remove(newValue,rightPtr).flatMap(result=>{
-            if(result) self.write(TreeSetNode.this.copy(right = None)).map(_=>false)
+          rightPtr.read().flatMap(_.remove(newValue, rightPtr).flatMap(result => {
+            if (result) self.write(TreeSetNode.this.copy(right = None)).map(_ => false)
             else Future.successful(result)
           }))
         }).getOrElse({
@@ -75,7 +79,7 @@ object TreeSet {
       }
     }
 
-    def add(newValue: T, self:STMPtr[TreeSetNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+    def add(newValue: T, self: STMPtr[TreeSetNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
       if (value.compareTo(newValue) < 0) {
         left.map(leftPtr => {
           leftPtr.read.flatMap(_.add(newValue, leftPtr))
@@ -101,9 +105,9 @@ object TreeSet {
       }
     }
 
-    private def equalityFields = List(value, left, right)
-
     override def hashCode(): Int = equalityFields.hashCode()
+
+    private def equalityFields = List(value, left, right)
 
     override def equals(obj: scala.Any): Boolean = obj match {
       case x: TreeSetNode[_] => x.equalityFields == equalityFields
@@ -111,58 +115,34 @@ object TreeSet {
     }
   }
 
-  def create[T <: Comparable[T]]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeSet[T]] = {
-    STMPtr.dynamic(null:TreeSetNode[T]).map(new TreeSet[T](_))
-  }
-
 }
 
 class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[TreeSetNode[T]]) {
 
-  def this(ptr:PointerType) = this(new STMPtr[TreeSetNode[T]](ptr))
-  private def this() = this(new PointerType)
+  def this(ptr: PointerType) = this(new STMPtr[TreeSetNode[T]](ptr))
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
-
-    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(key: T): Unit.type = sync { AtomicApi.this.add(key) }
-      def remove(value: T): Boolean = sync { AtomicApi.this.remove(value) }
-      def contains(value: T): Boolean = sync { AtomicApi.this.contains(value) }
-    }
-    def sync(duration: Duration) = new SyncApi(duration)
-    def sync = new SyncApi(10.seconds)
-
-    def add(key: T): Future[Unit.type] = atomic { TreeSet.this.add(key)(_,executionContext).map(_ => Unit) }
-    def remove(key: T): Future[Boolean] = atomic { TreeSet.this.remove(key)(_,executionContext) }
-    def contains(key: T): Future[Boolean] = atomic { TreeSet.this.contains(key)(_,executionContext) }
-  }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
-  class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync { TreeSet.this.add(key) }
-    def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync { TreeSet.this.remove(value) }
-    def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync { TreeSet.this.contains(value) }
-  }
   def sync(duration: Duration) = new SyncApi(duration)
-  def sync = new SyncApi(10.seconds)
 
+  def sync = new SyncApi(10.seconds)
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     rootPtr.readOpt().flatMap(
-      _.map(_.add(value,rootPtr))
+      _.map(_.add(value, rootPtr))
         .getOrElse(rootPtr.write(TreeSetNode(value))))
   }
 
   def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
     rootPtr.readOpt().flatMap(
-      _.map(r =>{
+      _.map(r => {
         try {
-          r.remove(value, rootPtr).map(_=>true).recover({case _:NoSuchElementException=>false})
+          r.remove(value, rootPtr).map(_ => true).recover({ case _: NoSuchElementException => false })
         } catch {
-          case _:NoSuchElementException=>Future.successful(false)
+          case _: NoSuchElementException => Future.successful(false)
         }
       }).getOrElse(Future.successful(false)
-    ))
+      ))
   }
 
   def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
@@ -179,5 +159,54 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[TreeSetNode[T]]) {
     rootPtr.readOpt().flatMap(prev => {
       prev.map(_.max().map(Option(_))).getOrElse(Future.successful(None))
     })
+  }
+
+  private def this() = this(new PointerType)
+
+  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+
+    def sync(duration: Duration) = new SyncApi(duration)
+
+    def sync = new SyncApi(10.seconds)
+
+    def add(key: T): Future[Unit.type] = atomic {
+      TreeSet.this.add(key)(_, executionContext).map(_ => Unit)
+    }
+
+    def remove(key: T): Future[Boolean] = atomic {
+      TreeSet.this.remove(key)(_, executionContext)
+    }
+
+    def contains(key: T): Future[Boolean] = atomic {
+      TreeSet.this.contains(key)(_, executionContext)
+    }
+
+    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+      def add(key: T): Unit.type = sync {
+        AtomicApi.this.add(key)
+      }
+
+      def remove(value: T): Boolean = sync {
+        AtomicApi.this.remove(value)
+      }
+
+      def contains(value: T): Boolean = sync {
+        AtomicApi.this.contains(value)
+      }
+    }
+  }
+
+  class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+    def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
+      TreeSet.this.add(key)
+    }
+
+    def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync {
+      TreeSet.this.remove(value)
+    }
+
+    def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync {
+      TreeSet.this.contains(value)
+    }
   }
 }

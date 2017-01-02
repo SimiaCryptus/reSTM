@@ -13,13 +13,13 @@ import scala.reflect._
 object KryoValue {
   private val lZ4Factory = LZ4Factory.safeInstance()
 
-  private val kryo: ThreadLocal[Kryo] = new ThreadLocal[Kryo]{
+  private val kryo: ThreadLocal[Kryo] = new ThreadLocal[Kryo] {
     override def initialValue(): Kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
   }
-  private val fastCompressor: ThreadLocal[LZ4Compressor] = new ThreadLocal[LZ4Compressor]{
+  private val fastCompressor: ThreadLocal[LZ4Compressor] = new ThreadLocal[LZ4Compressor] {
     override def initialValue(): LZ4Compressor = lZ4Factory.fastCompressor()
   }
-  private val safeDecompressor: ThreadLocal[LZ4SafeDecompressor] = new ThreadLocal[LZ4SafeDecompressor]{
+  private val safeDecompressor: ThreadLocal[LZ4SafeDecompressor] = new ThreadLocal[LZ4SafeDecompressor] {
     override def initialValue(): LZ4SafeDecompressor = lZ4Factory.safeDecompressor()
   }
 
@@ -49,7 +49,7 @@ object KryoValue {
   def deserialize[T <: AnyRef : ClassTag](data: Array[Byte]): Option[T] = // Util.monitorBlock("KryoValue.deserialize")
   {
     Option(data)
-      .map(x=>{
+      .map(x => {
         safeDecompressor.get().decompress(x, 1024 * 1024)
       })
       .map(new Input(_))

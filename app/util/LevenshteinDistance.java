@@ -20,15 +20,15 @@ import java.util.Arrays;
 
 /**
  * An algorithm for measuring the difference between two character sequences.
- *
+ * <p>
  * Copied from https://github.com/apache/commons-text/blob/master/src/main/java/org/apache/commons/text/similarity/LevenshteinDistance.java
- *
+ * <p>
  * <p>
  * This is the number of changes needed to change one sequence into another,
  * where each change is a single character modification (deletion, insertion
  * or substitution).
  * </p>
- *
+ * <p>
  * <p>
  * This code has been adapted from Apache Commons Lang 3.3.
  * </p>
@@ -66,54 +66,14 @@ public class LevenshteinDistance {
      * If the threshold is null, the unlimited version of the algorithm will be used.
      * </p>
      *
-     * @param threshold
-     *        If this is null then distances calculations will not be limited.
-     *        This may not be negative.
+     * @param threshold If this is null then distances calculations will not be limited.
+     *                  This may not be negative.
      */
     private LevenshteinDistance(final Integer threshold) {
         if (threshold != null && threshold < 0) {
             throw new IllegalArgumentException("Threshold must not be negative");
         }
         this.threshold = threshold;
-    }
-
-    /**
-     * <p>Find the Levenshtein distance between two Strings.</p>
-     *
-     * <p>A higher score indicates a greater distance.</p>
-     *
-     * <p>The previous implementation of the Levenshtein distance algorithm
-     * was from <a href="http://www.merriampark.com/ld.htm">http://www.merriampark.com/ld.htm</a></p>
-     *
-     * <p>Chas Emerick has written an implementation in Java, which avoids an OutOfMemoryError
-     * which can occur when my Java implementation is used with very large strings.<br>
-     * This implementation of the Levenshtein distance algorithm
-     * is from <a href="http://www.merriampark.com/ldjava.htm">http://www.merriampark.com/ldjava.htm</a></p>
-     *
-     * <pre>
-     * distance.apply(null, *)             = IllegalArgumentException
-     * distance.apply(*, null)             = IllegalArgumentException
-     * distance.apply("","")               = 0
-     * distance.apply("","a")              = 1
-     * distance.apply("aaapppp", "")       = 7
-     * distance.apply("frog", "fog")       = 1
-     * distance.apply("fly", "ant")        = 3
-     * distance.apply("elephant", "hippo") = 7
-     * distance.apply("hippo", "elephant") = 7
-     * distance.apply("hippo", "zzzzzzzz") = 8
-     * distance.apply("hello", "hallo")    = 1
-     * </pre>
-     *
-     * @param left the first string, must not be null
-     * @param right the second string, must not be null
-     * @return result distance, or -1
-     * @throws IllegalArgumentException if either String input {@code null}
-     */
-    public Integer apply(final CharSequence left, final CharSequence right) {
-        if (threshold != null) {
-            return limitedCompare(left, right, threshold);
-        }
-        return unlimitedCompare(left, right);
     }
 
     /**
@@ -126,18 +86,9 @@ public class LevenshteinDistance {
     }
 
     /**
-     * Gets the distance threshold.
-     *
-     * @return the distance threshold
-     */
-    public Integer getThreshold() {
-        return threshold;
-    }
-
-    /**
      * Find the Levenshtein distance between two CharSequences if it's less than or
      * equal to a given threshold.
-     *
+     * <p>
      * <p>
      * This implementation follows from Algorithms on Strings, Trees and
      * Sequences by Dan Gusfield and Chas Emerick's implementation of the
@@ -145,7 +96,7 @@ public class LevenshteinDistance {
      * href="http://www.merriampark.com/ld.htm"
      * >http://www.merriampark.com/ld.htm</a>
      * </p>
-     *
+     * <p>
      * <pre>
      * limitedCompare(null, *, *)             = IllegalArgumentException
      * limitedCompare(*, null, *)             = IllegalArgumentException
@@ -160,8 +111,8 @@ public class LevenshteinDistance {
      * limitedCompare("hippo", "elephant", 6) = -1
      * </pre>
      *
-     * @param left the first string, must not be null
-     * @param right the second string, must not be null
+     * @param left      the first string, must not be null
+     * @param right     the second string, must not be null
      * @param threshold the target threshold, must not be negative
      * @return result distance, or -1
      */
@@ -307,15 +258,15 @@ public class LevenshteinDistance {
 
     /**
      * <p>Find the Levenshtein distance between two Strings.</p>
-     *
+     * <p>
      * <p>A higher score indicates a greater distance.</p>
-     *
+     * <p>
      * <p>The previous implementation of the Levenshtein distance algorithm
      * was from <a href="https://web.archive.org/web/20120526085419/http://www.merriampark.com/ldjava.htm">
      * https://web.archive.org/web/20120526085419/http://www.merriampark.com/ldjava.htm</a></p>
-     *
+     * <p>
      * <p>This implementation only need one single-dimensional arrays of length s.length() + 1</p>
-     *
+     * <p>
      * <pre>
      * unlimitedCompare(null, *)             = IllegalArgumentException
      * unlimitedCompare(*, null)             = IllegalArgumentException
@@ -330,7 +281,7 @@ public class LevenshteinDistance {
      * unlimitedCompare("hello", "hallo")    = 1
      * </pre>
      *
-     * @param left the first String, must not be null
+     * @param left  the first String, must not be null
      * @param right the second String, must not be null
      * @return result distance, or -1
      * @throws IllegalArgumentException if either String input {@code null}
@@ -393,6 +344,54 @@ public class LevenshteinDistance {
         }
 
         return p[n];
+    }
+
+    /**
+     * <p>Find the Levenshtein distance between two Strings.</p>
+     * <p>
+     * <p>A higher score indicates a greater distance.</p>
+     * <p>
+     * <p>The previous implementation of the Levenshtein distance algorithm
+     * was from <a href="http://www.merriampark.com/ld.htm">http://www.merriampark.com/ld.htm</a></p>
+     * <p>
+     * <p>Chas Emerick has written an implementation in Java, which avoids an OutOfMemoryError
+     * which can occur when my Java implementation is used with very large strings.<br>
+     * This implementation of the Levenshtein distance algorithm
+     * is from <a href="http://www.merriampark.com/ldjava.htm">http://www.merriampark.com/ldjava.htm</a></p>
+     * <p>
+     * <pre>
+     * distance.apply(null, *)             = IllegalArgumentException
+     * distance.apply(*, null)             = IllegalArgumentException
+     * distance.apply("","")               = 0
+     * distance.apply("","a")              = 1
+     * distance.apply("aaapppp", "")       = 7
+     * distance.apply("frog", "fog")       = 1
+     * distance.apply("fly", "ant")        = 3
+     * distance.apply("elephant", "hippo") = 7
+     * distance.apply("hippo", "elephant") = 7
+     * distance.apply("hippo", "zzzzzzzz") = 8
+     * distance.apply("hello", "hallo")    = 1
+     * </pre>
+     *
+     * @param left  the first string, must not be null
+     * @param right the second string, must not be null
+     * @return result distance, or -1
+     * @throws IllegalArgumentException if either String input {@code null}
+     */
+    public Integer apply(final CharSequence left, final CharSequence right) {
+        if (threshold != null) {
+            return limitedCompare(left, right, threshold);
+        }
+        return unlimitedCompare(left, right);
+    }
+
+    /**
+     * Gets the distance threshold.
+     *
+     * @return the distance threshold
+     */
+    public Integer getThreshold() {
+        return threshold;
     }
 
 }

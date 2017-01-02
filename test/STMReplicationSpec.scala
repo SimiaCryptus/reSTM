@@ -17,24 +17,24 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
 
   "RestmInternalStaticListReplicator" should {
     "persist and restore data" in {
-      val nodes = (0 to 1).map(_=>new RestmActors()).toList
+      val nodes = (0 to 1).map(_ => new RestmActors()).toList
       val ids = randomUUIDs.take(5).toList
       addItems(nodes, ids)
       deleteItems(nodes, ids)
     }
     "tolerate node failure" in {
-      val nodes = (0 to 1).map(_=>new RestmActors()).toList
+      val nodes = (0 to 1).map(_ => new RestmActors()).toList
       val ids = randomUUIDs.take(5).toList
       addItems(nodes, ids)
       nodes.head.clear()
       deleteItems(nodes, ids)
     }
   }
-
-  def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
   val collection = new TreeSet[String](new PointerType("test/ColdStorageIntegrationSpec/" + UUID.randomUUID().toString))
 
-  def addItems(nodes : Seq[RestmInternal], items : Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext): Seq[String] = {
+  def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
+
+  def addItems(nodes: Seq[RestmInternal], items: Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext): Seq[String] = {
     implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))
     for (item <- items) {
       try {
@@ -42,13 +42,13 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
         collection.atomic.sync.add(item)
         collection.atomic.sync.contains(item) mustBe true
       } catch {
-        case e : Throwable => throw new RuntimeException(s"Error adding $item", e)
+        case e: Throwable => throw new RuntimeException(s"Error adding $item", e)
       }
     }
     items
   }
 
-  def deleteItems(nodes : Seq[RestmInternal], items:Seq[String])(implicit executor: ExecutionContext): Seq[String] = {
+  def deleteItems(nodes: Seq[RestmInternal], items: Seq[String])(implicit executor: ExecutionContext): Seq[String] = {
     implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))
     for (item <- items) {
       try {
@@ -56,7 +56,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
         collection.atomic.sync.remove(item)
         collection.atomic.sync.contains(item) mustBe false
       } catch {
-        case e : Throwable => throw new RuntimeException(s"Error deleting $item", e)
+        case e: Throwable => throw new RuntimeException(s"Error deleting $item", e)
       }
     }
     items

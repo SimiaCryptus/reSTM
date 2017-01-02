@@ -16,31 +16,19 @@ import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClie
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 
-object StmExecutionSpecBase {
-  def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
-    Await.result(new STMTxn[Int] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
-      }
-    }.txnRun(cluster)(executionContext), 100.milliseconds)
-    if (n>1) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
-      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
-    } else {
-      Task.TaskSuccess("foo")
-    }
-  }
-}
-
 abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
+
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "TreeCollection" should {
     val collection = new TreeCollection[String](new PointerType)
+
     def randomStr = UUID.randomUUID().toString.take(8)
+
     def randomUUIDs = Stream.continually(randomStr)
+
     "support sorting" in {
       StmDaemons.start()
       try {
@@ -68,7 +56,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
           hasRun.atomic(cluster, executionContext).sync.write(1)
           Task.TaskSuccess("foo")
         }).atomic().sync.map(StmExecutionQueue.get(), (value, cluster, executionContext) => {
-          require(value=="foo")
+          require(value == "foo")
           hasRun.atomic(cluster, executionContext).sync.write(2)
           Task.TaskSuccess("bar")
         }).future, 10.seconds)
@@ -100,7 +88,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
         val counter = new STMPtr[java.lang.Integer](new PointerType)
         counter.atomic.sync.init(0)
         val count = 20
-        val task = StmExecutionQueue.get().atomic.sync.add(StmExecutionSpecBase.recursiveTask(counter,count) _)
+        val task = StmExecutionQueue.get().atomic.sync.add(StmExecutionSpecBase.recursiveTask(counter, count) _)
         Await.result(task.future, 10.seconds)
         counter.atomic.sync.readOpt mustBe Some(count)
       } finally {
@@ -115,11 +103,11 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
       val counter = try {
         val counter = new STMPtr[java.lang.Integer](new PointerType)
         counter.atomic.sync.init(0)
-        StmDaemons.config.atomic().sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext:ExecutionContext) => {
-          while(!Thread.interrupted()) {
+        StmDaemons.config.atomic().sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext: ExecutionContext) => {
+          while (!Thread.interrupted()) {
             new STMTxn[Integer] {
               override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Integer] = {
-                counter.read().flatMap(prev=>counter.write(prev+1).map(_=>prev+1))
+                counter.read().flatMap(prev => counter.write(prev + 1).map(_ => prev + 1))
               }
             }.txnRun(cluster)(executionContext)
             Thread.sleep(100)
@@ -143,24 +131,23 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
 }
 
 class LocalStmExecutionSpec extends StmExecutionSpecBase with BeforeAndAfterEach {
+  val cluster = LocalRestmDb()
+
   override def beforeEach() {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
-
-  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmExecutionSpec extends StmExecutionSpecBase with BeforeAndAfterEach {
-//  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-//    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
+  //  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  //    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
   val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 
   override def beforeEach() {
     shards.foreach(_.clear())
   }
-
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 class ServletStmExecutionSpec extends StmExecutionSpecBase with OneServerPerSuite {
@@ -168,11 +155,25 @@ class ServletStmExecutionSpec extends StmExecutionSpecBase with OneServerPerSuit
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
-
-
 class ActorServletStmExecutionSpec extends StmExecutionSpecBase with OneServerPerSuite {
+  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
-  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
+}
+
+object StmExecutionSpecBase {
+  def recursiveTask(counter: STMPtr[java.lang.Integer], n: Int)(cluster: Restm, executionContext: ExecutionContext): TaskResult[String] = {
+    Await.result(new STMTxn[Int] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
+      }
+    }.txnRun(cluster)(executionContext), 100.milliseconds)
+    if (n > 1) {
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
+      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
+    } else {
+      Task.TaskSuccess("foo")
+    }
+  }
 }
 

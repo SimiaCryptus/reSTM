@@ -36,13 +36,33 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
         Future.failed(e)
     })
 
+  def cleanup(time: TimeStamp): Future[Unit] = {
+    val state: Future[String] = internal._txnState(time)
+    state.map({
+      case "COMMIT" => commit(time)
+      case _ => reset(time)
+    }).map(_ => Unit)
+  }
+
+  override def reset(time: TimeStamp): Future[Unit] = {
+    internal._resetTxn(time).map(locks => if (!RestmImpl.failChainedCalls)
+      Future.sequence(locks.map(internal._resetValue(_, time).recover({ case _ => Unit }))))
+  }
+
+  override def commit(time: TimeStamp): Future[Unit] = {
+    internal._commitTxn(time).map(locks => if (!RestmImpl.failChainedCalls)
+      Future.sequence(locks.map(internal._commitValue(_, time))))
+  }
+
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = {
     def newPtrAttempt: Future[Option[PointerType]] = {
       val id: PointerType = new PointerType()
       internal._initValue(time, value, id).map(ok => Option(id).filter(_ => ok))
     }
+
     def recursiveNewPtr: Future[PointerType] = newPtrAttempt.flatMap(attempt => attempt.map(ptr => Future.successful(ptr))
       .getOrElse(recursiveNewPtr))
+
     recursiveNewPtr
   }
 
@@ -70,24 +90,6 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
         }
       }
     })
-  }
-
-  def cleanup(time: TimeStamp): Future[Unit] = {
-    val state: Future[String] = internal._txnState(time)
-    state.map({
-      case "COMMIT" => commit(time)
-      case _ => reset(time)
-    }).map(_ => Unit)
-  }
-
-  override def reset(time: TimeStamp): Future[Unit] = {
-    internal._resetTxn(time).map(locks => if (!RestmImpl.failChainedCalls)
-      Future.sequence(locks.map(internal._resetValue(_, time).recover({ case _ => Unit }))))
-  }
-
-  override def commit(time: TimeStamp): Future[Unit] = {
-    internal._commitTxn(time).map(locks => if (!RestmImpl.failChainedCalls)
-      Future.sequence(locks.map(internal._commitValue(_, time))))
   }
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] =

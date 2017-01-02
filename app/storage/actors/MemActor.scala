@@ -8,42 +8,43 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 
-class HistoryRecord(val time : TimeStamp, val value : ValueType) {
-  var coldStorageTs : Option[Long] = None
+class HistoryRecord(val time: TimeStamp, val value: ValueType) {
+  var coldStorageTs: Option[Long] = None
 }
+
 object MemActor {
   val safeRead = false
 
 }
+
 class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
 
   val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]()
+  val rwlock = new Object()
   private[this] var lastRead: Option[TimeStamp] = None
   private[actors] var writeLock: Option[TimeStamp] = None
   private[this] var staleCommit: Option[TimeStamp] = None
   private[this] var queuedValue: Option[ValueType] = None
 
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
-  private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
   override def toString = s"ptr@$objId:$name#${history.size}#$messageNumber"
+
+  private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
 
   def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = Util.monitorFuture("MemActor.getCurrentValue") {
     withActor {
       Option(history.toArray).filterNot(_.isEmpty).map(_.maxBy(_.time))
-        .map(record=>record.time->record.value)
+        .map(record => record.time -> record.value)
     }.andThen({
       case Success(_) =>
         logMsg(s"getCurrentValue")
       case Failure(e) => logMsg(s"getCurrentValue failed - $e")
     })
   }
-  val rwlock = new Object()
-
 
   def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = //Util.monitorFuture("MemActor.getValue")
   {
-    if(MemActor.safeRead) {
+    if (MemActor.safeRead) {
       withActor {
         writeLock.foreach(writeLock => if (writeLock < time) {
           logMsg(s"getValue failed - txn lock $writeLock")
@@ -51,19 +52,19 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         })
         lastRead = lastRead.filter(_ > time).orElse(Option(time))
         val record: Option[HistoryRecord] = history.synchronized {
-          Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+          Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
         }
-        Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
-        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_==null)
+        Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
+        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_ == null)
         logMsg(s"getValue($time, $ifModifiedSince) $result")
         result
       }
     } else {
-      if(lastRead.exists(_ >= time)) {
+      if (lastRead.exists(_ >= time)) {
         val record: Option[HistoryRecord] = history.synchronized {
-          Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+          Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
         }
-        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_==null)
+        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_ == null)
         logMsg(s"getValue($time, $ifModifiedSince) $result")
         Future.successful(result)
       } else {
@@ -75,9 +76,9 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
           lastRead = lastRead.filter(_ > time).orElse(Option(time))
         }
         val record: Option[HistoryRecord] = history.synchronized {
-          Option(history.lastIndexWhere(_.time <= time)).filter(_>=0).map(history(_))
+          Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
         }
-        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_==null)
+        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_ == null)
         logMsg(s"getValue($time, $ifModifiedSince) $result")
         Future.successful(result)
       }
@@ -142,10 +143,12 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
     }
   }
 
+  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
+
   def writeBlob(time: TimeStamp, value: ValueType): Future[Unit] = Util.monitorFuture("MemActor.writeBlob") {
     {
       withActor {
-        if(!writeLock.contains(time) && !staleCommit.contains(time)) throw new TransactionConflict(s"Lock mismatch: $writeLock != $time")
+        if (!writeLock.contains(time) && !staleCommit.contains(time)) throw new TransactionConflict(s"Lock mismatch: $writeLock != $time")
         require(queuedValue.isEmpty, "Value already queued")
         if (staleCommit.contains(time)) {
           history.synchronized {
@@ -176,7 +179,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
   def delete(time: TimeStamp): Future[Unit] = Util.monitorFuture("MemActor.delete") {
     {
       withActor {
-        if(!writeLock.contains(time) && !staleCommit.contains(time)) throw new TransactionConflict(s"Lock mismatch: $writeLock != $time")
+        if (!writeLock.contains(time) && !staleCommit.contains(time)) throw new TransactionConflict(s"Lock mismatch: $writeLock != $time")
         require(queuedValue.isEmpty, "Value already queued")
         if (staleCommit.contains(time)) {
           history.synchronized {
@@ -212,7 +215,7 @@ class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends Act
         //logMsg(s"writeCommit($time) - ${queuedValue} (${queuedValue.isDefined})")
         if (queuedValue.isDefined) {
           history.synchronized {
-            history --= history.filter(_.time==time).toList // Remove duplicate times caused by init
+            history --= history.filter(_.time == time).toList // Remove duplicate times caused by init
             history += new HistoryRecord(writeLock.get, queuedValue.get)
           }
           staleCommit = None

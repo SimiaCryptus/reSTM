@@ -13,9 +13,6 @@ import storage.remote.{RestmCluster, RestmHttpClient, RestmInternalRestmHttpClie
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 
-object StmSpecBase {
-}
-
 abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfterEach {
 
   override def afterEach() {
@@ -23,11 +20,12 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
   }
 
   implicit def cluster: Restm
+
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Transactional Pointers" should {
-//    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
+    //    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
     "support basic operations" in {
       val id: PointerType = new PointerType
       Await.result(new STMTxn[String] {
@@ -40,7 +38,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
-          new STMPtr[String](id).read.map(x=>x)
+          new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "foo"
       Await.result(new STMTxn[String] {
@@ -53,7 +51,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
-          new STMPtr[String](id).read.map(x=>x)
+          new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "bar"
     }
@@ -71,7 +69,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
-          new STMPtr[String](id).read.map(x=>x)
+          new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "bar"
       Await.result(new STMTxn[String] {
@@ -87,7 +85,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
         override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
-          new STMPtr[String](id).read.map(x=>x)
+          new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "jill"
     }
@@ -96,26 +94,25 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
 }
 
 class LocalStmSpec extends StmSpecBase with BeforeAndAfterEach {
+  val cluster = LocalRestmDb()
+
   override def beforeEach() {
     super.beforeEach()
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
-
-  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmSpec extends StmSpecBase with BeforeAndAfterEach {
-//  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-//    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
+  //  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  //    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
   val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 
   override def beforeEach() {
     super.beforeEach()
     shards.foreach(_.clear())
   }
-
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 class ServletStmSpec extends StmSpecBase with OneServerPerSuite {
@@ -123,10 +120,12 @@ class ServletStmSpec extends StmSpecBase with OneServerPerSuite {
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
-
 class ActorServletStmSpec extends StmSpecBase with OneServerPerSuite {
+  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
-  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
+}
+
+object StmSpecBase {
 }
 

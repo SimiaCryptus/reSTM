@@ -45,7 +45,7 @@ object TaskUtil {
         System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
         //continueLoop = false
       }
-      if(lastSummary != summary) {
+      if (lastSummary != summary) {
         lastSummary = summary
         lastChanged = now
       }

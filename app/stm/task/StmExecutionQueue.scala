@@ -14,18 +14,22 @@ import scala.util.{Failure, Try}
 
 
 object StmExecutionQueue {
-  private var default : StmExecutionQueue = _
+  private var default: StmExecutionQueue = _
 
   def init()(implicit cluster: Restm, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
     new STMTxn[StmExecutionQueue] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
         IdQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
       }
-    }.txnRun(cluster).map(x=>{default = x;x})
+    }.txnRun(cluster).map(x => {
+      default = x; x
+    })
   }
+
   def get(): StmExecutionQueue = {
     default
   }
+
   def reset()(implicit cluster: Restm, executionContext: ExecutionContext): Unit = {
     default = null
   }
@@ -33,35 +37,28 @@ object StmExecutionQueue {
 
 class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase{
-    def add(f: Task[_]): Future[Unit] = atomic { StmExecutionQueue.this.add(f)(_,executionContext) }
-    def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty): Future[Task[T]] = atomic { StmExecutionQueue.this.add[T](f, ancestors)(_,executionContext) }
-    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(f: Task[_]): Unit = sync { AtomicApi.this.add(f) }
-      def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty): Task[T] = sync { AtomicApi.this.add[T](f, ancestors) }
-    }
-    def sync(duration: Duration) = new SyncApi(duration)
-    def sync = new SyncApi(10.seconds)
-  }
+  var verbose = false
+
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
-  class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Task[T] =
-      sync { StmExecutionQueue.this.add[T](f, ancestors) }
-    def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync { StmExecutionQueue.this.add(f) }
-  }
+
   def sync(duration: Duration) = new SyncApi(duration)
+
   def sync = new SyncApi(10.seconds)
 
-
-  def add[T](f: (Restm, ExecutionContext)=>TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Task[T]] = {
-    Task.create(f, ancestors).flatMap(task=>task.initTriggers(StmExecutionQueue.this).map(_=>task))
+  def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Task[T]] = {
+    Task.create(f, ancestors).flatMap(task => task.initTriggers(StmExecutionQueue.this).map(_ => task))
   }
 
-  def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Unit] = {
+  def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     workQueue.add(f)
   }
 
-  var verbose = false
+  def registerDaemons(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext): Unit = {
+    (1 to count).map(i => {
+      val f: (Restm, ExecutionContext) => Unit = task()
+      DaemonConfig(s"Queue-${workQueue.id}-$i", f)
+    }).foreach(daemon => StmDaemons.config.atomic().sync.add(daemon))
+  }
 
   def task()(cluster: Restm, executionContext: ExecutionContext): Unit = {
     try {
@@ -69,7 +66,7 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
         try {
           val future = runTask(cluster, executionContext)
           val result = Await.result(future, 10.minutes)
-          if(!result) Thread.sleep(1000)
+          if (!result) Thread.sleep(1000)
         } catch {
           case _: InterruptedException =>
             Thread.currentThread().interrupt()
@@ -79,7 +76,7 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
       }
     } catch {
       case e: Throwable =>
-        new RuntimeException(s"Error in task executor",e).printStackTrace(System.err)
+        new RuntimeException(s"Error in task executor", e).printStackTrace(System.err)
     }
   }
 
@@ -92,24 +89,27 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
         }
       }.txnRun(cluster)(executionContext)
     }
-    taskFuture.flatMap(taskTuple=>{
+    taskFuture.flatMap(taskTuple => {
       taskTuple.map(tuple => {
         val function = tuple._2
         val task = tuple._1.asInstanceOf[Task[AnyRef]]
         if (verbose) println(s"Starting task ${task.id} at ${new Date()}")
         val result = monitorBlock("StmExecutionQueue.runTask") {
-          def attempt(retries:Int): TaskResult[_] = {
+          def attempt(retries: Int): TaskResult[_] = {
             try {
               function(cluster, executionContext)
             } catch {
-              case _: Throwable if retries > 0 => attempt(retries-1)
+              case _: Throwable if retries > 0 => attempt(retries - 1)
             }
           }
-          Try { attempt(3) }
+
+          Try {
+            attempt(3)
+          }
         }.recoverWith({ case e =>
-            e.printStackTrace()
-            Failure(e)
-          }).asInstanceOf[Try[TaskResult[AnyRef]]]
+          e.printStackTrace()
+          Failure(e)
+        }).asInstanceOf[Try[TaskResult[AnyRef]]]
         monitorFuture("StmExecutionQueue.completeTask") {
           task.atomic()(cluster, executionContext).complete(result)
         }.map(_ => {
@@ -123,7 +123,7 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
   }
 
   private def getTask(executorName: String = ExecutionStatusManager.getName)
-                     (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
+                     (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
     workQueue.take(2).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap((task: Option[Task[AnyRef]]) => {
       task.map(task => {
         val obtainTask: Future[Option[(Restm, ExecutionContext) => TaskResult[AnyRef]]] = task.obtainTask(executorName)
@@ -135,11 +135,39 @@ class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
     })
   }
 
-  def registerDaemons(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext): Unit = {
-    (1 to count).map(i=>{
-      val f: (Restm, ExecutionContext) => Unit = task()
-      DaemonConfig(s"Queue-${workQueue.id}-$i", f)
-    }).foreach(daemon=>StmDaemons.config.atomic().sync.add(daemon))
+  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+    def add(f: Task[_]): Future[Unit] = atomic {
+      StmExecutionQueue.this.add(f)(_, executionContext)
+    }
+
+    def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty): Future[Task[T]] = atomic {
+      StmExecutionQueue.this.add[T](f, ancestors)(_, executionContext)
+    }
+
+    def sync(duration: Duration) = new SyncApi(duration)
+
+    def sync = new SyncApi(10.seconds)
+
+    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+      def add(f: Task[_]): Unit = sync {
+        AtomicApi.this.add(f)
+      }
+
+      def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty): Task[T] = sync {
+        AtomicApi.this.add[T](f, ancestors)
+      }
+    }
+  }
+
+  class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+    def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Task[T] =
+      sync {
+        StmExecutionQueue.this.add[T](f, ancestors)
+      }
+
+    def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
+      StmExecutionQueue.this.add(f)
+    }
   }
 
 }

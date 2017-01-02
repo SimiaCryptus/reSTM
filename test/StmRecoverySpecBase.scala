@@ -17,24 +17,9 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.Try
 
-object StmRecoverySpecBase {
-  def recursiveTask(counter: STMPtr[java.lang.Integer], n:Int)(cluster: Restm, executionContext: ExecutionContext) : TaskResult[String] = {
-    Await.result(new STMTxn[Int] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
-        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
-      }
-    }.txnRun(cluster)(executionContext), 100.milliseconds)
-    if (n>1) {
-      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
-      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
-    } else {
-      Task.TaskSuccess("foo")
-    }
-  }
-}
-
 abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
+
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
@@ -125,24 +110,23 @@ abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
 }
 
 class LocalStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
+  val cluster = LocalRestmDb()
+
   override def beforeEach() {
     cluster.internal.asInstanceOf[RestmActors].clear()
   }
-
-  val cluster = LocalRestmDb()
 }
 
 class LocalClusterStmRecoverySpec extends StmRecoverySpecBase with BeforeAndAfterEach {
-//  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-//    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
+  //  private val pool: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  //    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
   val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors()).toList
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 
   override def beforeEach() {
     shards.foreach(_.clear())
   }
-
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
 class ServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite {
@@ -150,11 +134,25 @@ class ServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite 
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }
 
-
-
 class ActorServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerSuite {
+  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
-  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
+}
+
+object StmRecoverySpecBase {
+  def recursiveTask(counter: STMPtr[java.lang.Integer], n: Int)(cluster: Restm, executionContext: ExecutionContext): TaskResult[String] = {
+    Await.result(new STMTxn[Int] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+        counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
+      }
+    }.txnRun(cluster)(executionContext), 100.milliseconds)
+    if (n > 1) {
+      val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
+      Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())
+    } else {
+      Task.TaskSuccess("foo")
+    }
+  }
 }
 

@@ -8,42 +8,23 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 object TreeMap {
-  def empty[T <: Comparable[T],V] = new STMTxn[TreeMap[T,V]] {
-    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T,V]] = create[T,V]
+  def empty[T <: Comparable[T], V] = new STMTxn[TreeMap[T, V]] {
+    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T, V]] = create[T, V]
   }
 
-  def create[T <: Comparable[T],V](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T, V]] = STMPtr.dynamic[Option[BinaryTreeMapNode[T,V]]](None).map(new TreeMap(_))
+  def create[T <: Comparable[T], V](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T, V]] = STMPtr.dynamic[Option[BinaryTreeMapNode[T, V]]](None).map(new TreeMap(_))
 
 }
 
-class TreeMap[T <: Comparable[T],V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T,V]]]) {
+class TreeMap[T <: Comparable[T], V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T, V]]]) {
 
-  def this(ptr:PointerType) = this(new STMPtr[Option[BinaryTreeMapNode[T,V]]](ptr))
-  private def this() = this(new PointerType)
-
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
-
-    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(key: T, value: V): Unit.type = sync { AtomicApi.this.add(key, value) }
-      def remove(value: T): Unit = sync { AtomicApi.this.remove(value) }
-      def contains(value: T): Boolean = sync { AtomicApi.this.contains(value) }
-      def get(value: T): Option[V] = sync { AtomicApi.this.get(value) }
-    }
-
-    def sync(duration: Duration) = new SyncApi(duration)
-    def sync = new SyncApi(10.seconds)
-
-    def add(key: T, value: V): Future[Unit.type] = atomic { TreeMap.this.add(key, value)(_,executionContext).map(_ => Unit) }
-    def remove(key: T): Future[Unit] = atomic { TreeMap.this.remove(key)(_,executionContext) }
-    def contains(key: T): Future[Boolean] = atomic { TreeMap.this.contains(key)(_,executionContext) }
-    def get(key: T): Future[Option[V]] = atomic { TreeMap.this.get(key)(_,executionContext) }
-  }
+  def this(ptr: PointerType) = this(new STMPtr[Option[BinaryTreeMapNode[T, V]]](ptr))
 
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 
   def add(key: T, value: V)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
-      prev.map(r => r += key -> value).getOrElse(new BinaryTreeMapNode[T,V](key, value))
+      prev.map(r => r += key -> value).getOrElse(new BinaryTreeMapNode[T, V](key, value))
     }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
@@ -56,7 +37,7 @@ class TreeMap[T <: Comparable[T],V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T,V
     rootPtr.readOpt().map(_.flatten).map(_.exists(_.contains(value)))
   }
 
-  def get(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[Option[V]] = {
+  def get(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[V]] = {
     rootPtr.readOpt().map(_.flatten).flatMap(_.map(_.get(value)).getOrElse(Future.successful(None)))
   }
 
@@ -67,34 +48,77 @@ class TreeMap[T <: Comparable[T],V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T,V
   def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Product with Serializable] = {
     rootPtr.readOpt().map(_.flatten).map(_.map(_.max()).getOrElse(None))
   }
+
+  private def this() = this(new PointerType)
+
+  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+
+    def sync(duration: Duration) = new SyncApi(duration)
+
+    def sync = new SyncApi(10.seconds)
+
+    def add(key: T, value: V): Future[Unit.type] = atomic {
+      TreeMap.this.add(key, value)(_, executionContext).map(_ => Unit)
+    }
+
+    def remove(key: T): Future[Unit] = atomic {
+      TreeMap.this.remove(key)(_, executionContext)
+    }
+
+    def contains(key: T): Future[Boolean] = atomic {
+      TreeMap.this.contains(key)(_, executionContext)
+    }
+
+    def get(key: T): Future[Option[V]] = atomic {
+      TreeMap.this.get(key)(_, executionContext)
+    }
+
+    class SyncApi(duration: Duration) extends SyncApiBase(duration) {
+      def add(key: T, value: V): Unit.type = sync {
+        AtomicApi.this.add(key, value)
+      }
+
+      def remove(value: T): Unit = sync {
+        AtomicApi.this.remove(value)
+      }
+
+      def contains(value: T): Boolean = sync {
+        AtomicApi.this.contains(value)
+      }
+
+      def get(value: T): Option[V] = sync {
+        AtomicApi.this.get(value)
+      }
+    }
+  }
 }
 
-private case class BinaryTreeMapNode[T <: Comparable[T],V]
+private case class BinaryTreeMapNode[T <: Comparable[T], V]
 (
   key: T,
   value: V,
-  left: Option[STMPtr[BinaryTreeMapNode[T,V]]] = None,
-  right: Option[STMPtr[BinaryTreeMapNode[T,V]]] = None
+  left: Option[STMPtr[BinaryTreeMapNode[T, V]]] = None,
+  right: Option[STMPtr[BinaryTreeMapNode[T, V]]] = None
 ) {
 
-  def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T,V] = {
+  def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T, V] = {
     right.map(_.sync.read.min).getOrElse(this)
   }
 
-  def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T,V] = {
+  def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T, V] = {
     left.map(_.sync.read.min).getOrElse(this)
   }
 
-  def -=(toRemove: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeMapNode[T,V]] = {
+  def -=(toRemove: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeMapNode[T, V]] = {
     val compare: Int = key.compareTo(toRemove)
     if (compare == 0) {
       if (left.isEmpty && right.isEmpty) {
         None
       } else if (left.isDefined) {
         left.map(leftPtr => {
-          val prevNode: BinaryTreeMapNode[T,V] = leftPtr.sync.read
+          val prevNode: BinaryTreeMapNode[T, V] = leftPtr.sync.read
           val promotedNode = prevNode.min()
-          val maybeNode: Option[BinaryTreeMapNode[T,V]] = prevNode -= promotedNode.key
+          val maybeNode: Option[BinaryTreeMapNode[T, V]] = prevNode -= promotedNode.key
           maybeNode.map(newNode => {
             leftPtr.sync <= newNode
             BinaryTreeMapNode.this.copy(key = promotedNode.key, value = promotedNode.value)
@@ -102,9 +126,9 @@ private case class BinaryTreeMapNode[T <: Comparable[T],V]
         })
       } else {
         right.map(rightPtr => {
-          val prevNode: BinaryTreeMapNode[T,V] = rightPtr.sync.read
+          val prevNode: BinaryTreeMapNode[T, V] = rightPtr.sync.read
           val promotedNode = prevNode.max()
-          val maybeNode: Option[BinaryTreeMapNode[T,V]] = prevNode -= promotedNode.key
+          val maybeNode: Option[BinaryTreeMapNode[T, V]] = prevNode -= promotedNode.key
           maybeNode.map(newNode => {
             rightPtr.sync <= newNode
             BinaryTreeMapNode.this.copy(key = promotedNode.key, value = promotedNode.value)
@@ -132,7 +156,7 @@ private case class BinaryTreeMapNode[T <: Comparable[T],V]
     }
   }
 
-  def +=(newValue: (T,V))(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T,V] = {
+  def +=(newValue: (T, V))(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T, V] = {
     if (key.compareTo(newValue._1) < 0) {
       left.map(leftPtr => {
         leftPtr.sync <= (leftPtr.sync.read += newValue)
@@ -170,12 +194,12 @@ private case class BinaryTreeMapNode[T <: Comparable[T],V]
     }
   }
 
-  private def equalityFields = List(key, left, right)
-
   override def hashCode(): Int = equalityFields.hashCode()
 
   override def equals(obj: scala.Any): Boolean = obj match {
-    case x: BinaryTreeMapNode[_,_] => x.equalityFields == equalityFields
+    case x: BinaryTreeMapNode[_, _] => x.equalityFields == equalityFields
     case _ => false
   }
+
+  private def equalityFields = List(key, left, right)
 }

@@ -11,19 +11,19 @@ import scala.util.Try
 trait ActorQueue {
   private[this] val queue = new java.util.concurrent.ConcurrentLinkedQueue[() => Unit]()
   private[this] val guard = new AtomicBoolean(false)
-  protected def messageNumber: Int = processedMessages
   private[this] var processedMessages = 0
-
   private[this] var closed = false
+
   def close(): Unit = closed = true
+
   def logMsg(msg: String)(implicit exeCtx: ExecutionContext)
 
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {
-    if(closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
+    if (closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
     val promise = Promise[T]()
     queue.add(() => {
       val result: Try[T] = Try {
-        if(closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
+        if (closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
         val result = f
         processedMessages += 1
         result
@@ -49,6 +49,10 @@ trait ActorQueue {
     promise.future
   }
 
+  def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = ActorLog.log(str)
+
+  protected def messageNumber: Int = processedMessages
+
   private[this] def queueBatch[T](implicit exeCtx: ExecutionContext): Future[Unit] = {
     Future {
       if (!queue.isEmpty && !guard.getAndSet(true)) {
@@ -63,8 +67,6 @@ trait ActorQueue {
       }
     }
   }
-
-  def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = ActorLog.log(str)
 
 }
 

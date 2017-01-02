@@ -12,9 +12,9 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
   private[this] val locks = new mutable.HashSet[PointerType]()
   private[this] var state = "OPEN"
 
-  private def objId = Integer.toHexString(System.identityHashCode(TxnActor.this))
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
   override def toString = s"txn@$objId:$name#$messageNumber"
+
+  private def objId = Integer.toHexString(System.identityHashCode(TxnActor.this))
 
   def addLock(id: PointerType): Future[String] = Util.monitorFuture("TxnActor.addLock") {
     {
@@ -29,6 +29,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
     }
   }
 
+  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
 
   def setState(s: String): Future[Set[PointerType]] = Util.monitorFuture("TxnActor.setState") {
     {

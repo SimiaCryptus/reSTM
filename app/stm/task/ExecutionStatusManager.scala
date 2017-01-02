@@ -9,8 +9,13 @@ import scala.collection.Map
 import scala.collection.concurrent.TrieMap
 
 object ExecutionStatusManager {
+  private[this] val pool: ScheduledExecutorService = Executors.newScheduledThreadPool(1,
+    new ThreadFactoryBuilder().setNameFormat("exe-status-pool-%d").build())
+  private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
+  private[this] val currentStatus = new TrieMap[String, TrieMap[String, String]]()
+
   def end(executorName: String, task: Task[AnyRef]): ScheduledFuture[_] = {
-    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String,String]())
+    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String, String]())
     executorRecord.put(task.id, "Complete")
     println(s"Task completed: $task on $executorName")
     pool.schedule(new Runnable {
@@ -22,7 +27,7 @@ object ExecutionStatusManager {
   }
 
   def start(executorName: String, task: Task[AnyRef]): Unit = {
-    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String,String]())
+    val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String, String]())
     executorRecord.put(task.id, "Started")
     println(s"Task started: $task on $executorName")
   }
@@ -33,12 +38,7 @@ object ExecutionStatusManager {
 
   def currentlyRunning(): Int = currentStatus.filterNot(!_._2.exists(_._2 == "Started")).size
 
-  def status(): Map[String, Map[String, String]] = currentStatus.mapValues(_.filter(_._2=="Started").toMap)
+  def status(): Map[String, Map[String, String]] = currentStatus.mapValues(_.filter(_._2 == "Started").toMap)
 
   def getName: String = localName + ":" + Thread.currentThread().getName
-
-  private[this] val pool: ScheduledExecutorService = Executors.newScheduledThreadPool(1,
-    new ThreadFactoryBuilder().setNameFormat("exe-status-pool-%d").build())
-  private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
-  private[this] val currentStatus = new TrieMap[String,TrieMap[String,String]]()
 }

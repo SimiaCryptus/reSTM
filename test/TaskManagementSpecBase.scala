@@ -18,15 +18,17 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 
 
-
 abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
   implicit def cluster: Restm
+
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
   "Task management" should {
     def randomStr = UUID.randomUUID().toString.take(8)
+
     def randomUUIDs = Stream.continually(randomStr)
+
     "monitor ongoing work" in {
       //ActorLog.enabled = true
       StmExecutionQueue.get().verbose = false
@@ -45,16 +47,18 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
       inputBuffer ++= input
       val threads = (0 to 20).map(_ => new Thread(new Runnable {
         override def run(): Unit = {
-          input.filter(x=>inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
+          input.filter(x => inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
             collection.atomic().sync(1.minutes).add(input)
           })
         }
       }))
       threads.foreach(_.start())
+
       def now = new Date()
+
       val timeout = new Date(now.getTime + insertTimeout.toMillis)
-      while(threads.exists(_.isAlive))  {
-        if(!timeout.after(now)) throw new RuntimeException("Time Out")
+      while (threads.exists(_.isAlive)) {
+        if (!timeout.after(now)) throw new RuntimeException("Time Out")
         Thread.sleep(100)
       }
       System.out.println(s"Input Prepared at ${new Date()}")
@@ -92,8 +96,10 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
 }
 
 
-class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach with BeforeAndAfterAll  {
+class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeAndAfterEach with BeforeAndAfterAll {
   val shards: List[RestmActors] = (0 until 8).map(_ => new RestmActors(new BdbColdStorage(path = "testDb", dbname = UUID.randomUUID().toString))).toList
+  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 
   override def beforeEach() {
     //shards.foreach(_.clear())
@@ -101,7 +107,4 @@ class LocalClusterTaskManagementSpec extends TaskManagementSpecBase with BeforeA
 
   override def afterAll() {
   }
-
-  val cluster = new RestmCluster(shards)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
 }

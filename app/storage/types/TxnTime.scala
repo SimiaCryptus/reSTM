@@ -10,18 +10,8 @@ import scala.concurrent.duration.{Duration, _}
 
 object TxnTime {
   val start: Long = timeVal()
-
-  def timeVal(): Long = System.currentTimeMillis()
-
   val recent: TrieMap[TxnTime, AnyRef] = new scala.collection.concurrent.TrieMap[TxnTime, AnyRef]()
-
-  def now: Long = timeVal() - start
-
   val safeLast: AtomicLong = new AtomicLong(0)
-
-  def safeNow: Long = safeLast.updateAndGet(new LongUnaryOperator {
-    override def applyAsLong(prev: Long): Long = Math.max(now, prev)
-  })
 
   def next(priority: Duration): TxnTime = {
     recent.filterKeys(_.age > 1.seconds).keys.foreach(recent.remove)
@@ -31,6 +21,14 @@ object TxnTime {
         uuid == recent.getOrElseUpdate(id, uuid)
       }).get
   }
+
+  def safeNow: Long = safeLast.updateAndGet(new LongUnaryOperator {
+    override def applyAsLong(prev: Long): Long = Math.max(now, prev)
+  })
+
+  def now: Long = timeVal() - start
+
+  def timeVal(): Long = System.currentTimeMillis()
 
 }
 

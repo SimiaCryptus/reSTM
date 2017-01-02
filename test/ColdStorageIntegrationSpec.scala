@@ -39,7 +39,7 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
 
   "DynamoLocalColdStorage" should {
     "persist and restore data" in {
-      val credentials: AWSCredentials = new BasicAWSCredentials("ABC","XYZ")
+      val credentials: AWSCredentials = new BasicAWSCredentials("ABC", "XYZ")
       implicit val coldStorage: ColdStorage = new DynamoColdStorage(
         tableName = "testDynamoLocalColdStorage",
         endpoint = "http://localhost:8000",
@@ -52,11 +52,11 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
       addItems(ids)
     }
   }
-
-  def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
   val collection = new TreeSet[String](new PointerType)
 
-  def addItems(items : List[String] = randomUUIDs.take(5).toList)(implicit coldStorage: ColdStorage, executor: ExecutionContext): List[String] = {
+  def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
+
+  def addItems(items: List[String] = randomUUIDs.take(5).toList)(implicit coldStorage: ColdStorage, executor: ExecutionContext): List[String] = {
     val internal: RestmActors = new RestmActors(coldStorage)
     implicit val cluster = new RestmImpl(internal)
     for (item <- items) {
@@ -68,7 +68,7 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
     items
   }
 
-  def deleteItems(items:List[String])(implicit coldStorage: ColdStorage, executor: ExecutionContext): List[String] = {
+  def deleteItems(items: List[String])(implicit coldStorage: ColdStorage, executor: ExecutionContext): List[String] = {
     val internal: RestmActors = new RestmActors(coldStorage)
     implicit val cluster = new RestmImpl(internal)
     for (item <- items) {
