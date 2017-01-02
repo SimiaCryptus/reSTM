@@ -27,8 +27,6 @@ case class ClassificationTreeNode
 
 
   private def this() = this(None, itemBuffer = None)
-  def this(parent : Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
-    this(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
 
 
   class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries:Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority,maxRetries) {
@@ -304,6 +302,9 @@ case class ClassificationTreeNode
 }
 
 object ClassificationTreeNode {
+
+  def apply(parent : Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+    new ClassificationTreeNode(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
 
   def splitTaskFn(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int): (Restm, ExecutionContext) => TaskSuccess[String] =
     (c : Restm, e : ExecutionContext) => {

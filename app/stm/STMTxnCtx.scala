@@ -24,17 +24,14 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   private[stm] def commit()(implicit executionContext: ExecutionContext): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
     //if(writeLocks.isEmpty) Future.successful(Unit) else
     isClosed = true
-    txnId.flatMap(txnId => Future.sequence(
-          writeCache
-            //.filter(_=>false)
-            .map((write: (PointerType, Option[AnyRef])) =>{
-            val future: Future[Unit] = write._2
-              .map(newValue => cluster.queueValue(write._1, txnId, Restm.value(newValue)))
-              .getOrElse(cluster.delete(write._1, txnId))
-            future
-          })
-        ).map(_=>txnId))
-      .flatMap(cluster.commit)
+    txnId.flatMap(txnId => {
+      val writeFutures: Iterable[Future[Unit]] = writeCache.map(write => {
+        val (key: PointerType,value: Option[AnyRef]) = write
+        value.map(newValue => cluster.queueValue(key, txnId, Restm.value(newValue)))
+          .getOrElse(cluster.delete(key, txnId))
+      })
+      Future.sequence(writeFutures).flatMap(_ => cluster.commit(txnId))
+    })
   }
 
   private[stm] def revert()(implicit executionContext: ExecutionContext): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
@@ -49,43 +46,49 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   private[stm] val initCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   private[stm] val writeCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
 
-  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.write") {
-    require(!isClosed)
-    readOpt(id).flatMap(prior => {
-      if (value != prior.orNull) {
-        lock(id).flatMap(_ => {
-          if(!isClosed) {
-            writeCache.put(id, Option(value))
-            Future.successful(Unit)
-          } else {
-            System.err.println(s"Post-commit write for $id")
-            cluster.queueValue(id, txnId, Restm.value(value))
-          }
-        })
-      } else {
-        Future.successful(Unit)
-      }
+  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = Util.chainEx(s"write to $id") {
+    txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.write") {
+      require(!isClosed)
+      readOpt(id).flatMap(prior => {
+        if (value != prior.orNull) {
+          lock(id).flatMap(_ => {
+            if (!isClosed) {
+              writeCache.put(id, Option(value))
+              Future.successful(Unit)
+            } else {
+              throw new RuntimeException(s"Post-commit write for $id")
+              System.err.println(s"Post-commit write for $id")
+              cluster.queueValue(id, txnId, Restm.value(value))
+            }
+          })
+        } else {
+          Future.successful(Unit)
+        }
+      })
     })
-  })
+  }
 
-  def delete(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit]  = txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.delete") {
-    require(!isClosed)
-    readOpt(id).flatMap(prior => {
-      if (prior.isDefined) {
-        lock(id).flatMap(_ => {
-          if(!isClosed) {
-            writeCache.put(id, None)
-            Future.successful(Unit)
-          } else {
-            System.err.println(s"Post-commit delete for $id")
-            cluster.delete(id, txnId)
-          }
-        })
-      } else {
-        Future.successful(Unit)
-      }
+  def delete(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit]  = Util.chainEx(s"Delete $id") {
+    txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.delete") {
+      require(!isClosed)
+      readOpt(id).flatMap(prior => {
+        if (prior.isDefined) {
+          lock(id).flatMap(_ => {
+            if(!isClosed) {
+              writeCache.put(id, None)
+              Future.successful(Unit)
+            } else {
+              throw new RuntimeException(s"Post-commit write for $id")
+              System.err.println(s"Post-commit delete for $id")
+              cluster.delete(id, txnId)
+            }
+          })
+        } else {
+          Future.successful(Unit)
+        }
+      })
     })
-  })
+  }
 
   private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)
                                                   (implicit executionContext: ExecutionContext): Future[Option[T]] = //Util.monitorFuture("STMTxnCtx.readOpt")

@@ -23,7 +23,7 @@ object ClassificationTree {
 
   def newClassificationTreeData()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     {
-      new ClassificationTreeData(STMPtr.dynamicSync(new ClassificationTreeNode(None)), new DefaultClassificationStrategy())
+      new ClassificationTreeData(STMPtr.dynamicSync(ClassificationTreeNode(None)), new DefaultClassificationStrategy())
     }
 
   case class ClassificationTreeData

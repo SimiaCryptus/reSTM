@@ -13,8 +13,10 @@ object RestmImpl {
 
 class RestmImpl(val internal: RestmInternal)(implicit executionContext: ExecutionContext) extends Restm {
 
+  val txnTimeout = 7.seconds
+
   override def getPtr(id: PointerType): Future[Option[ValueType]] = internal._getValue(id).recoverWith({
-    case e: TransactionConflict if e.conflitingTxn.age > 60.seconds =>
+    case e: TransactionConflict if e.conflitingTxn.age > txnTimeout =>
       cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
     case e: TransactionConflict =>
       Future.failed(e)
@@ -25,7 +27,7 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
 
   override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
     internal._getValue(id, time, ifModifiedSince).recoverWith({
-      case e: TransactionConflict if null != e.conflitingTxn && e.conflitingTxn.age > 60.seconds =>
+      case e: TransactionConflict if null != e.conflitingTxn && e.conflitingTxn.age > txnTimeout =>
         cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
       case e: TransactionConflict =>
         Future.failed(e)
@@ -61,7 +63,7 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
             result
         })
       } else {
-        if (result.get.age > 5.seconds) {
+        if (result.get.age > txnTimeout) {
           cleanup(result.get).map(_ => result)
         } else {
           Future.successful(result)

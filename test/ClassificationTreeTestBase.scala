@@ -67,7 +67,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         val timeout = now + 30.seconds.toMillis
         def isWorkQueueEmpty = StmExecutionQueue.get().workQueue.atomic().sync.size() > 0
         def isAnythingRunning = ExecutionStatusManager.currentlyRunning() > 0
-        while((isWorkQueueEmpty || isAnythingRunning) && timeout > now) Thread.sleep(500)
+        while((isWorkQueueEmpty || isAnythingRunning) && timeout > now) Thread.sleep(2000)
         println(JacksonValue.simple(ExecutionStatusManager.status()).pretty)
 
         val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root

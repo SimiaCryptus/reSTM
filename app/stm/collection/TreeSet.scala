@@ -155,8 +155,13 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[TreeSetNode[T]]) {
 
   def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     rootPtr.readOpt().flatMap(
-      _.map(r =>r.remove(value, rootPtr).map(_=>true).recover({case e:NoSuchElementException=>false}))
-        .getOrElse(Future.successful(false)
+      _.map(r =>{
+        try {
+          r.remove(value, rootPtr).map(_=>true).recover({case e:NoSuchElementException=>false})
+        } catch {
+          case e:NoSuchElementException=>Future.successful(false)
+        }
+      }).getOrElse(Future.successful(false)
     ))
   }
 
