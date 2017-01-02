@@ -23,7 +23,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
 import scala.collection.concurrent.TrieMap
-import scala.collection.immutable.Seq
 import scala.concurrent.duration._
 
 
@@ -38,8 +37,8 @@ object STMTxnInstrumentation {
     val numberSuccess = new AtomicInteger(0)
     val totalTimeMs = new AtomicLong(0)
     val callSites = new TrieMap[String, AtomicInteger]()
-    def getAvgTime = ((totalTimeMs.get * 1000) / numberAttempts.get).microseconds.toUnit(TimeUnit.SECONDS)
-    def getSuccessRatio = numberSuccess.get.toDouble / numberSuccess.get
+    def getAvgTime = ((totalTimeMs.get) / numberAttempts.get).microseconds.toUnit(TimeUnit.SECONDS)
+    def getAvgAttempts = numberAttempts.get.toDouble / numberExecuted.get
   }
 }
 

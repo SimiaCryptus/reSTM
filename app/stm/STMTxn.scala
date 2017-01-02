@@ -21,16 +21,15 @@ package stm
 
 import java.io.{ByteArrayOutputStream, PrintStream}
 import java.util.UUID
-import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Callable, Executors, TimeUnit}
 
 import _root_.util.Util._
 import com.google.common.annotations.VisibleForTesting
-import com.google.common.util.concurrent.{AtomicDouble, ThreadFactoryBuilder}
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import storage.actors.ActorLog
 import storage.{Restm, TransactionConflict}
 
-import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Random, Try}
@@ -47,7 +46,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
     this
   }
 
-  final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = chainEx("Transaction Exception") {
+  final def txnRun(cluster: Restm, maxRetry: Int = 50, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = chainEx("Transaction Exception") {
     metrics.numberExecuted.incrementAndGet()
     metrics.callSites.getOrElseUpdate(caller, new AtomicInteger(0)).incrementAndGet()
     monitorFuture("STMTxn.txnRun") {
@@ -63,9 +62,9 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
             .flatMap(x => x)
             .flatMap(result => {
               if (allowCompletion) {
-                val totalTime: Long = age
-                metrics.totalTimeMs.addAndGet(totalTime)
-                if (totalTime > 5.seconds.toMillis) {
+                val totalTime = age
+                metrics.totalTimeMs.addAndGet(totalTime.toMicros)
+                if (totalTime > 5.seconds) {
                   ctx.revert().map(_ => throw new TransactionConflict("Transaction took too long"))
                 } else {
                   metrics.numberSuccess.incrementAndGet()
@@ -116,7 +115,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
 
   private[this] def age = now - startTime
 
-  private[this] def now = System.currentTimeMillis()
+  private[this] def now = System.nanoTime().nanoseconds
 
   def toString(e: Throwable): String = {
     val out: ByteArrayOutputStream = new ByteArrayOutputStream()

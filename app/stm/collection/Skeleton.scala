@@ -56,7 +56,7 @@ class Skeleton[T](rootPtr: STMPtr[Skeleton.SkeletonData[T]]) {
 
   def this(ptr: PointerType) = this(new STMPtr[Skeleton.SkeletonData[T]](ptr))
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
@@ -72,7 +72,7 @@ class Skeleton[T](rootPtr: STMPtr[Skeleton.SkeletonData[T]]) {
     rootPtr.readOpt().map(_.orElse(Option(new Skeleton.SkeletonData[T]()))).map(_.get)
   }
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 

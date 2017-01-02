@@ -125,7 +125,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
 
   def this(id: PointerType) = this(new STMPtr[ClassificationTree.ClassificationTreeData](id))
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
@@ -203,7 +203,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
 
   private def this() = this(new PointerType)
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 

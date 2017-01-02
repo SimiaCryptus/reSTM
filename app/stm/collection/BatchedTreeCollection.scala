@@ -29,7 +29,7 @@ import util.Util
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
-import scala.util.Random
+import scala.util.{Random, Try}
 
 
 object BatchedTreeCollection {
@@ -132,7 +132,7 @@ object BatchedTreeCollection {
       right.map(rightPtr => rightPtr.read().flatMap(_.leftChild(rightPtr).map(Option(_)))).getOrElse(rightParent(self))
     }
 
-    def getByTreePath(self: STMPtr[TreeCollectionNode[T]], path: List[Int])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[TreeCollectionNode[T]]] = {
+    private[BatchedTreeCollection] def getByTreePath(self: STMPtr[TreeCollectionNode[T]], path: List[Int])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[TreeCollectionNode[T]]] = {
       if (path.isEmpty) Future.successful(self)
       else {
         path.head match {
@@ -147,7 +147,12 @@ object BatchedTreeCollection {
     def getByTreeId(cursor: Long, self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[TreeCollectionNode[T]]] = {
       require(0 <= cursor)
       val path = Util.toDigits(cursor, 2).tail
-      getByTreePath(self, path)
+      val fromTry: Future[STMPtr[TreeCollectionNode[T]]] = Future.fromTry(Try {
+        getByTreePath(self, path)
+      }).flatMap(x⇒x)
+      fromTry.recoverWith({
+        case e : NoSuchElementException ⇒ Future.failed(new RuntimeException(s"Cannot locate node $cursor", e))
+      })
     }
 
     def getTreeBit(node: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Int = {
@@ -191,7 +196,7 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
 
   def this(ptr: PointerType) = this(new STMPtr[TreeCollectionNode[T]](ptr))
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
@@ -254,12 +259,12 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
     itemStream
   }
 
-  def sync = new SyncApi(10.seconds)
+  def sync = new SyncApi(30.seconds)
 
   //noinspection ScalaUnusedSymbol
   private def this() = this(new PointerType)
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 

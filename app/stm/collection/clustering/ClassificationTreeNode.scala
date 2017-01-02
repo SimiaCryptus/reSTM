@@ -45,7 +45,7 @@ case class ClassificationTreeNode
 ) {
 
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new NodeAtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new NodeAtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
@@ -150,7 +150,13 @@ case class ClassificationTreeNode
   }
 
   def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
-    getTreeId_Minus1(self, root).map(_ + 1)
+    getTreeId_Minus1(self, root).map(_ + 1).flatMap(id⇒{
+      root.read().flatMap(rootValue⇒{rootValue.getByTreeId(id, root)})
+        .map((verifyNode: STMPtr[ClassificationTreeNode]) ⇒{
+          require(verifyNode == self)
+          id
+        })
+    })
   }
 
   def getTreeId_Minus1(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
@@ -219,30 +225,54 @@ case class ClassificationTreeNode
     }
   }
 
-  private def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
+  def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
                    (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+    val results: Map[Int, List[LabeledItem]] = split(value)
+    insert(self, strategy, maxSplitDepth, results)
+  }
+
+  def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, List[LabeledItem]])
+                    (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
     require(pass.isDefined)
     require(fail.isDefined)
     require(exception.isDefined)
-    try {
-      val deserializedRule = rule.get.deserialize().get
-      val results: Map[Boolean, List[LabeledItem]] = value.groupBy(x => deserializedRule(x.value))
-      Future.sequence(List(
-        if (results.get(true).isDefined) {
-          pass.get.read().flatMap(_.add(results(true), pass.get, strategy, maxSplitDepth))
+    Future.sequence(List(
+      if (results.get(0).isDefined) {
+        pass.get.read().flatMap(_.add(results(0), pass.get, strategy, maxSplitDepth))
+      } else {
+        Future.successful(0)
+      },
+      if (results.get(1).isDefined) {
+        fail.get.read().flatMap(_.add(results(1), fail.get, strategy, maxSplitDepth))
+      } else {
+        Future.successful(0)
+      },
+      if (results.get(2).isDefined) {
+        exception.get.read().flatMap(_.add(results(2), exception.get, strategy, maxSplitDepth))
+      } else {
+        Future.successful(0)
+      }
+    )).map(_.reduceOption(_ + _).getOrElse(0))
+  }
+
+  def split(value: List[LabeledItem], deserializedRule: (ClassificationTreeItem) ⇒ Boolean = getRule): Map[Int, List[LabeledItem]] = {
+    def eval(item: ClassificationTreeItem): Int = {
+      try {
+        if (deserializedRule(item)) {
+          0
         } else {
-          Future.successful(0)
-        },
-        if (results.get(false).isDefined) {
-          fail.get.read().flatMap(_.add(results(false), fail.get, strategy, maxSplitDepth))
-        } else {
-          Future.successful(0)
+          1
         }
-      )).map(_.reduceOption(_ + _).getOrElse(0))
-    } catch {
-      case _: Throwable =>
-        exception.get.read().flatMap(_.add(value, exception.get, strategy, maxSplitDepth))
+      } catch {
+        case _: Throwable =>
+          2
+      }
     }
+    value.groupBy(x => eval(x.value))
+  }
+
+  private def getRule: (ClassificationTreeItem) ⇒ Boolean = {
+    rule.get.deserialize().get
   }
 
   private def getTreeBit(node: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Int = {
@@ -252,7 +282,7 @@ case class ClassificationTreeNode
     else throw new RuntimeException()
   }
 
-  class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
@@ -260,8 +290,13 @@ case class ClassificationTreeNode
       ClassificationTreeNode.this.add(value, self, strategy, maxSplitDepth)(_, executionContext)
     }
 
-    def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = atomic {
-      ClassificationTreeNode.this.route(value, self, strategy, maxSplitDepth)(_, executionContext)
+    def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = {
+      val results: Map[Int, List[LabeledItem]] = split(value)
+      atomic { ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_, executionContext) }
+    }
+
+    def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1, results: Map[Int, List[LabeledItem]]): Future[Int] = atomic {
+      ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_, executionContext)
     }
 
     def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[(Long, Stream[LabeledItem])] = {

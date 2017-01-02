@@ -191,7 +191,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
 
   def this(ptr: PointerType) = this(new STMPtr[Option[TreeCollectionNode[T]]](ptr))
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
@@ -245,7 +245,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
 
   private def this() = this(new PointerType)
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 

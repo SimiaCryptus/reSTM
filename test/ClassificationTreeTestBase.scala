@@ -75,43 +75,48 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
   "ClassificationTree" should {
     List(5, 10, 100, 1000).foreach(items => {
       s"support insert and iterate over $items items" in {
-        implicit val executionContext = ExecutionContext.fromExecutor(pool)
-        implicit val _cluster = cluster
-        StmDaemons.start()
-        StmExecutionQueue.get().registerDaemons(8)
-        val collection = new ClassificationTree(new PointerType)
-        collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(1))
-        val input = Stream.continually(ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
-        input.foreach(collection.atomic().sync.add("data", _))
+        try {
+          implicit val executionContext = ExecutionContext.fromExecutor(pool)
+          implicit val _cluster = cluster
+          StmDaemons.start()
+          StmExecutionQueue.get().registerDaemons(8)
+          val collection = new ClassificationTree(new PointerType)
+          collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(1))
+          val input = Stream.continually(ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
+          input.foreach(collection.atomic().sync.add("data", _))
 
-        def now = System.currentTimeMillis()
+          def now = System.currentTimeMillis()
 
-        val timeout = now + 30.seconds.toMillis
+          val timeout = now + 30.seconds.toMillis
 
-        def isWorkQueueEmpty = StmExecutionQueue.get().workQueue.atomic().sync.size() > 0
+          def isWorkQueueEmpty = StmExecutionQueue.get().workQueue.atomic().sync.size() > 0
 
-        def isAnythingRunning = ExecutionStatusManager.currentlyRunning() > 0
+          def isAnythingRunning = ExecutionStatusManager.currentlyRunning() > 0
 
-        while ((isWorkQueueEmpty || isAnythingRunning) && timeout > now) Thread.sleep(2000)
-        println(JacksonValue.simple(ExecutionStatusManager.status()).pretty)
+          while ((isWorkQueueEmpty || isAnythingRunning) && timeout > now) Thread.sleep(2000)
+          println(JacksonValue.simple(ExecutionStatusManager.status()).pretty)
 
-        val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root
+          val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root
 
-        def print(prefix: String, nodePtr: STMPtr[ClassificationTreeNode]): Unit = {
-          val node: ClassificationTreeNode = nodePtr.atomic.sync.read
-          val nodeId = node.atomic().sync.getTreeId(nodePtr, rootPtr)
-          val nodeSize = node.itemBuffer.map(_.atomic().sync.size()).getOrElse(0)
-          println(prefix + s"Node $nodeId size $nodeSize")
-          node.pass.foreach(pass => print(prefix + " ", pass))
-          node.fail.foreach(fail => print(prefix + " ", fail))
-          node.exception.foreach(ex => print(prefix + " ", ex))
+          def print(prefix: String, nodePtr: STMPtr[ClassificationTreeNode]): Unit = {
+            val node: ClassificationTreeNode = nodePtr.atomic.sync.read
+            val nodeId = node.atomic().sync.getTreeId(nodePtr, rootPtr)
+            val nodeSize = node.itemBuffer.map(_.atomic().sync.size()).getOrElse(0)
+            println(prefix + s"Node $nodeId size $nodeSize")
+            node.pass.foreach(pass => print(prefix + " ", pass))
+            node.fail.foreach(fail => print(prefix + " ", fail))
+            node.exception.foreach(ex => print(prefix + " ", ex))
+          }
+
+          print("", rootPtr)
+
+          val output = collection.atomic().sync.stream().map(_.value).toSet
+          output.size mustBe input.size
+          output mustBe input
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+          Util.clearMetrics()
         }
-
-        print("", rootPtr)
-
-        val output = collection.atomic().sync.stream().map(_.value).toSet
-        output.size mustBe input.size
-        output mustBe input
       }
     })
 
@@ -222,71 +227,74 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
       }).filter(_.attributes.contains("Cover_Type")).map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1).toArray.toStream
     List(1, 100, 10000, 1000000).foreach(items => {
       s"modeling on $items items from forest cover" in {
-        implicit val executionContext = ExecutionContext.fromExecutor(pool)
-        implicit val _cluster = cluster
+        try {
+          implicit val executionContext = ExecutionContext.fromExecutor(pool)
+          implicit val _cluster = cluster
 
-        println(s"Begin test at ${new Date()}")
-        StmDaemons.start()
-        StmExecutionQueue.get().registerDaemons(8)
-        val collection = new ClassificationTree(new PointerType)
-        collection.atomic().sync.setClusterStrategy(new NoBranchStrategy())
-        val testingSet = dataSet.take(100)
-        val trainingSet = dataSet.slice(100, items + 100)
-        require(testingSet.nonEmpty)
-        require(trainingSet.nonEmpty)
+          println(s"Begin test at ${new Date()}")
+          StmDaemons.start()
+          StmExecutionQueue.get().registerDaemons(8)
+          val collection = new ClassificationTree(new PointerType)
+          collection.atomic().sync.setClusterStrategy(new NoBranchStrategy())
+          val testingSet = dataSet.take(100)
+          val trainingSet = dataSet.slice(100, items + 100)
+          require(testingSet.nonEmpty)
+          require(trainingSet.nonEmpty)
 
-        print(s"Populating tree at ${new Date()}")
-        val insertFutures = trainingSet.groupBy(_.attributes("Cover_Type")).map(t => Future {
-          val (cover_type: Any, stream: Seq[ClassificationTreeItem]) = t
-          stream.map(item => item.copy(attributes = item.attributes - "Cover_Type")).grouped(512).map(_.toList)
-            .foreach(block => {
-              print(".")
-              Console.flush()
-              collection.atomic().sync(30.seconds).addAll(cover_type.toString, block)
-            })
-        })
-        Await.result(Future.sequence(insertFutures), 5.minutes)
-        println(s"completed at ${new Date()}")
+          print(s"Populating tree at ${new Date()}")
+          val insertFutures = trainingSet.groupBy(_.attributes("Cover_Type")).map(t => Future {
+            val (cover_type: Any, stream: Seq[ClassificationTreeItem]) = t
+            stream.map(item => item.copy(attributes = item.attributes - "Cover_Type")).grouped(512).map(_.toList)
+              .foreach(block => {
+                print(".")
+                Console.flush()
+                collection.atomic().sync(30.seconds).addAll(cover_type.toString, block)
+              })
+          })
+          Await.result(Future.sequence(insertFutures), 5.minutes)
+          println(s"completed at ${new Date()}")
 
-        println(s"Top-level rule generation at ${new Date()}")
-        awaitTask(collection.atomic().sync(5.minutes).splitTree(new DefaultClassificationStrategy(branchThreshold = 16)), taskTimeout = 30.minutes)
-        println()
-        println(s"Second-level rule generation at ${new Date()}")
-        awaitTask(collection.atomic().sync(5.minutes).splitTree(new DefaultClassificationStrategy(branchThreshold = 4)), taskTimeout = 30.minutes)
-        println()
-
-        println(s"Testing model at ${new Date()}")
-        val correct = testingSet.map(item => {
-          val testValue = item.copy(attributes = item.attributes - "Cover_Type")
-          val coverType = item.attributes("Cover_Type")
-          val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(90.seconds).getClusterId(testValue)
+          println(s"Top-level rule generation at ${new Date()}")
+          awaitTask(collection.atomic().sync(5.minutes).splitTree(new DefaultClassificationStrategy(branchThreshold = 16)), taskTimeout = 30.minutes)
           println()
-          println(s"item routed to node " + JacksonValue.simple(id))
-          //println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
-          println(s"Tree Path: " + JacksonValue.simple(collection.atomic().sync.getClusterPath(id)))
-          val counts: Map[String, Int] = collection.atomic().sync(5.minutes).getClusterCount(id)
-          println(s"Node Counts: " + JacksonValue.simple(counts))
-          println(s"Actual Type: " + coverType)
-          val predictions = counts.mapValues(_.toDouble / counts.values.sum)
-          if (predictions.isEmpty) {
-            println(s"Empty Node Reached!")
-            0
-          } else {
-            val prediction = predictions.maxBy(_._2)
-            if (prediction._1 == coverType.toString) {
-              println(s"Correct Prediction: " + prediction._1)
-              println()
-              1
-            } else {
-              println(s"False Prediction: " + prediction._1)
-              println()
+          println(s"Second-level rule generation at ${new Date()}")
+          awaitTask(collection.atomic().sync(5.minutes).splitTree(new DefaultClassificationStrategy(branchThreshold = 4)), taskTimeout = 30.minutes)
+          println()
+
+          println(s"Testing model at ${new Date()}")
+          val correct = testingSet.map(item => {
+            val testValue = item.copy(attributes = item.attributes - "Cover_Type")
+            val coverType = item.attributes("Cover_Type")
+            val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(90.seconds).getClusterId(testValue)
+            println()
+            println(s"item routed to node " + JacksonValue.simple(id))
+            //println(s"Clustered Members: "+JacksonValue.simple(collection.atomic().sync.iterateCluster(id)))
+            println(s"Tree Path: " + JacksonValue.simple(collection.atomic().sync.getClusterPath(id)))
+            val counts: Map[String, Int] = collection.atomic().sync(5.minutes).getClusterCount(id)
+            println(s"Node Counts: " + JacksonValue.simple(counts))
+            println(s"Actual Type: " + coverType)
+            val predictions = counts.mapValues(_.toDouble / counts.values.sum)
+            if (predictions.isEmpty) {
+              println(s"Empty Node Reached!")
               0
+            } else {
+              val prediction = predictions.maxBy(_._2)
+              if (prediction._1 == coverType.toString) {
+                println(s"Correct Prediction: " + prediction._1)
+                println()
+                1
+              } else {
+                println(s"False Prediction: " + prediction._1)
+                println()
+                0
+              }
             }
-          }
-        }).sum
-        println(s"$correct correct out of 100")
-        println(JacksonValue.simple(Util.getMetrics).pretty)
-        Util.clearMetrics()
+          }).sum
+          println(s"$correct correct out of 100")
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+          Util.clearMetrics()
+        }
       }
     })
   }

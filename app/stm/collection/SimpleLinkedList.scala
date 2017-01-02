@@ -37,7 +37,7 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
 
   def id: String = rootPtr.id.toString
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration)(implicit executionContext: ExecutionContext) = new SyncApi(duration)
 
@@ -71,7 +71,7 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
     rootPtr.lock()
   }
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 1000)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
     def add(value: T): Future[Unit] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.add(value)(ctx, executionContext) }
 
     def remove(): Future[Option[T]] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.remove()(ctx, executionContext) }

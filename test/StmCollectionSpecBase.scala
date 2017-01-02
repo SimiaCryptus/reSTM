@@ -120,35 +120,38 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     })
     List(1, 5, 10).foreach(threads =>
       s"concurrent add, verify, and remove 1000 items with $threads threads" in {
-        //require(false)
-        val collection = new TreeSet[String](new PointerType)
-        // Bootstrap collection synchronously to control contention
-        val sync: collection.AtomicApi#SyncApi = collection.atomic.sync(30.seconds)
-        for (item <- randomUUIDs.take(10)) {
-          sync.contains(item) mustBe false
-          sync.add(item)
-          sync.contains(item) mustBe true
-        }
         val threadPool = Executors.newFixedThreadPool(threads)
-        // Run concurrent add/delete tests
-        val executionContext2 = ExecutionContext.fromExecutor(threadPool)
-        val futures = for (item <- randomUUIDs.take(1000).distinct) yield Future {
-          try {
+        try {
+          //require(false)
+          val collection = new TreeSet[String](new PointerType)
+          // Bootstrap collection synchronously to control contention
+          val sync: collection.AtomicApi#SyncApi = collection.atomic.sync(30.seconds)
+          for (item <- randomUUIDs.take(10)) {
             sync.contains(item) mustBe false
-            for (_ <- 0 until 10) {
-              sync.add(item)
-              sync.contains(item) mustBe true
-              sync.remove(item) mustBe true
-              sync.contains(item) mustBe false
-            }
-          } catch {
-            case e: Throwable => throw new RuntimeException(s"Error in item $item", e)
+            sync.add(item)
+            sync.contains(item) mustBe true
           }
-        }(executionContext2)
-        Await.result(Future.sequence(futures), 5.minutes)
-        println(JacksonValue.simple(Util.getMetrics).pretty)
-        threadPool.shutdown()
-        threadPool.awaitTermination(1, TimeUnit.MINUTES)
+          // Run concurrent add/delete tests
+          val executionContext2 = ExecutionContext.fromExecutor(threadPool)
+          val futures = for (item <- randomUUIDs.take(1000).distinct) yield Future {
+            try {
+              sync.contains(item) mustBe false
+              for (_ <- 0 until 10) {
+                sync.add(item)
+                sync.contains(item) mustBe true
+                sync.remove(item) mustBe true
+                sync.contains(item) mustBe false
+              }
+            } catch {
+              case e: Throwable => throw new RuntimeException(s"Error in item $item", e)
+            }
+          }(executionContext2)
+          Await.result(Future.sequence(futures), 5.minutes)
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+          threadPool.shutdown()
+          threadPool.awaitTermination(1, TimeUnit.MINUTES)
+        }
       }
     )
   }
@@ -325,60 +328,67 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
     List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
-        val collection = IdQueue.createSync[TestValue](8)
-        val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
-        input.foreach(collection.atomic().sync.add(_))
-        collection.atomic().sync.size() mustBe items
-        collection.atomic().sync.stream().map((item: TestValue) => {
-          collection.atomic().sync.contains(item.id) mustBe true
-          1
-        }).sum mustBe items
-        val output = Stream.continually(collection.atomic().sync.take()).takeWhile(_.isDefined).map(_.get).toList
-        output.toSet mustBe input.toSet
-        collection.atomic().sync.size() mustBe 0
-        input.count((item: TestValue) => {
-          val contains = collection.atomic().sync.contains(item.id)
-          if (contains) println(s"Found ghost: ${item.id}")
-          contains
-        }) mustBe 0
-        println(JacksonValue.simple(Util.getMetrics).pretty)
+        try {
+          val collection = IdQueue.createSync[TestValue](8)
+          val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
+          input.foreach(collection.atomic().sync.add(_))
+          collection.atomic().sync.size() mustBe items
+          collection.atomic().sync.stream().map((item: TestValue) => {
+            collection.atomic().sync.contains(item.id) mustBe true
+            1
+          }).sum mustBe items
+          val output = Stream.continually(collection.atomic().sync.take()).takeWhile(_.isDefined).map(_.get).toList
+          output.toSet mustBe input.toSet
+          collection.atomic().sync.size() mustBe 0
+          input.count((item: TestValue) => {
+            val contains = collection.atomic().sync.contains(item.id)
+            if (contains) println(s"Found ghost: ${item.id}")
+            contains
+          }) mustBe 0
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+        }
       }
     })
     List(10, 100, 1000, 10000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         val syncTimeout = 60.seconds
+        try {
+          val input = randomUUIDs.take(items).toList.map(new TestValue(_))
+          val pool = Executors.newFixedThreadPool(20)
+          val exeCtx = ExecutionContext.fromExecutor(pool)
+          val collection = IdQueue.createSync[TestValue](8)
+          val shuffled = input.map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1)
+          input.size mustBe shuffled.size
+          val future: Future[List[TestValue]] = Future.sequence(
+            input.map(input => Future {
+              collection.atomic().sync(syncTimeout).add(input)
+              collection.atomic().sync(syncTimeout).take(2)
+            }(exeCtx))).map(_.flatten)
+          val output = new mutable.HashSet[TestValue]()
+          output ++= Await.result(future, 5.minutes)
 
-        val input = randomUUIDs.take(items).toList.map(new TestValue(_))
-        val pool = Executors.newFixedThreadPool(20)
-        val exeCtx = ExecutionContext.fromExecutor(pool)
-        val collection = IdQueue.createSync[TestValue](8)
-        val shuffled = input.map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1)
-        input.size mustBe shuffled.size
-        val future: Future[List[TestValue]] = Future.sequence(
-          input.map(input => Future {
-            collection.atomic().sync(syncTimeout).add(input)
-            collection.atomic().sync(syncTimeout).take(2)
-          }(exeCtx))).map(_.flatten)
-        val output = new mutable.HashSet[TestValue]()
-        output ++= Await.result(future, 5.minutes)
-
-        output ++= Stream.continually({
-          collection.atomic().sync(syncTimeout).take()
-        }).takeWhile(_.isDefined).toList.map(_.get)
-        output.size mustBe input.size
-        output.toSet mustBe input.toSet
-        println(JacksonValue.simple(Util.getMetrics).pretty)
-
+          output ++= Stream.continually({
+            collection.atomic().sync(syncTimeout).take()
+          }).takeWhile(_.isDefined).toList.map(_.get)
+          output.size mustBe input.size
+          output.toSet mustBe input.toSet
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+        }
       }
     })
     List(10, 100, 1000, 10000).foreach(items => {
       s"stream iteration with $items items" in {
-        val collection = IdQueue.createSync[TestValue](8)
-        val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
-        input.foreach(collection.atomic().sync.add(_))
-        val output = collection.atomic().sync.stream().toList
-        input.toSet mustBe output.toSet
-        println(JacksonValue.simple(Util.getMetrics).pretty)
+        try {
+          val collection = IdQueue.createSync[TestValue](8)
+          val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
+          input.foreach(collection.atomic().sync.add(_))
+          val output = collection.atomic().sync.stream().toList
+          input.toSet mustBe output.toSet
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+        }
       }
     })
   }
