@@ -23,7 +23,7 @@ import java.util.concurrent.Executors
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerSuite
-import stm.collection.{SimpleLinkedList, TreeCollection}
+import stm.collection.{LinkedList, TreeCollection}
 import stm.task.Task.TaskResult
 import stm.task.{DaemonConfig, StmDaemons, StmExecutionQueue, Task}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
@@ -55,7 +55,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
         val input = randomUUIDs.take(20).toSet
         input.foreach(collection.atomic().sync.add(_))
         val sortTask = collection.atomic().sort().flatMap(_.future)
-        val sortResult: SimpleLinkedList[String] = Await.result(sortTask, 30.seconds)
+        val sortResult: LinkedList[String] = Await.result(sortTask, 30.seconds)
         val output = sortResult.atomic().sync.stream().toList
         output mustBe input.toList.sorted
       } finally {

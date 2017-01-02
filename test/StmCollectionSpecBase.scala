@@ -26,7 +26,7 @@ import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerSuite
 import stm.collection._
 import stm.task.Task.TaskResult
-import stm.task.{StmExecutionQueue, Task}
+import stm.task.{Identifiable, StmExecutionQueue, Task, TaskQueue}
 import stm.{STMPtr, STMTxn, STMTxnCtx}
 import storage.Restm._
 import storage._
@@ -87,7 +87,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
       s"accumulates $items values" in {
         def randomStream = Stream.continually(Random.nextDouble())
 
-        val collection = DistributedScalar.createSync()
+        val collection = ScalarArray.createSync()
         val input = randomStream.take(items).sorted.toList
         input.foreach(collection.atomic().sync.add(_))
         val outputSum = collection.atomic().sync.get()
@@ -269,7 +269,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
     List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
-        val collection = SimpleLinkedList.static[String](new PointerType)
+        val collection = LinkedList.static[String](new PointerType)
         val input: List[String] = randomUUIDs.take(items).toList
         input.foreach(collection.atomic().sync.add(_))
         val output = Stream.continually(collection.atomic().sync.remove()).takeWhile(_.isDefined).map(_.get).toList
@@ -288,7 +288,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         val output = new mutable.HashSet[String]()
         val inputBuffer = new mutable.HashSet[String]()
         inputBuffer ++= input
-        val collection = SimpleLinkedList.static[String](new PointerType)
+        val collection = LinkedList.static[String](new PointerType)
         val threads = (0 to threadCount).map(_ => new Thread(new Runnable {
           override def run(): Unit = {
             input.filter(x => inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
@@ -314,7 +314,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     })
     List(10, 100, 1000, 10000).foreach(items => {
       s"stream iteration with $items items" in {
-        val collection = SimpleLinkedList.static[String](new PointerType)
+        val collection = LinkedList.static[String](new PointerType)
         val input: List[String] = randomUUIDs.take(items).toList
         input.foreach(collection.atomic().sync.add(_))
         val output = collection.atomic().sync.stream().toList
@@ -329,7 +329,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         try {
-          val collection = IdQueue.createSync[TestValue](8)
+          val collection = TaskQueue.createSync[TestValue](8)
           val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
           input.foreach(collection.atomic().sync.add(_))
           collection.atomic().sync.size() mustBe items
@@ -357,7 +357,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
           val input = randomUUIDs.take(items).toList.map(new TestValue(_))
           val pool = Executors.newFixedThreadPool(20)
           val exeCtx = ExecutionContext.fromExecutor(pool)
-          val collection = IdQueue.createSync[TestValue](8)
+          val collection = TaskQueue.createSync[TestValue](8)
           val shuffled = input.map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1)
           input.size mustBe shuffled.size
           val future: Future[List[TestValue]] = Future.sequence(
@@ -381,7 +381,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     List(10, 100, 1000, 10000).foreach(items => {
       s"stream iteration with $items items" in {
         try {
-          val collection = IdQueue.createSync[TestValue](8)
+          val collection = TaskQueue.createSync[TestValue](8)
           val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
           input.foreach(collection.atomic().sync.add(_))
           val output = collection.atomic().sync.stream().toList

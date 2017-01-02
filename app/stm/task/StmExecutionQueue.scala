@@ -22,7 +22,6 @@ package stm.task
 import java.util.Date
 
 import _root_.util.Util._
-import stm.collection.IdQueue
 import stm.task.Task._
 import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
@@ -38,7 +37,7 @@ object StmExecutionQueue {
   def init()(implicit cluster: Restm, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
     new STMTxn[StmExecutionQueue] {
       override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
-        IdQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
+        TaskQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
       }
     }.txnRun(cluster).map(x => {
       default = x;
@@ -55,7 +54,7 @@ object StmExecutionQueue {
   }
 }
 
-class StmExecutionQueue(val workQueue: IdQueue[Task[_]]) {
+class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
 
   var verbose = false
 

@@ -22,7 +22,7 @@ package stm.task
 import java.util.concurrent._
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import stm.collection.SimpleLinkedList
+import stm.collection.LinkedList
 import storage.Restm
 import storage.Restm.PointerType
 import storage.types.KryoValue
@@ -42,7 +42,7 @@ case class DaemonConfig(name: String, impl: KryoValue[(Restm, ExecutionContext) 
 
 object StmDaemons {
 
-  val config: SimpleLinkedList[DaemonConfig] = SimpleLinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
+  val config: LinkedList[DaemonConfig] = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String, Thread]
   private[this] var mainThread: Option[Thread] = None
 

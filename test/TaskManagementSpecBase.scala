@@ -23,7 +23,7 @@ import java.util.{Date, UUID}
 import _root_.util.Util
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
-import stm.collection.{SimpleLinkedList, TreeCollection}
+import stm.collection.{LinkedList, TreeCollection}
 import stm.task._
 import storage.Restm._
 import storage._
@@ -84,7 +84,7 @@ abstract class TaskManagementSpecBase extends WordSpec with MustMatchers {
       println(JacksonValue.simple(Util.getMetrics).pretty)
       Util.clearMetrics()
 
-      val sortTask: Task[SimpleLinkedList[String]] = collection.atomic().sync.sort()
+      val sortTask: Task[LinkedList[String]] = collection.atomic().sync.sort()
       System.out.println(s"Task Started at ${new Date()}")
       StmDaemons.start()
       try {

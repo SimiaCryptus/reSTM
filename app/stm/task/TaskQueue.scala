@@ -17,10 +17,10 @@
  * under the License.
  */
 
-package stm.collection
+package stm.task
 
 import stm._
-import stm.collection.IdQueue.MultiQueueData
+import stm.collection.{LinkedList, ScalarArray, TreeSet}
 import storage.Restm.PointerType
 import storage.{Restm, TransactionConflict}
 
@@ -35,24 +35,24 @@ trait Identifiable {
   def id: String
 }
 
-object IdQueue {
+object TaskQueue {
 
-  def createSync[T <: Identifiable](size: Int)(implicit cluster: Restm, executionContext: ExecutionContext): IdQueue[T] =
-    Await.result(new STMTxn[IdQueue[T]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[IdQueue[T]] = {
+  def createSync[T <: Identifiable](size: Int)(implicit cluster: Restm, executionContext: ExecutionContext): TaskQueue[T] =
+    Await.result(new STMTxn[TaskQueue[T]] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskQueue[T]] = {
         create[T](size)
       }
     }.txnRun(cluster), 60.seconds)
 
-  def create[T <: Identifiable](size: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[IdQueue[T]] = {
-    createInnerData[T](size).flatMap(STMPtr.dynamic(_)).map(new IdQueue(_))
+  def create[T <: Identifiable](size: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TaskQueue[T]] = {
+    createInnerData[T](size).flatMap(STMPtr.dynamic(_)).map(new TaskQueue(_))
   }
 
   private def createInnerData[T <: Identifiable](size: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
-    Future.sequence((1 to size).map(_ => SimpleLinkedList.create[T])).flatMap(queues => {
-      DistributedScalar.create(size).flatMap((counter: DistributedScalar) => {
+    Future.sequence((1 to size).map(_ => LinkedList.create[T])).flatMap(queues => {
+      ScalarArray.create(size).flatMap((counter: ScalarArray) => {
         TreeSet.create[String]().map((index: TreeSet[String]) => {
-          new IdQueue.MultiQueueData[T](counter, index, queues.toList)
+          new TaskQueue.MultiQueueData[T](counter, index, queues.toList)
         })
       })
     })
@@ -60,17 +60,17 @@ object IdQueue {
 
   case class MultiQueueData[T <: Identifiable]
   (
-    size: DistributedScalar,
+    size: ScalarArray,
     index: TreeSet[String],
-    queues: List[SimpleLinkedList[T]] = List.empty
+    queues: List[LinkedList[T]] = List.empty
   ) {
-    def add(value: T, self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+    def add(value: T, self: STMPtr[TaskQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
       val shuffledLists = queues.map(_ -> Random.nextDouble()).sortBy(_._2).map(_._1)
 
-      def add(list: Seq[SimpleLinkedList[T]] = shuffledLists): Future[Unit] = {
+      def add(list: Seq[LinkedList[T]] = shuffledLists): Future[Unit] = {
         if (list.isEmpty) throw new TransactionConflict("Could not lock any queue") else {
           val head = list.head
-          val tail: Seq[SimpleLinkedList[T]] = list.tail
+          val tail: Seq[LinkedList[T]] = list.tail
           head.lock().flatMap(locked => {
             if (locked) {
               head.add(value)
@@ -84,15 +84,15 @@ object IdQueue {
       add()
     }
 
-    def take(self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
+    def take(self: STMPtr[TaskQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
       take(self, queues.size)
     }
 
-    def take(self: STMPtr[IdQueue.MultiQueueData[T]], minEmpty: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
+    def take(self: STMPtr[TaskQueue.MultiQueueData[T]], minEmpty: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
       require(queues.size >= minEmpty)
       val shuffledLists = queues.map(_ -> Random.nextDouble()).sortBy(_._2).map(_._1)
 
-      def take(list: List[SimpleLinkedList[T]] = shuffledLists, _minEmpty: Int = minEmpty): Future[Option[T]] = {
+      def take(list: List[LinkedList[T]] = shuffledLists, _minEmpty: Int = minEmpty): Future[Option[T]] = {
         if (list.isEmpty) {
           throw new TransactionConflict(s"Could not confirm emptiness of $minEmpty")
         } else {
@@ -117,17 +117,17 @@ object IdQueue {
       take()
     }
 
-    def grow(self: STMPtr[IdQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
-      SimpleLinkedList.create[T].map((newList: SimpleLinkedList[T]) => copy(queues = queues ++ List(newList))).flatMap(self.write)
+    def grow(self: STMPtr[TaskQueue.MultiQueueData[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+      LinkedList.create[T].map((newList: LinkedList[T]) => copy(queues = queues ++ List(newList))).flatMap(self.write)
     }
   }
 
 }
 
-class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
+class TaskQueue[T <: Identifiable](rootPtr: STMPtr[TaskQueue.MultiQueueData[T]]) {
   def id: String = rootPtr.id.toString
 
-  def this(ptr: PointerType) = this(new STMPtr[IdQueue.MultiQueueData[T]](ptr))
+  def this(ptr: PointerType) = this(new STMPtr[TaskQueue.MultiQueueData[T]](ptr))
 
   def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
@@ -184,7 +184,7 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
   }
 
   private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[MultiQueueData[T]] = {
-    rootPtr.readOpt().flatMap(_.map(Future.successful).getOrElse(IdQueue.createInnerData[T](8)
+    rootPtr.readOpt().flatMap(_.map(Future.successful).getOrElse(TaskQueue.createInnerData[T](8)
       .flatMap((x: MultiQueueData[T]) => rootPtr.write(x).map(_ => x))))
   }
 
@@ -207,7 +207,7 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
     }).getOrElse(Future.successful(Stream.empty))
   }
 
-  private def this() = this(null: STMPtr[IdQueue.MultiQueueData[T]])
+  private def this() = this(null: STMPtr[TaskQueue.MultiQueueData[T]])
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
@@ -216,27 +216,27 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
     def sync = new SyncApi(10.seconds)
 
     def add(value: T)(implicit classTag: ClassTag[T]): Future[Unit.type] = atomic {
-      IdQueue.this.add(value)(_, executionContext).map(_ => Unit)
+      TaskQueue.this.add(value)(_, executionContext).map(_ => Unit)
     }
 
     def take()(implicit classTag: ClassTag[T]): Future[Option[T]] = atomic {
-      IdQueue.this.take()(_, executionContext)
+      TaskQueue.this.take()(_, executionContext)
     }
 
     def size()(implicit classTag: ClassTag[T]): Future[Int] = atomic {
-      IdQueue.this.size()(_, executionContext)
+      TaskQueue.this.size()(_, executionContext)
     }
 
     def take(minEmpty: Int)(implicit classTag: ClassTag[T]): Future[Option[T]] = atomic {
-      IdQueue.this.take(minEmpty)(_, executionContext)
+      TaskQueue.this.take(minEmpty)(_, executionContext)
     }
 
     def contains(id: String)(implicit classTag: ClassTag[T]): Future[Boolean] = atomic {
-      IdQueue.this.contains(id)(_, executionContext)
+      TaskQueue.this.contains(id)(_, executionContext)
     }
 
     def grow()(implicit classTag: ClassTag[T]): Future[Unit.type] = atomic {
-      IdQueue.this.grow()(_, executionContext).map(_ => Unit)
+      TaskQueue.this.grow()(_, executionContext).map(_ => Unit)
     }
 
     def stream(timeout: Duration = 30.seconds)(implicit classTag: ClassTag[T]): Future[Stream[T]] = {
@@ -286,31 +286,31 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
-      IdQueue.this.add(value)
+      TaskQueue.this.add(value)
     }
 
     def take()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[T] = sync {
-      IdQueue.this.take()
+      TaskQueue.this.take()
     }
 
     def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Int = sync {
-      IdQueue.this.size()
+      TaskQueue.this.size()
     }
 
     def take(minEmpty: Int)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[T] = sync {
-      IdQueue.this.take(minEmpty)
+      TaskQueue.this.take(minEmpty)
     }
 
     def contains(id: String)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = sync {
-      IdQueue.this.contains(id)
+      TaskQueue.this.contains(id)
     }
 
     def grow()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
-      IdQueue.this.grow()
+      TaskQueue.this.grow()
     }
 
     def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Stream[T] = sync {
-      IdQueue.this.stream()
+      TaskQueue.this.stream()
     }
   }
 

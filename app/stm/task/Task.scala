@@ -25,7 +25,6 @@ import java.util.concurrent.{Executors, ScheduledExecutorService, ScheduledFutur
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm._
-import stm.collection.Identifiable
 import stm.task.Task.TaskResult
 import stm.task.TaskStatus.Failed
 import storage.Restm

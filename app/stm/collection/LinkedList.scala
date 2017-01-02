@@ -26,14 +26,14 @@ import storage.Restm.PointerType
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
-object SimpleLinkedList {
-  def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[SimpleLinkedList[T]] =
-    STMPtr.dynamic[SimpleLinkedListHead[T]](new SimpleLinkedListHead[T]()).map(new SimpleLinkedList(_))
+object LinkedList {
+  def create[T](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[LinkedList[T]] =
+    STMPtr.dynamic[SimpleLinkedListHead[T]](new SimpleLinkedListHead[T]()).map(new LinkedList(_))
 
-  def static[T](id: PointerType) = new SimpleLinkedList(new STMPtr[SimpleLinkedListHead[T]](id))
+  def static[T](id: PointerType) = new LinkedList(new STMPtr[SimpleLinkedListHead[T]](id))
 }
 
-class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
+class LinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
 
   def id: String = rootPtr.id.toString
 
@@ -72,11 +72,11 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
   }
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
-    def add(value: T): Future[Unit] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.add(value)(ctx, executionContext) }
+    def add(value: T): Future[Unit] = atomic { (ctx: STMTxnCtx) => LinkedList.this.add(value)(ctx, executionContext) }
 
-    def remove(): Future[Option[T]] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.remove()(ctx, executionContext) }
+    def remove(): Future[Option[T]] = atomic { (ctx: STMTxnCtx) => LinkedList.this.remove()(ctx, executionContext) }
 
-    def size(): Future[Int] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.size()(ctx, executionContext) }
+    def size(): Future[Int] = atomic { (ctx: STMTxnCtx) => LinkedList.this.size()(ctx, executionContext) }
 
     def stream(timeout: Duration = 30.seconds)(implicit cluster: Restm, executionContext: ExecutionContext): Future[Stream[T]] = {
       rootPtr.atomic.readOpt.map(_
@@ -116,19 +116,19 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
 
   class SyncApi(duration: Duration)(implicit executionContext: ExecutionContext) extends SyncApiBase(duration) {
     def add(value: T)(implicit ctx: STMTxnCtx): Unit = sync {
-      SimpleLinkedList.this.add(value)
+      LinkedList.this.add(value)
     }
 
     def remove()(implicit ctx: STMTxnCtx): Option[T] = sync {
-      SimpleLinkedList.this.remove()
+      LinkedList.this.remove()
     }
 
     def stream()(implicit ctx: STMTxnCtx): Stream[T] = sync {
-      SimpleLinkedList.this.stream()
+      LinkedList.this.stream()
     }
 
     def size()(implicit ctx: STMTxnCtx): Int = sync {
-      SimpleLinkedList.this.size()
+      LinkedList.this.size()
     }
   }
 

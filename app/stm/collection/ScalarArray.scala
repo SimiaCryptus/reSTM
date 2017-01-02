@@ -30,18 +30,18 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Random
 
-object DistributedScalar {
+object ScalarArray {
 
-  def createSync(size: Int = 8)(implicit cluster: Restm, executionContext: ExecutionContext): DistributedScalar =
-    Await.result(new STMTxn[DistributedScalar] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[DistributedScalar] = {
+  def createSync(size: Int = 8)(implicit cluster: Restm, executionContext: ExecutionContext): ScalarArray =
+    Await.result(new STMTxn[ScalarArray] {
+      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[ScalarArray] = {
         create(size)
       }
     }.txnRun(cluster), 60.seconds)
 
-  def create(size: Int = 8)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[DistributedScalar] =
+  def create(size: Int = 8)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[ScalarArray] =
     Future.sequence((1 to size).map(_ => STMPtr.dynamic(Double.valueOf(0.0)))).flatMap(ptrs => {
-      STMPtr.dynamic(DistributedScalar.ScalarData(ptrs.toList)).map(new DistributedScalar(_))
+      STMPtr.dynamic(ScalarArray.ScalarData(ptrs.toList)).map(new ScalarArray(_))
     })
 
   case class ScalarData
@@ -80,10 +80,10 @@ object DistributedScalar {
 
 }
 
-class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
+class ScalarArray(rootPtr: STMPtr[ScalarArray.ScalarData]) {
   def id: String = rootPtr.id.toString
 
-  def this(ptr: PointerType) = this(new STMPtr[DistributedScalar.ScalarData](ptr))
+  def this(ptr: PointerType) = this(new STMPtr[ScalarArray.ScalarData](ptr))
 
   def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
 
@@ -98,7 +98,7 @@ class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
   }
 
   private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
-    rootPtr.readOpt().map(_.orElse(Option(DistributedScalar.ScalarData()))).map(_.get)
+    rootPtr.readOpt().map(_.orElse(Option(ScalarArray.ScalarData()))).map(_.get)
   }
 
   def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[scala.Double] = {
@@ -107,7 +107,7 @@ class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
     })
   }
 
-  private def this() = this(null: STMPtr[DistributedScalar.ScalarData])
+  private def this() = this(null: STMPtr[ScalarArray.ScalarData])
 
   class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
 
@@ -116,11 +116,11 @@ class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
     def sync = new SyncApi(10.seconds)
 
     def add(value: Double): Future[Unit.type] = atomic {
-      DistributedScalar.this.add(value)(_, executionContext).map(_ => Unit)
+      ScalarArray.this.add(value)(_, executionContext).map(_ => Unit)
     }
 
     def get(): Future[scala.Double] = atomic {
-      DistributedScalar.this.get()(_, executionContext)
+      ScalarArray.this.get()(_, executionContext)
     }
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
@@ -137,11 +137,11 @@ class DistributedScalar(rootPtr: STMPtr[DistributedScalar.ScalarData]) {
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def add(value: Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
-      DistributedScalar.this.add(value)
+      ScalarArray.this.add(value)
     }
 
     def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): scala.Double = sync {
-      DistributedScalar.this.get()
+      ScalarArray.this.get()
     }
   }
 

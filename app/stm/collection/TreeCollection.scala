@@ -142,7 +142,7 @@ object TreeCollection {
       case _ => false
     }
 
-    def sortTask(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]): Task[SimpleLinkedList[T]] = {
+    def sortTask(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]): Task[LinkedList[T]] = {
       implicit val _cluster = cluster
       implicit val _executionContext = executionContext
       StmExecutionQueue.get().atomic.sync.add(sort())
@@ -156,12 +156,12 @@ object TreeCollection {
       )).map(_.reduce(_ ++ _))
     }
 
-    def sort()(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]): TaskResult[SimpleLinkedList[T]] = {
-      val tasks: List[Task[SimpleLinkedList[T]]] = {
+    def sort()(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]): TaskResult[LinkedList[T]] = {
+      val tasks: List[Task[LinkedList[T]]] = {
         implicit val _cluster = cluster
         implicit val _executionContext = executionContext
-        val leftList: Option[Task[SimpleLinkedList[T]]] = left.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster, executionContext))
-        val rightList: Option[Task[SimpleLinkedList[T]]] = right.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster, executionContext))
+        val leftList: Option[Task[LinkedList[T]]] = left.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster, executionContext))
+        val rightList: Option[Task[LinkedList[T]]] = right.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster, executionContext))
         List(leftList, rightList).filter(_.isDefined).map(_.get)
       }
       Task.TaskContinue(newFunction = (cluster, executionContext) => {
@@ -169,10 +169,10 @@ object TreeCollection {
         implicit val _executionContext = executionContext
         val sources = tasks.map(_.atomic().sync.result())
 
-        def read(list: SimpleLinkedList[T]): Option[(T, Option[SimpleLinkedList[T]])] = list.atomic().sync.remove().map(_ -> Option(list))
+        def read(list: LinkedList[T]): Option[(T, Option[LinkedList[T]])] = list.atomic().sync.remove().map(_ -> Option(list))
 
         var cursors = sources.map(list => read(list)).filter(_.isDefined).map(_.get) ++ List(value -> None)
-        val result = SimpleLinkedList.static[T](new PointerType)
+        val result = LinkedList.static[T](new PointerType)
         while (cursors.nonEmpty) {
           val (nextValue, optList) = cursors.minBy(_._1)
           result.atomic().sync.add(nextValue)
@@ -223,7 +223,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
     })
   }
 
-  def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]): Future[Task[SimpleLinkedList[T]]] = {
+  def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]): Future[Task[LinkedList[T]]] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.sortTask(ctx.cluster, executionContext)(ordering)).get
     })
@@ -263,7 +263,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
       TreeCollection.this.apxSize()(_, executionContext)
     }
 
-    def sort()(implicit ordering: Ordering[T]): Future[Task[SimpleLinkedList[T]]] = atomic {
+    def sort()(implicit ordering: Ordering[T]): Future[Task[LinkedList[T]]] = atomic {
       TreeCollection.this.sort()(_, executionContext, ordering)
     }
 
@@ -291,7 +291,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
         AtomicApi.this.apxSize()
       }
 
-      def sort()(implicit ordering: Ordering[T]): Task[SimpleLinkedList[T]] = sync {
+      def sort()(implicit ordering: Ordering[T]): Task[LinkedList[T]] = sync {
         AtomicApi.this.sort()
       }
     }
@@ -315,7 +315,7 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
       TreeCollection.this.size()
     }
 
-    def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]): Task[SimpleLinkedList[T]] = sync {
+    def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]): Task[LinkedList[T]] = sync {
       TreeCollection.this.sort()
     }
 
