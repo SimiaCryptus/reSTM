@@ -89,6 +89,14 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
 
     def write(value: T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) =
       atomic { STMPtr.this.write(value)(_,executionContext,classTag) }
+
+    def update(fn: T=>T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]) = atomic {
+      txn => {
+        STMPtr.this.read()(txn,executionContext,classTag)
+          .map(fn)
+          .flatMap(value=>STMPtr.this.write(value)(txn,executionContext,classTag))
+      }
+    }
   }
   def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
 

@@ -51,8 +51,7 @@ object ClassificationTree {
       val task: Future[TaskContinue[Int]] = {
         lazy val stateFuture: Future[Option[ClassificationTreeNode]] = {
           implicit val _executionContext = executionContext
-          self.atomic(cluster, executionContext).read
-            .flatMap(_.atomic()(cluster, executionContext).split(self, strategy, 0))
+          ClassificationTreeNode.split(self, strategy, 0)(cluster, executionContext)
             .flatMap(_ => self.atomic(cluster, executionContext).readOpt)
         }
         stateFuture.map(_.get)(executionContext).flatMap(newState => {

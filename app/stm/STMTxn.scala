@@ -31,7 +31,7 @@ trait STMTxn[+R] {
 
   final def txnRun(cluster: Restm, maxRetry: Int = 100, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = monitorFuture("STMTxn.txnRun") {
     val opId = UUID.randomUUID().toString
-    def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = monitorFuture("STMTxn.txnRun.attempt") {
+    def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = {
       val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
       chainEx("Transaction Exception") { Future { txnLogic()(ctx, executionContext) }
         .flatMap(x => x)

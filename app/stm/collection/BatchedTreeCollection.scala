@@ -163,6 +163,9 @@ object BatchedTreeCollection {
   def apply[T]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
     new BatchedTreeCollection(STMPtr.dynamicSync[TreeCollectionNode[T]](null))
 
+  def create[T]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+    STMPtr.dynamic[TreeCollectionNode[T]](null).map(new BatchedTreeCollection(_))
+
 }
 
 class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
