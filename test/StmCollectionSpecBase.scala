@@ -56,7 +56,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
     def randomUUIDs = Stream.continually(randomStr)
 
-    List(1, 10, 100).foreach(items => {
+    List(1, 10, 100, 1000).foreach(items => {
       s"synchronous add and get with $items items" in {
         val collection = new BatchedTreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).sorted.toList
@@ -83,7 +83,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
 
   s"DistributedScalar via ${getClass.getSimpleName}" must {
-    List(1, 10, 100).foreach(items => {
+    List(1, 10, 100, 10000).foreach(items => {
       s"accumulates $items values" in {
         def randomStream = Stream.continually(Random.nextDouble())
 
@@ -101,7 +101,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   s"TreeSet via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
 
-    List(1, 10, 100).foreach(items => s"synchronous insert and verify with $items items" in {
+    List(1, 10, 100, 1000).foreach(items => s"synchronous insert and verify with $items items" in {
       val collection = new TreeSet[String](new PointerType)
       val input = randomUUIDs.take(items)
       for (item <- input) {
@@ -119,7 +119,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
       println(JacksonValue.simple(Util.getMetrics).pretty)
     })
     List(1, 5, 10).foreach(threads =>
-      s"concurrent add, verify, and remove with $threads threads" in {
+      s"concurrent add, verify, and remove 1000 items with $threads threads" in {
         //require(false)
         val collection = new TreeSet[String](new PointerType)
         // Bootstrap collection synchronously to control contention
@@ -132,7 +132,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         val threadPool = Executors.newFixedThreadPool(threads)
         // Run concurrent add/delete tests
         val executionContext2 = ExecutionContext.fromExecutor(threadPool)
-        val futures = for (item <- randomUUIDs.take(200).distinct) yield Future {
+        val futures = for (item <- randomUUIDs.take(1000).distinct) yield Future {
           try {
             sync.contains(item) mustBe false
             for (_ <- 0 until 10) {
@@ -145,7 +145,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
             case e: Throwable => throw new RuntimeException(s"Error in item $item", e)
           }
         }(executionContext2)
-        Await.result(Future.sequence(futures), 1.minutes)
+        Await.result(Future.sequence(futures), 5.minutes)
         println(JacksonValue.simple(Util.getMetrics).pretty)
         threadPool.shutdown()
         threadPool.awaitTermination(1, TimeUnit.MINUTES)
@@ -159,7 +159,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
     def randomUUIDs = Stream.continually(randomStr)
 
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and get with $items items" in {
         val collection = new TreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -169,7 +169,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"insert and toList with $items items" in {
         val collection = new TreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -264,7 +264,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   s"SimpleLinkedList via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
 
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         val collection = SimpleLinkedList.static[String](new PointerType)
         val input: List[String] = randomUUIDs.take(items).toList
@@ -274,11 +274,11 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         val threadCount = 20
         val syncTimeout = 60.seconds
-        val maxRetries = 1000
+        val maxRetries = 100
         val totalTimeout = 5.minutes
 
         val input = randomUUIDs.take(items).toSet
@@ -309,7 +309,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"stream iteration with $items items" in {
         val collection = SimpleLinkedList.static[String](new PointerType)
         val input: List[String] = randomUUIDs.take(items).toList
@@ -322,9 +322,9 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
   s"IdQueue via ${getClass.getSimpleName}" must {
-    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
-
-    List(10, 100, 1000).foreach(items => {
+    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
+    Future.traverse
+    List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         val collection = IdQueue.createSync[TestValue](8)
         val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
@@ -345,7 +345,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         val syncTimeout = 60.seconds
 
@@ -361,7 +361,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
             collection.atomic().sync(syncTimeout).take(2)
           }(exeCtx))).map(_.flatten)
         val output = new mutable.HashSet[TestValue]()
-        output ++= Await.result(future, 1.minutes)
+        output ++= Await.result(future, 5.minutes)
 
         output ++= Stream.continually({
           collection.atomic().sync(syncTimeout).take()
@@ -372,7 +372,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
       }
     })
-    List(10, 100, 1000).foreach(items => {
+    List(10, 100, 1000, 10000).foreach(items => {
       s"stream iteration with $items items" in {
         val collection = IdQueue.createSync[TestValue](8)
         val input: List[TestValue] = randomUUIDs.take(items).toList.map(new TestValue(_))
@@ -411,9 +411,9 @@ class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSu
 }
 
 class ActorServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite {
-  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
   private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
+  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
 }
 
 class TestValue(val id: String = null) extends Identifiable {

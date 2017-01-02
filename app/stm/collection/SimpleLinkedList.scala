@@ -78,21 +78,21 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
 
     def size(): Future[Int] = atomic { (ctx: STMTxnCtx) => SimpleLinkedList.this.size()(ctx, executionContext) }
 
-    def stream()(implicit cluster: Restm, executionContext: ExecutionContext): Future[Stream[T]] = {
+    def stream(timeout: Duration = 30.seconds)(implicit cluster: Restm, executionContext: ExecutionContext): Future[Stream[T]] = {
       rootPtr.atomic.readOpt.map(_
         .flatMap(_.tail)
         .map(tail => tail.atomic.sync.readOpt.map(node => node.value -> node.next))
         .map(seed => {
           Stream.iterate(seed)((prev: Option[(T, Option[STMPtr[SimpleLinkedListNode[T]]])]) => {
             prev.get._2.flatMap((node: STMPtr[SimpleLinkedListNode[T]]) =>
-              node.atomic.sync.readOpt.map(node => node.value -> node.next))
+              node.atomic.sync(timeout).readOpt.map(node => node.value -> node.next))
           }).takeWhile(_.isDefined).map(_.get._1)
         }).getOrElse(Stream.empty))
     }
 
     def sync(duration: Duration) = new SyncApi(duration)
 
-    def sync = new SyncApi(10.seconds)
+    def sync = new SyncApi(30.seconds)
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
       def add(value: T): Unit = sync {
@@ -103,8 +103,8 @@ class SimpleLinkedList[T](rootPtr: STMPtr[SimpleLinkedListHead[T]]) {
         AtomicApi.this.remove()
       }
 
-      def stream(): Stream[T] = sync {
-        AtomicApi.this.stream()
+      def stream(timeout: Duration = 30.seconds): Stream[T] = sync {
+        AtomicApi.this.stream(duration)
       }
 
       def size(): Int = sync {

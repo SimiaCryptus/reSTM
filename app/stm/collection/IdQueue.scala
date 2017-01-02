@@ -239,10 +239,10 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
       IdQueue.this.grow()(_, executionContext).map(_ => Unit)
     }
 
-    def stream()(implicit classTag: ClassTag[T]): Future[Stream[T]] = {
+    def stream(timeout: Duration = 30.seconds)(implicit classTag: ClassTag[T]): Future[Stream[T]] = {
       val opt: Option[MultiQueueData[T]] = rootPtr.atomic.sync.readOpt
       opt.map(inner => {
-        val subStreams: Future[List[Stream[T]]] = Future.sequence(inner.queues.map(_.atomic().stream()))
+        val subStreams: Future[List[Stream[T]]] = Future.sequence(inner.queues.map(_.atomic().stream(timeout)))
         val future: Future[Stream[T]] = subStreams.map(subStreams => {
           val reduceOption: Option[Stream[T]] = subStreams.reduceOption(_ ++ _)
           val orElse: Stream[T] = reduceOption.getOrElse(Stream.empty[T])
@@ -277,8 +277,8 @@ class IdQueue[T <: Identifiable](rootPtr: STMPtr[IdQueue.MultiQueueData[T]]) {
         AtomicApi.this.grow()
       }
 
-      def stream()(implicit classTag: ClassTag[T]): Stream[T] = sync {
-        AtomicApi.this.stream()
+      def stream(timeout: Duration = 30.seconds)(implicit classTag: ClassTag[T]): Stream[T] = sync {
+        AtomicApi.this.stream(duration)
       }
     }
 

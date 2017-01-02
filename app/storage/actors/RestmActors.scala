@@ -46,10 +46,10 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     val thread: Thread = new Thread(new Runnable {
       override def run(): Unit = {
         while (!Thread.interrupted()) {
-          for (item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) monitorBlock("RestmActors.dequeueStorage") {
-            item match {
-              case id: PointerType =>
-                try {
+          try {
+            for (item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) monitorBlock("RestmActors.dequeueStorage") {
+              item match {
+                case id: PointerType =>
                   val task = getPtrActor(id).map(actor => {
                     val prevTxns: Set[TimeStamp] = actor.history.map(_.time).toArray.toSet
                     val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
@@ -78,12 +78,12 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
                       }, RestmActors.IDLE_PTR_TIME, TimeUnit.SECONDS)
                     }
                   })
-                  Await.result(task, 10.second)
-                } catch {
-                  case e: Throwable => e.printStackTrace()
-                }
-              case p: Promise[_] => p.asInstanceOf[Promise[Unit]].success(Unit)
+                  Await.result(task, 30.second)
+                case p: Promise[_] => p.asInstanceOf[Promise[Unit]].success(Unit)
+              }
             }
+          } catch {
+            case e: Throwable => e.printStackTrace()
           }
           Thread.sleep(10)
         }
@@ -107,7 +107,9 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
   }
 
   def clear(): Unit = {
+    freezeQueue.clear()
     expireQueue.shutdownNow()
+    expireQueue.awaitTermination(10, TimeUnit.SECONDS)
     expireQueue = Executors.newScheduledThreadPool(1)
     ptrs2.clear()
     ptrs1.clear()

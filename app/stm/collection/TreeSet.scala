@@ -103,13 +103,16 @@ object TreeSet {
         left.map(leftPtr => {
           leftPtr.read.flatMap(_.add(newValue, leftPtr))
         }).getOrElse({
-          self.write(this.copy(left = Option(STMPtr.dynamicSync(TreeSetNode(newValue)))))
+          val newNode = STMPtr.dynamic(TreeSetNode(newValue))
+          newNode.flatMap(newNode⇒self.write(this.copy(left = Option(newNode))))
+
         })
       } else {
         right.map(rightPtr => {
           rightPtr.read.flatMap(_.add(newValue, rightPtr))
         }).getOrElse({
-          self.write(this.copy(right = Option(STMPtr.dynamicSync(TreeSetNode(newValue)))))
+          val newNode = STMPtr.dynamic(TreeSetNode(newValue))
+          newNode.flatMap(newNode⇒self.write(this.copy(right = Option(newNode))))
         })
       }
     }
