@@ -11,7 +11,7 @@ import storage.types.KryoValue
 import util.Util
 
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 case class ClassificationTreeNode
 (
@@ -20,6 +20,7 @@ case class ClassificationTreeNode
   fail : Option[STMPtr[ClassificationTreeNode]] = None,
   exception : Option[STMPtr[ClassificationTreeNode]] = None,
   itemBuffer : Option[BatchedTreeCollection[LabeledItem]],
+  splitBuffer : Option[BatchedTreeCollection[LabeledItem]] = None,
   splitTask : Option[Task[String]] = None,
   rule : Option[KryoValue[(ClassificationTreeItem)=>Boolean]] = None
 ) {
@@ -45,27 +46,72 @@ case class ClassificationTreeNode
     def sync = new SyncApi(10.seconds)
 
     def split(self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 0): Future[Int] = {
-      itemBuffer.map(itemBuffer=>{
-        val bufferedValues: Stream[LabeledItem] = itemBuffer.atomic().stream()
-        createChildren(self).flatMap(t=>{
+
+      val obtainLock = new STMTxn[Option[BatchedTreeCollection[LabeledItem]]] {
+        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+          //println(s"Obtaining split lock for $self")
+          self.read().flatMap(prev => {
+            if (prev.splitBuffer.isDefined) {
+              //println(s"Split lock failed for $self")
+              Future.successful(None)
+            } else if (prev.itemBuffer.isDefined) {
+              val collection = prev.itemBuffer.get
+              self.write(prev.copy(
+                itemBuffer = Option(BatchedTreeCollection[LabeledItem]()),
+                splitBuffer = Option(collection))
+              ).map(_ => collection).map(Option(_))
+            } else {
+              //println(s"Node already split - $self")
+              Future.successful(None)
+            }
+          })
+        }
+      }.txnRun(cluster)
+
+      val transferAsync: Future[Option[Int]] = obtainLock.flatMap(_.map((itemBuffer: BatchedTreeCollection[LabeledItem]) => {
+        println(s"Deriving rule for $self")
+        val stream: Stream[LabeledItem] = itemBuffer.atomic().stream()
+        createChildren(self).flatMap(t => {
           val nextValue: ClassificationTreeNode = copy(
-            itemBuffer = None,
-            rule = Option(KryoValue(strategy.getRule(bufferedValues))),
+            rule = Option(KryoValue(strategy.getRule(stream))),
             pass = Option(t(0)),
             fail = Option(t(1)),
             exception = Option(t(2))
           )
           if (null != nextValue.rule) {
+            println(s"Splitting (async) on $self")
             self.atomic.write(nextValue).flatMap(_ => {
-              Future.sequence(bufferedValues.grouped(512).map(_.toList).map(item => {
-                nextValue.atomic().add(item, self, strategy, maxSplitDepth - 1)
-              })).map(_.sum)
+              Future.sequence(stream.grouped(512).map(_.toList).map((block: List[LabeledItem]) => {
+                nextValue.atomic().route(block, self, strategy, maxSplitDepth - 1).map(_=>block.size)
+              })).map(_.sum).map(sum=>{
+                println(s"Routed $sum items for $self")
+                sum
+              })
             })
-          } else Future.successful(0)
-        })
-      }).getOrElse({
-        Future.successful(0)
-      })
+          } else {
+            Future.successful(0)
+          }
+        }).map(Option(_))
+      }).getOrElse(Future.successful(None)))
+
+      transferAsync.flatMap(_.map(rowsTransfered=>{
+        new STMTxn[Int] {
+          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+            //println(s"Splitting (sync) on $self")
+            self.read().flatMap((node: ClassificationTreeNode) => {
+              val stream: Stream[LabeledItem] = node.itemBuffer.get.stream()
+              Future.sequence(stream.grouped(512).map(_.toList).map(block => {
+                node.route(block, self, strategy, maxSplitDepth - 1).map(_=>block.size)
+              })).map(_.sum).flatMap(phase2Transfered => {
+                println(s"Finalizing $self after transferring $phase2Transfered items")
+                self.write(node.copy(itemBuffer = None,splitBuffer = None)).map(_ => rowsTransfered + phase2Transfered)
+              })
+            })
+          }
+        }.txnRun(cluster)
+      }).getOrElse(Future.successful(0)))
+
+
     }
 
     private def createChildren(self: STMPtr[ClassificationTreeNode]): Future[List[STMPtr[ClassificationTreeNode]]] = atomic { txn => {
@@ -78,6 +124,7 @@ case class ClassificationTreeNode
     }}
 
     def add(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1) = atomic { ClassificationTreeNode.this.add(value, self, strategy, maxSplitDepth)(_,executionContext) }
+    def route(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1) = atomic { ClassificationTreeNode.this.route(value, self, strategy, maxSplitDepth)(_,executionContext) }
     def firstNode(self : STMPtr[ClassificationTreeNode]) = atomic { ClassificationTreeNode.this.firstNode(self)(_,executionContext) }
     def nextNode(self : STMPtr[ClassificationTreeNode], root : STMPtr[ClassificationTreeNode]) = atomic { ClassificationTreeNode.this.nextNode(self, root)(_,executionContext) }
     def getTreeId(self : STMPtr[ClassificationTreeNode], root : STMPtr[ClassificationTreeNode]) = atomic { ClassificationTreeNode.this.getTreeId(self, root)(_,executionContext) }
@@ -159,49 +206,58 @@ case class ClassificationTreeNode
   def add(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy:ClassificationStrategy, maxSplitDepth:Int = 1)
          (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
     if(itemBuffer.isDefined) {
-      itemBuffer.get.add(value.toArray.toList).flatMap(_=>{
-        if (splitTask.isEmpty && maxSplitDepth > 0 && strategy.split(itemBuffer.get)) {
-          self.lock().flatMap(locked=> {
-            if(locked) {
-              Option(StmExecutionQueue.get()).map(_.add(ClassificationTreeNode.splitTaskFn(self, strategy, maxSplitDepth)).flatMap(
-                (task: Task[String]) =>{
-                  self.write(ClassificationTreeNode.this.copy(splitTask=Option(task))).map(_=>0)
-                }
-              )).getOrElse({
-                System.err.println("StmExecutionQueue not initialized - cannot queue split")
-                Future.successful(0)
-              })
-            } else {
-              Future.successful(0)
+      itemBuffer.get.add(value.toArray.toList)
+        .flatMap(_=>autosplit(self, strategy, maxSplitDepth))
+    } else {
+      route(value, self, strategy, maxSplitDepth)
+    }
+  }
+
+
+  private def autosplit(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
+                       (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+    if (splitTask.isEmpty && maxSplitDepth > 0 && strategy.split(itemBuffer.get)) {
+      self.lock().flatMap(locked => {
+        if (locked) {
+          Option(StmExecutionQueue.get()).map(_.add(ClassificationTreeNode.splitTaskFn(self, strategy, maxSplitDepth)).flatMap(
+            (task: Task[String]) => {
+              self.write(ClassificationTreeNode.this.copy(splitTask = Option(task))).map(_ => 0)
             }
+          )).getOrElse({
+            System.err.println("StmExecutionQueue not initialized - cannot queue split")
+            Future.successful(0)
           })
         } else {
           Future.successful(0)
         }
       })
     } else {
-      try {
-        val deserializedRule = rule.get.deserialize().get
-        val results: Map[Boolean, List[LabeledItem]] = value.groupBy(x=>deserializedRule(x.value))
-        Future.sequence(List(
-          if(results.get(true).isDefined) {
-            pass.get.read().flatMap(_.add(results(true), pass.get, strategy, maxSplitDepth))
-          } else {
-            Future.successful(0)
-          },
-          if(results.get(false).isDefined) {
-            fail.get.read().flatMap(_.add(results(false), fail.get, strategy, maxSplitDepth))
-          } else {
-            Future.successful(0)
-          }
-        )).map(_.reduceOption(_+_).getOrElse(0))
-      } catch {
-        case e : Throwable =>
-          exception.get.read().flatMap(_.add(value, exception.get, strategy, maxSplitDepth))
-      }
+      Future.successful(0)
     }
   }
 
+  private def route(value: List[LabeledItem], self : STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
+                   (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+    try {
+      val deserializedRule = rule.get.deserialize().get
+      val results: Map[Boolean, List[LabeledItem]] = value.groupBy(x => deserializedRule(x.value))
+      Future.sequence(List(
+        if (results.get(true).isDefined) {
+          pass.get.read().flatMap(_.add(results(true), pass.get, strategy, maxSplitDepth))
+        } else {
+          Future.successful(0)
+        },
+        if (results.get(false).isDefined) {
+          fail.get.read().flatMap(_.add(results(false), fail.get, strategy, maxSplitDepth))
+        } else {
+          Future.successful(0)
+        }
+      )).map(_.reduceOption(_ + _).getOrElse(0))
+    } catch {
+      case e: Throwable =>
+        exception.get.read().flatMap(_.add(value, exception.get, strategy, maxSplitDepth))
+    }
+  }
 
   def firstNode(self : STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) : Future[STMPtr[ClassificationTreeNode]] = {
     pass.orElse(fail).orElse(exception)
@@ -325,8 +381,11 @@ object ClassificationTreeNode {
 
   def splitTaskFn(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int): (Restm, ExecutionContext) => TaskSuccess[String] =
     (c : Restm, e : ExecutionContext) => {
-      self.atomic(c,e).sync.read.atomic()(c, e).split(self, strategy, maxSplitDepth)
-      new TaskSuccess("OK")
+      println(s"Starting split task for $self")
+      val future = self.atomic(c,e).sync.read.atomic()(c, e).split(self, strategy, maxSplitDepth).map(_=>new TaskSuccess("OK"))(e)
+      val result = Await.result(future, 10.minutes)
+      println(s"Completed split task for $self - $result")
+      result
     }
 
 }

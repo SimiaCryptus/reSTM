@@ -11,7 +11,7 @@ import org.scalatestplus.play.OneServerPerTest
 import stm.STMPtr
 import stm.collection.clustering.ClassificationTree._
 import stm.collection.clustering.{ClassificationTree, ClassificationTreeNode, DefaultClassificationStrategy, NoBranchStrategy}
-import stm.task.{StmDaemons, StmExecutionQueue}
+import stm.task.{ExecutionStatusManager, StmDaemons, StmExecutionQueue}
 import storage.Restm._
 import storage._
 import storage.actors.RestmActors
@@ -62,7 +62,13 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
         collection.atomic().sync.setClusterStrategy(new DefaultClassificationStrategy(1))
         val input = Stream.continually(new ClassificationTreeItem(Map("value" -> Random.nextGaussian()))).take(items).toSet
         input.foreach(collection.atomic().sync.add("data", _))
-        Thread.sleep(1000)
+
+        def now = System.currentTimeMillis()
+        val timeout = now + 30.seconds.toMillis
+        def isWorkQueueEmpty = StmExecutionQueue.get().workQueue.atomic().sync.size() > 0
+        def isAnythingRunning = ExecutionStatusManager.currentlyRunning() > 0
+        while((isWorkQueueEmpty || isAnythingRunning) && timeout > now) Thread.sleep(500)
+        println(JacksonValue.simple(ExecutionStatusManager.status()).pretty)
 
         val rootPtr: STMPtr[ClassificationTreeNode] = collection.dataPtr.atomic.sync.read.root
         def print(prefix:String, nodePtr:STMPtr[ClassificationTreeNode]):Unit = {

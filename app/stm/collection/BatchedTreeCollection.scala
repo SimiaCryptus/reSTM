@@ -70,6 +70,7 @@ object BatchedTreeCollection {
     }
 
     def add(newValue: List[T], self : STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+      //println(s"Write ${newValue.size} items to $self")
       if (Random.nextBoolean()) {
         left.map(leftPtr => {
           leftPtr.read.flatMap(_.add(newValue, leftPtr))
