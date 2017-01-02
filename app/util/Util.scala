@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.google.common.util.concurrent.{AtomicDouble, ThreadFactoryBuilder}
+import stm.STMTxnInstrumentation
 import storage.TransactionConflict
 
 import scala.collection.concurrent.TrieMap
@@ -55,6 +56,7 @@ object Util {
 
   def clearMetrics(): Unit = {
     codeMetricsData.clear()
+    STMTxnInstrumentation.metrics.clear()
   }
 
   def now: FiniteDuration = System.nanoTime().nanoseconds
@@ -81,7 +83,8 @@ object Util {
 
   def getMetrics = Map(
     "code" -> codeMetricsData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
-    "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head)
+    "scalars" -> scalarData.toMap.mapValues(_.get()).groupBy(_._1.split("\\.").head),
+    "txns" → STMTxnInstrumentation.metrics.toMap
   )
 }
 

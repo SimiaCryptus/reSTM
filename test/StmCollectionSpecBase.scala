@@ -323,7 +323,6 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
   s"IdQueue via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
-    Future.traverse
     List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         val collection = IdQueue.createSync[TestValue](8)
