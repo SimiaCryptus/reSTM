@@ -21,6 +21,7 @@ package stm.task
 
 import stm._
 import stm.collection.{LinkedList, ScalarArray, TreeSet}
+import stm.task.TaskQueue.MultiQueueData
 import storage.Restm.PointerType
 import storage.{Restm, TransactionConflict}
 
@@ -137,8 +138,7 @@ class TaskQueue[T <: Identifiable](rootPtr: STMPtr[TaskQueue.MultiQueueData[T]])
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
     getInner().flatMap(inner => {
-      //      inner.index.contains(value.id).map(x=>require(!x)).flatMap(_=>{
-      //      })
+//      inner.index.contains(value.id).map(x=>require(!x)).flatMap(_=>{})
       inner.add(value, rootPtr)
         .flatMap(x => inner.size.add(1.0).map(_ => x))
         .flatMap(x => inner.index.add(value.id).map(_ => x))

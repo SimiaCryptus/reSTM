@@ -50,22 +50,26 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
             for (item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) monitorBlock("RestmActors.dequeueStorage") {
               item match {
                 case id: PointerType =>
-                  val task = getPtrActor(id).map(actor => {
-                    val prevTxns: Set[TimeStamp] = actor.history.map(_.time).toArray.toSet
+                  val task = getPtrActor(id, None).map(actor => {
                     val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
                     if (recordsToUpload.nonEmpty) monitorBlock("Restm.coldStorage.store") {
                       coldStorage.store(id, recordsToUpload.map(record => record.time -> record.value).toMap)
                       recordsToUpload.foreach(_.coldStorageTs = Option(System.currentTimeMillis()))
                       ActorLog.log(s"$actor Persisted")
+
                       expireQueue.schedule(new Runnable {
+                        var prevTxns: Set[TimeStamp] = actor.history.map(_.time).toSet
+                        var lastRead: TimeStamp = actor.lastRead.get
                         override def run(): Unit = {
                           actor.withActor {
-                            val hasNewCommit = actor.history.map(_.time).exists(!prevTxns.contains(_))
-                            val isWriteLocked = actor.writeLock.isDefined
+                            def hasNewCommit = actor.history.map(_.time).exists(!prevTxns.contains(_))
+                            def isWriteLocked = actor.writeLock.isDefined
+                            def isReadActive = actor.lastRead.exists(_ > lastRead)
                             if (!hasNewCommit) {
-                              if (isWriteLocked) {
-                                expireQueue.schedule(this, 1, TimeUnit.SECONDS)
-                              } else {
+                              if(isReadActive) {
+                                lastRead = actor.lastRead.get
+                                expireQueue.schedule(this, 5, TimeUnit.SECONDS)
+                              } else if (!isWriteLocked) {
                                 ActorLog.log(s"Removed $id from active memory")
                                 ptrs2.remove(id)
                                 ptrs1.remove(id)
@@ -78,7 +82,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
                       }, RestmActors.IDLE_PTR_TIME, TimeUnit.SECONDS)
                     }
                   })
-                  Await.result(task, 30.second)
+                  Await.result(task, 10.second)
                 case p: Promise[_] => p.asInstanceOf[Promise[Unit]].success(Unit)
               }
             }
@@ -118,11 +122,11 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
   }
 
   override def queueValue(id: PointerType, time: TimeStamp, value: ValueType): Future[Unit] = {
-    getPtrActor(id).flatMap(_.writeBlob(time, value))
+    getPtrActor(id, Option(time)).flatMap(_.writeBlob(time, value))
   }
 
   def _initValue(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean] = {
-    getPtrActor(id).flatMap(_.init(time, value)).andThen({ case Success(true) => queueStorage(id) })
+    getPtrActor(id, Option(time)).flatMap(_.init(time, value)).andThen({ case Success(true) => queueStorage(id) })
   }
 
   override def _txnState(time: TimeStamp): Future[String] = {
@@ -130,32 +134,32 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
   }
 
   def _resetValue(id: PointerType, time: TimeStamp): Future[Unit] = {
-    getPtrActor(id).flatMap(_.writeReset(time))
+    getPtrActor(id, Option(time)).flatMap(_.writeReset(time))
   }
 
   def _lockValue(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] = {
-    getPtrActor(id).flatMap(_.writeLock(time))
+    getPtrActor(id, Option(time)).flatMap(_.writeLock(time))
   }
 
   def _commitValue(id: PointerType, time: TimeStamp): Future[Unit] = {
-    getPtrActor(id).flatMap(_.writeCommit(time)).andThen({ case Success(_) => queueStorage(id) })
+    getPtrActor(id, Option(time)).flatMap(_.writeCommit(time)).andThen({ case Success(_) => queueStorage(id) })
 
   }
 
-  protected def getPtrActor(id: PointerType): Future[MemActor] = monitorBlock("Restm.getPtr") {
+  protected def getPtrActor(id: PointerType, time: Option[TimeStamp]): Future[MemActor] = monitorBlock("Restm.getPtr") {
     ptrs1.getOrElseUpdate(id,
       ptrs2.synchronized {
         ptrs2.getOrElseUpdate(id,
           Future {
             monitorBlock("Restm.newPtr") {
-              val obj = new MemActor(id)
+              val obj = new MemActor(id, time)
               try {
                 val restored: Map[TimeStamp, ValueType] = coldStorage.read(id)
                 obj.history ++= restored.map(e => {
                   val record = new HistoryRecord(e._1, e._2)
                   record.coldStorageTs = Option(System.currentTimeMillis())
                   record
-                })
+                }).toList.sortBy(_.time)
                 if (restored.isEmpty) {
                   ActorLog.log(s"$obj Initialized new value")
                 } else {
@@ -180,11 +184,11 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
   }
 
   def _getValue(id: PointerType): Future[Option[ValueType]] = {
-    getPtrActor(id).flatMap(_.getCurrentValue.map(_.map(_._2)))
+    getPtrActor(id, None).flatMap(_.getCurrentValue.map(_.map(_._2)))
   }
 
   def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = {
-    getPtrActor(id).flatMap(_.getValue(time, ifModifiedSince))
+    getPtrActor(id, Option(time)).flatMap(_.getValue(time, ifModifiedSince))
   }
 
   def _addLock(id: PointerType, time: TimeStamp): Future[String] = {
@@ -205,5 +209,5 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     })
   }
 
-  override def delete(id: PointerType, time: TimeStamp): Future[Unit] = getPtrActor(id).flatMap(_.delete(time))
+  override def delete(id: PointerType, time: TimeStamp): Future[Unit] = getPtrActor(id, Option(time)).flatMap(_.delete(time))
 }

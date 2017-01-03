@@ -150,25 +150,31 @@ class TreeSet[T <: Comparable[T]](rootPtr: STMPtr[TreeSetNode[T]]) {
   def sync = new SyncApi(10.seconds)
 
   def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
-    rootPtr.readOpt().flatMap(
-      _.map(_.add(value, rootPtr))
-        .getOrElse(rootPtr.write(TreeSetNode(value))))
+    ctx.log(s"Add $value").flatMap(_⇒{
+      rootPtr.readOpt().flatMap(
+        _.map(_.add(value, rootPtr))
+          .getOrElse(rootPtr.write(TreeSetNode(value))))
+    })
   }
 
   def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
-    rootPtr.readOpt().flatMap(
-      _.map(r => {
-        try {
-          r.remove(value, rootPtr).map(_ => true).recover({ case _: NoSuchElementException => false })
-        } catch {
-          case _: NoSuchElementException => Future.successful(false)
-        }
-      }).getOrElse(Future.successful(false)
-      ))
+    ctx.log(s"Remove $value").flatMap(_⇒{
+      rootPtr.readOpt().flatMap(
+        _.map(r => {
+          try {
+            r.remove(value, rootPtr).map(_ => true).recover({ case _: NoSuchElementException => false })
+          } catch {
+            case _: NoSuchElementException => Future.successful(false)
+          }
+        }).getOrElse(Future.successful(false)
+        ))
+    })
   }
 
   def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
-    rootPtr.readOpt().flatMap(_.map(_.contains(value)).getOrElse(Future.successful(false)))
+    ctx.log(s"Contains $value").flatMap(_⇒{
+      rootPtr.readOpt().flatMap(_.map(_.contains(value)).getOrElse(Future.successful(false)))
+    })
   }
 
   def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {

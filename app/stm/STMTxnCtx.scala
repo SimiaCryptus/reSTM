@@ -21,7 +21,9 @@ package stm
 
 import storage.Restm
 import storage.Restm._
+import storage.actors.ActorLog
 import util.Util
+import util.Util.{chainEx, monitorFuture}
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration.{Duration, _}
@@ -30,13 +32,19 @@ import scala.reflect.ClassTag
 
 class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxnCtx]) {
 
-  private lazy val txnId = cluster.newTxn(priority)
+  private[stm] lazy val txnId = cluster.newTxn(priority)
   private[stm] val defaultTimeout: Duration = 5.seconds
   private[this] val writeLocks = new TrieMap[PointerType, Future[Boolean]]()
   private[stm] val readCache: TrieMap[PointerType, Future[Option[_]]] = new TrieMap()
   private[stm] val initCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   private[stm] val writeCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   var isClosed = false
+
+  final def log(msg: ⇒String)(implicit executionContext: ExecutionContext): Future[Unit] = chainEx("Transaction Exception") {
+    monitorFuture("STMTxn.txnLog") {
+      txnId.flatMap(id⇒ActorLog.log(s"$id - $msg"))
+    }
+  }
 
   def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] =
     txnId.flatMap(cluster.newPtr(_, Restm.value(value)).map(ptr => {

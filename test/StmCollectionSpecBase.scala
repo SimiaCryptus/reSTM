@@ -99,7 +99,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   }
 
   s"TreeSet via ${getClass.getSimpleName}" must {
-    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
+    def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12)).distinct
 
     List(1, 10, 100, 1000).foreach(items => s"synchronous insert and verify with $items items" in {
       val collection = new TreeSet[String](new PointerType)
@@ -118,7 +118,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
       }
       println(JacksonValue.simple(Util.getMetrics).pretty)
     })
-    List(1, 5, 10).foreach(threads =>
+    List(1).foreach(threads =>
       s"concurrent add, verify, and remove 1000 items with $threads threads" in {
         val threadPool = Executors.newFixedThreadPool(threads)
         try {
@@ -126,14 +126,14 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
           val collection = new TreeSet[String](new PointerType)
           // Bootstrap collection synchronously to control contention
           val sync: collection.AtomicApi#SyncApi = collection.atomic.sync(30.seconds)
-          for (item <- randomUUIDs.take(10)) {
+          for (item <- randomUUIDs.take(100)) {
             sync.contains(item) mustBe false
             sync.add(item)
             sync.contains(item) mustBe true
           }
           // Run concurrent add/delete tests
           val executionContext2 = ExecutionContext.fromExecutor(threadPool)
-          val futures = for (item <- randomUUIDs.take(1000).distinct) yield Future {
+          val futures = for (item <- randomUUIDs.slice(100,1100).distinct) yield Future {
             try {
               sync.contains(item) mustBe false
               for (_ <- 0 until 10) {
@@ -269,57 +269,65 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
     List(10, 100, 1000, 10000).foreach(items => {
       s"synchronous add and remove with $items items" in {
-        val collection = LinkedList.static[String](new PointerType)
-        val input: List[String] = randomUUIDs.take(items).toList
-        input.foreach(collection.atomic().sync.add(_))
-        val output = Stream.continually(collection.atomic().sync.remove()).takeWhile(_.isDefined).map(_.get).toList
-        output mustBe input
-        println(JacksonValue.simple(Util.getMetrics).pretty)
+        try {
+          val collection = LinkedList.static[String](new PointerType)
+          val input: List[String] = randomUUIDs.take(items).toList
+          input.foreach(collection.atomic().sync.add(_))
+          val output = Stream.continually(collection.atomic().sync.remove()).takeWhile(_.isDefined).map(_.get).toList
+          output mustBe input
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+        }
       }
     })
     List(10, 100, 1000, 10000).foreach(items => {
       s"concurrent add and remove with $items items" in {
-        val threadCount = 20
-        val syncTimeout = 60.seconds
-        val maxRetries = 100
-        val totalTimeout = 5.minutes
+        try {
+          val threadCount = 20
+          val syncTimeout = 60.seconds
+          val maxRetries = 100
+          val totalTimeout = 5.minutes
 
-        val input = randomUUIDs.take(items).toSet
-        val output = new mutable.HashSet[String]()
-        val inputBuffer = new mutable.HashSet[String]()
-        inputBuffer ++= input
-        val collection = LinkedList.static[String](new PointerType)
-        val threads = (0 to threadCount).map(_ => new Thread(new Runnable {
-          override def run(): Unit = {
-            input.filter(x => inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
-              collection.atomic(maxRetries = maxRetries).sync(syncTimeout).add(input)
-              collection.atomic(maxRetries = maxRetries).sync(syncTimeout).remove().map(x => output.synchronized(output += x))
-            })
+          val input = randomUUIDs.take(items).toSet
+          val output = new mutable.HashSet[String]()
+          val inputBuffer = new mutable.HashSet[String]()
+          inputBuffer ++= input
+          val collection = LinkedList.static[String](new PointerType)
+          val threads = (0 to threadCount).map(_ => new Thread(new Runnable {
+            override def run(): Unit = {
+              input.filter(x => inputBuffer.synchronized(inputBuffer.remove(x))).foreach(input => {
+                collection.atomic(maxRetries = maxRetries).sync(syncTimeout).add(input)
+                collection.atomic(maxRetries = maxRetries).sync(syncTimeout).remove().map(x => output.synchronized(output += x))
+              })
+            }
+          }))
+          threads.foreach(_.start())
+
+          def now = new Date()
+
+          val timeout = new Date(now.getTime + totalTimeout.toMillis)
+          while (threads.exists(_.isAlive)) {
+            if (!timeout.after(now)) throw new RuntimeException("Time Out")
+            Thread.sleep(100)
           }
-        }))
-        threads.foreach(_.start())
-
-        def now = new Date()
-
-        val timeout = new Date(now.getTime + totalTimeout.toMillis)
-        while (threads.exists(_.isAlive)) {
-          if (!timeout.after(now)) throw new RuntimeException("Time Out")
-          Thread.sleep(100)
+          input.size mustBe output.size
+          input mustBe output
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
         }
-        println(JacksonValue.simple(Util.getMetrics).pretty)
-        input.size mustBe output.size
-        input mustBe output
-        println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
     List(10, 100, 1000, 10000).foreach(items => {
       s"stream iteration with $items items" in {
-        val collection = LinkedList.static[String](new PointerType)
-        val input: List[String] = randomUUIDs.take(items).toList
-        input.foreach(collection.atomic().sync.add(_))
-        val output = collection.atomic().sync.stream().toList
-        input mustBe output
-        println(JacksonValue.simple(Util.getMetrics).pretty)
+        try {
+          val collection = LinkedList.static[String](new PointerType)
+          val input: List[String] = randomUUIDs.take(items).toList
+          input.foreach(collection.atomic().sync.add(_))
+          val output = collection.atomic().sync.stream().toList
+          input mustBe output
+        } finally {
+          println(JacksonValue.simple(Util.getMetrics).pretty)
+        }
       }
     })
   }

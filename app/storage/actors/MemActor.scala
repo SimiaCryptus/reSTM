@@ -36,12 +36,12 @@ object MemActor {
 
 }
 
-class MemActor(name: PointerType)(implicit exeCtx: ExecutionContext) extends ActorQueue {
+class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implicit exeCtx: ExecutionContext) extends ActorQueue {
 
 
   val history = new scala.collection.mutable.ArrayBuffer[HistoryRecord]()
   val rwlock = new Object()
-  private[this] var lastRead: Option[TimeStamp] = None
+  //private[this] var lastRead: Option[TimeStamp] = None
   private[actors] var writeLock: Option[TimeStamp] = None
   private[this] var staleCommit: Option[TimeStamp] = None
   private[this] var queuedValue: Option[ValueType] = None
