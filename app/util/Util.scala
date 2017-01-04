@@ -28,14 +28,14 @@ import storage.TransactionConflict
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success, Try}
 
 
 object Util {
   val codeMetricsData = new TrieMap[String, CodeMetrics]()
   val scalarData = new TrieMap[String, AtomicDouble]()
-  private[util] val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  private[util] val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("code-metrics-pool-%d").build()))
 
   def mod(a: Long, b: Int): Int = {
@@ -65,7 +65,7 @@ object Util {
 
   def monitorBlock[T](name: String)(f: => T): T = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).sync(f)
 
-  def monitorFuture[T](name: String)(f: => Future[T]): Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
+  def monitorFuture[T](name: String)(f: => Future[T])(implicit executionContext: ExecutionContext): Future[T] = codeMetricsData.getOrElseUpdate(name, new CodeMetrics).future(f)
 
   def chainEx[T](str: => String, verbose: Boolean = true)(f: => Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
     val stackTrace: Array[StackTraceElement] = Thread.currentThread().getStackTrace
@@ -109,7 +109,7 @@ class CodeMetrics {
     result.get
   }
 
-  def future[T](f: => Future[T]): Future[T] = {
+  def future[T](f: => Future[T])(implicit executionContext: ExecutionContext): Future[T] = {
     val start = now
     invokeCount.incrementAndGet()
     val result = f
@@ -120,7 +120,7 @@ class CodeMetrics {
       case Failure(_) =>
         errorCount.incrementAndGet()
         totalTime.addAndGet((now - start).toUnit(TimeUnit.SECONDS))
-    })(executionContext)
+    })
     result
   }
 

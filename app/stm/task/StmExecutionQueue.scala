@@ -33,9 +33,9 @@ import scala.util.{Failure, Try}
 
 object StmExecutionQueue {
   private var default: StmExecutionQueue = _
+  private implicit def executionContext = StmDaemons.executionContext
 
   def init()(implicit cluster: Restm): Future[StmExecutionQueue] = {
-    implicit def executionContext = StmDaemons.executionContext
     new STMTxn[StmExecutionQueue] {
       override def txnLogic()(implicit ctx: STMTxnCtx): Future[StmExecutionQueue] = {
         TaskQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
@@ -91,7 +91,7 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
           val future = runTask(cluster)
           val result = Await.result(future, 10.minutes)
           if (!result) {
-            Thread.sleep(Math.min((now - lastExecuted).toMillis, 500))
+            Thread.sleep(Math.min(1 + (now - lastExecuted).toMillis / 2, 500))
           } else {
             lastExecuted = now
           }

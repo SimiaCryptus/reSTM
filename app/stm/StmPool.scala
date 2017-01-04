@@ -21,9 +21,11 @@ package stm
 
 import java.util.concurrent.Executors
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder
+
 import scala.concurrent.ExecutionContext
 
 object StmPool {
-  val pool = Executors.newFixedThreadPool(4)
-  val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
+  private[stm] lazy val pool = Executors.newFixedThreadPool(8, new ThreadFactoryBuilder().setNameFormat("stm-pool-%d").build())
+  private[stm] lazy val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 }

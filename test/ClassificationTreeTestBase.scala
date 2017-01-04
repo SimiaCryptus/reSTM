@@ -59,13 +59,13 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 
   override def afterEach() {
     super.afterEach()
-    val _ = {
-      implicit val executionContext = ExecutionContext.fromExecutor(pool)
-      Await.result(StmDaemons.stop(), 30.seconds)
-      Util.clearMetrics()
-    }
+    Await.result(StmDaemons.stop(), 30.seconds)
+    Util.clearMetrics()
     pool.shutdownNow()
     pool.awaitTermination(1, TimeUnit.MINUTES)
+    pool = null
+    println("Shutdown complete")
+    Thread.sleep(1000)
   }
 
   def cluster: Restm

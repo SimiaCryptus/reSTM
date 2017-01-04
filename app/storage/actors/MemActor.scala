@@ -23,6 +23,7 @@ import storage.Restm._
 import storage.TransactionConflict
 import util.Util
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
@@ -49,6 +50,18 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
   override def toString = s"ptr@$objId:$name#${history.size}#$messageNumber"
 
   private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
+
+  def collectGarbage(): Future[Int] = Util.monitorFuture("MemActor.gc") {
+    withActor {
+      val head = history.maxBy(_.time)
+      val garbage = history.filter(_.time.age > 15.seconds).filter(_!=head).toArray
+      garbage.map(item⇒history.remove(history.indexOf(item))).size
+    }.andThen({
+      case Success(items) =>
+        logMsg(s"collectGarbage removed $items items")
+      case Failure(e) => logMsg(s"collectGarbage failed - $e")
+    })
+  }
 
   def getCurrentValue: Future[Option[(TimeStamp, ValueType)]] = Util.monitorFuture("MemActor.getCurrentValue") {
     withActor {

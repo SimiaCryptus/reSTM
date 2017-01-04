@@ -45,28 +45,23 @@ object StmDaemons {
   val config: LinkedList[DaemonConfig] = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String, Thread]
   private[this] var mainThread: Option[Thread] = None
-  private[this] val pool = new ThreadPoolExecutor(32, 128, 5L, TimeUnit.SECONDS,
+  private[this] lazy val pool = new ThreadPoolExecutor(8, 32, 5L, TimeUnit.SECONDS,
     new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
     new ThreadFactoryBuilder().setNameFormat("daemon-pool-%d").build())
-  private[task] val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
+  private[task] implicit lazy val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 
   def start()(implicit cluster: Restm): Unit = {
     if (mainThread.filter(_.isAlive).isEmpty) mainThread = Option({
-
-
       Await.result(StmExecutionQueue.init()(cluster), 30.seconds)
       val thread: Thread = new Thread(new Runnable {
         override def run(): Unit = {
-          implicit def _exe: ExecutionContext = executionContext
-
           try {
             while (!Thread.interrupted()) {
-              startAll()
+              startAll()(cluster)
               Thread.sleep(1000)
             }
           } finally {
             daemonThreads.values.foreach(_.interrupt())
-            pool.shutdown()
             StmExecutionQueue.reset()
           }
         }
@@ -77,7 +72,7 @@ object StmDaemons {
     })
   }
 
-  private[this] def startAll()(implicit cluster: Restm, executionContext: ExecutionContext) = {
+  private[this] def startAll()(implicit cluster: Restm) = {
     daemonThreads.filter(!_._2.isAlive).forall(t => daemonThreads.remove(t._1, t._2))
     config.atomic().sync.stream().foreach(item => {
       daemonThreads.getOrElseUpdate(item.name, {
@@ -93,12 +88,12 @@ object StmDaemons {
     })
   }
 
-  def stop()(implicit executionContext: ExecutionContext): Future[Unit] = {
+  def stop(): Future[Unit] = {
     mainThread.foreach(_.interrupt())
     join()
   }
 
-  def join()(implicit executionContext: ExecutionContext): Future[Unit] = {
+  def join(): Future[Unit] = {
     val promise: Promise[Unit] = Promise[Unit]
 
     def isMainAlive: Boolean = mainThread.exists(_.isAlive)

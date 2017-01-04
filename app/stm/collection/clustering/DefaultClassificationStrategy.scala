@@ -41,7 +41,7 @@ object DefaultClassificationStrategy {
 case class DefaultClassificationStrategy(
                                           branchThreshold: Int = 8
                                         ) extends ClassificationStrategy {
-  private implicit val _executionContext = DefaultClassificationStrategy.workerPool
+  private implicit def _executionContext = DefaultClassificationStrategy.workerPool
   def getRule(values: Stream[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val valuesList = values.take(100).toList
     val fieldResults = valuesList.flatMap(_.value.attributes.keys).toSet.map((field: String) => Future {

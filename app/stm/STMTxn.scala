@@ -32,7 +32,7 @@ import storage.{Restm, TransactionConflict}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
-import scala.util.{Random, Try}
+import scala.util.Random
 
 trait STMTxn[+R] extends STMTxnInstrumentation {
   private implicit def executionContext = StmPool.executionContext
@@ -58,10 +58,8 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
         val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
         chainEx("Transaction Exception") {
           metrics.numberAttempts.incrementAndGet()
-          Future.fromTry{ Try {
-            txnLogic()(ctx)
-          } }
-            .flatMap(x => x)
+          Future{ txnLogic()(ctx) }
+            .flatMap((x: Future[R]) => x)
             .flatMap(result => {
               if (allowCompletion) {
                 val totalTime = age
@@ -128,6 +126,6 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
 
 object STMTxn {
 
-  private[STMTxn] val retryPool = Executors.newScheduledThreadPool(2, new ThreadFactoryBuilder().setNameFormat("txn-retry-%d").build())
+  private[STMTxn] lazy val retryPool = Executors.newScheduledThreadPool(4, new ThreadFactoryBuilder().setNameFormat("txn-retry-%d").build())
 
 }

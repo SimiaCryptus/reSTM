@@ -34,13 +34,13 @@ import scala.concurrent.duration._
 import scala.util.Success
 
 object RestmActors {
-  var IDLE_PTR_TIME = 15
+  var IDLE_PTR_TIME = 600
 }
 
 class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmInternal {
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(
     // Executors.newCachedThreadPool(
-    Executors.newFixedThreadPool(32,
+    Executors.newFixedThreadPool(8,
       new ThreadFactoryBuilder().setNameFormat("storage-actor-pool-%d").build()))
   val freezeThread: Thread = {
     val thread: Thread = new Thread(new Runnable {
@@ -51,6 +51,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
               item match {
                 case id: PointerType =>
                   val task = getPtrActor(id, None).map(actor => {
+                    actor.collectGarbage()
                     val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
                     if (recordsToUpload.nonEmpty) monitorBlock("Restm.coldStorage.store") {
                       coldStorage.store(id, recordsToUpload.map(record => record.time -> record.value).toMap)
@@ -58,7 +59,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
                       ActorLog.log(s"$actor Persisted")
 
                       expireQueue.schedule(new Runnable {
-                        var prevTxns: Set[TimeStamp] = actor.history.map(_.time).toSet
+                        var prevTxns: Set[TimeStamp] = actor.history.filter(_!=null).map(_.time).toArray.toSet
                         var lastRead: TimeStamp = actor.lastRead.get
                         override def run(): Unit = {
                           actor.withActor {
@@ -89,7 +90,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
           } catch {
             case e: Throwable => e.printStackTrace()
           }
-          Thread.sleep(0)
+          Thread.sleep(10)
         }
       }
     })
