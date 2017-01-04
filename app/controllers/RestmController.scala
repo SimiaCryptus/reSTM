@@ -139,7 +139,8 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
 
   def _lock(id: String, time: String): Action[AnyContent] = Action.async {
     Util.monitorFuture("RestmController._lock") {
-      storageService.internal._lockValue(new PointerType(id), new TimeStamp(time)).map(x => x.map(_.toString).map(Ok(_)).getOrElse(Ok("")))
+      val future: Future[Option[TimeStamp]] = storageService.internal._lockValue(new PointerType(id), new TimeStamp(time))
+      future.map(x => x.map(_.toString).map(Ok(_)).getOrElse(Ok("")))
     }
   }
 

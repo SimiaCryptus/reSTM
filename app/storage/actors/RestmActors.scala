@@ -34,7 +34,7 @@ import scala.concurrent.duration._
 import scala.util.Success
 
 object RestmActors {
-  var IDLE_PTR_TIME = 90
+  var IDLE_PTR_TIME = 15
 }
 
 class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmInternal {
@@ -68,7 +68,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
                             if (!hasNewCommit) {
                               if(isReadActive) {
                                 lastRead = actor.lastRead.get
-                                expireQueue.schedule(this, 5, TimeUnit.SECONDS)
+                                expireQueue.schedule(this, RestmActors.IDLE_PTR_TIME, TimeUnit.SECONDS)
                               } else if (!isWriteLocked) {
                                 ActorLog.log(s"Removed $id from active memory")
                                 ptrs2.remove(id)
@@ -89,7 +89,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
           } catch {
             case e: Throwable => e.printStackTrace()
           }
-          Thread.sleep(10)
+          Thread.sleep(0)
         }
       }
     })

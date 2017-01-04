@@ -78,7 +78,7 @@ class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 
   val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
   private val pool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 }
 
 

@@ -118,7 +118,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
       }
       println(JacksonValue.simple(Util.getMetrics).pretty)
     })
-    List(1).foreach(threads =>
+    List(5).foreach(threads =>
       s"concurrent add, verify, and remove 1000 items with $threads threads" in {
         val threadPool = Executors.newFixedThreadPool(threads)
         try {
@@ -162,7 +162,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
     def randomUUIDs = Stream.continually(randomStr)
 
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100, 1000).foreach(items => {
       s"synchronous add and get with $items items" in {
         val collection = new TreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -172,7 +172,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         println(JacksonValue.simple(Util.getMetrics).pretty)
       }
     })
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100, 1000).foreach(items => {
       s"insert and toList with $items items" in {
         val collection = new TreeCollection[String](new PointerType)
         val input = randomUUIDs.take(items).toSet
@@ -267,7 +267,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   s"SimpleLinkedList via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
 
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100, 1000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         try {
           val collection = LinkedList.static[String](new PointerType)
@@ -280,7 +280,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         }
       }
     })
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100, 1000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         try {
           val threadCount = 20
@@ -334,7 +334,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
 
   s"IdQueue via ${getClass.getSimpleName}" must {
     def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(12))
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100, 1000).foreach(items => {
       s"synchronous add and remove with $items items" in {
         try {
           val collection = TaskQueue.createSync[TestValue](8)
@@ -358,7 +358,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         }
       }
     })
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100, 1000).foreach(items => {
       s"concurrent add and remove with $items items" in {
         val syncTimeout = 60.seconds
         try {
@@ -386,7 +386,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
         }
       }
     })
-    List(10, 100, 1000, 10000).foreach(items => {
+    List(10, 100).foreach(items => {
       s"stream iteration with $items items" in {
         try {
           val collection = TaskQueue.createSync[TestValue](8)
