@@ -45,8 +45,8 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
-  val itemCounts = List(1, 1000)
-  val threadCounts = List(1, 8)
+  val itemCounts = List(1,100)
+  val threadCounts = List(1,8)
 
 
   s"BatchedTreeCollection via ${getClass.getSimpleName}" must {
@@ -66,22 +66,26 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
               }).toSet
             }
             val input = randomUUIDs.take(items).toSet.filterNot(bootstrap.contains)
-            withPool(numThreads = threads) { executionContext ⇒ {
-              implicit val _e = executionContext
-              Await.result(Future.sequence(
-                input.map(List(_)).map(x ⇒ {
-                  collection.atomic().add(x)
-                })
-              ), 30.seconds)
-            }}
+            def insert() = {
+              withPool(numThreads = threads) { executionContext ⇒ {
+                implicit val _e = executionContext
+                Await.result(Future.sequence(
+                  input.map(List(_)).map(x ⇒ {
+                    collection.atomic().add(x)
+                  })
+                ), 30.seconds)
+              }}
+            }
             def verify(input: Set[String], output: Set[String]) = {
               output.filterNot(bootstrap.contains).size mustBe input.size
               output.filterNot(bootstrap.contains) mustBe input
             }
             val result = {
               implicit val _e = executionContext
+              insert()
               verify(input, Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).flatMap(_.get).toSet)
-              //verify(input, collection.atomic().stream().toSet)
+              insert()
+              verify(input, collection.atomic().stream().toSet)
             }
           } finally {
             println(JacksonValue.simple(Util.getMetrics).pretty)
@@ -359,5 +363,3 @@ class LocalClusterStmCollectionSpec extends StmCollectionSpecBase with BeforeAnd
     shards.foreach(_.clear())
   }
 }
-
-//class ServletStmCollectionSpec extends StmCollectionSpecBase with OneServerPerSuite
