@@ -74,7 +74,7 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
     })
   }
 
-  def getValue(time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = //Util.monitorFuture("MemActor.getValue")
+  def getValue(time: TimeStamp): Future[Option[ValueType]] = //Util.monitorFuture("MemActor.getValue")
   {
     if (MemActor.safeRead) {
       withActor {
@@ -87,8 +87,8 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
           Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
         }
         Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
-        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_ == null)
-        logMsg(s"getValue($time, $ifModifiedSince) $result")
+        val result: Option[ValueType] = record.map(_.value).filterNot(_ == null)
+        logMsg(s"getValue($time) $result")
         result
       }
     } else {
@@ -96,8 +96,8 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
         val record: Option[HistoryRecord] = history.synchronized {
           Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
         }
-        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_ == null)
-        logMsg(s"getValue($time, $ifModifiedSince) $result")
+        val result: Option[ValueType] = record.map(_.value).filterNot(_ == null)
+        logMsg(s"getValue($time) $result")
         Future.successful(result)
       } else {
         rwlock.synchronized {
@@ -110,8 +110,8 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
         val record: Option[HistoryRecord] = history.synchronized {
           Option(history.lastIndexWhere(_.time <= time)).filter(_ >= 0).map(history(_))
         }
-        val result: Option[ValueType] = record.filter(_.time >= ifModifiedSince.getOrElse(new TimeStamp(0l))).map(_.value).filterNot(_ == null)
-        logMsg(s"getValue($time, $ifModifiedSince) $result")
+        val result: Option[ValueType] = record.map(_.value).filterNot(_ == null)
+        logMsg(s"getValue($time) $result")
         Future.successful(result)
       }
     }

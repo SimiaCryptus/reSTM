@@ -30,7 +30,7 @@ import scala.concurrent.duration.{Duration, _}
 import scala.concurrent.{Await, Future}
 import scala.reflect.ClassTag
 
-class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxnCtx]) {
+class STMTxnCtx(val cluster: Restm, val priority: Duration) {
   private implicit def executionContext = StmPool.executionContext
 
   private[stm] lazy val txnId = cluster.newTxn(priority)
@@ -82,20 +82,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     writeCache.get(id).orElse(initCache.get(id))
       .map(x => Future.successful(x.map(_.asInstanceOf[T]))).getOrElse(
       readCache.getOrElseUpdate(id,
-        txnId.flatMap(txnId => {
-          //          def previousValue: Option[T] = prior.flatMap(_.readCache.get(id)
-          //            .filter(_.isCompleted)
-          //            .map(_.recover({ case _ => None }))
-          //            .flatMap(Await.result(_, 0.millisecond))
-          //            .map(_.asInstanceOf[T]))
-          //          val previousTime: Option[TimeStamp] = prior.map(_.txnId)
-          //            .map(_.recover({ case _ => None }))
-          //            .filter(_.isCompleted)
-          //            .map(Await.result(_, 0.millisecond))
-          //            .map(_.asInstanceOf[TimeStamp])
-          //          cluster.getPtr(id, txnId, previousTime).map(_.flatMap(_.deserialize[T]()).orElse(previousValue))
-          cluster.getPtr(id, txnId).map(_.flatMap(_.deserialize[T]()))
-        })
+        txnId.flatMap(txnId => { cluster.getPtr(id, txnId).map(_.flatMap(_.deserialize[T]())) })
       ).map(_.map(_.asInstanceOf[T])))
   }
 

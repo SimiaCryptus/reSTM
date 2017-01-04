@@ -44,8 +44,8 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
       Future.failed(e)
   })
 
-  override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
-    internal._getValue(id, time, ifModifiedSince).recoverWith({
+  override def getPtr(id: PointerType, time: TimeStamp): Future[Option[ValueType]] =
+    internal._getValue(id, time).recoverWith({
       case e: TransactionConflict if null != e.conflitingTxn && e.conflitingTxn.age > txnTimeout =>
         cleanup(e.conflitingTxn).flatMap(_ => Future.failed(e))
       case e: TransactionConflict =>

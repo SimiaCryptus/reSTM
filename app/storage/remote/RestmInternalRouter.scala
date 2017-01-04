@@ -42,8 +42,8 @@ trait RestmInternalRouter extends RestmInternal {
   override def _initValue(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean] =
     inner(id)._initValue(time, value, id)
 
-  override def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
-    inner(id)._getValue(id, time, ifModifiedSince)
+  override def _getValue(id: PointerType, time: TimeStamp): Future[Option[ValueType]] =
+    inner(id)._getValue(id, time)
 
   override def _addLock(id: PointerType, time: TimeStamp): Future[String] =
     inner(time)._addLock(id, time)

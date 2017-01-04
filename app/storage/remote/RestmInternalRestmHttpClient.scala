@@ -60,10 +60,8 @@ class RestmInternalRestmHttpClient(val baseUrl: String)(implicit executionContex
     })
   }
 
-  override def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = monitorFuture("RestmInternalRestmHttpClient._getValue") {
-    var req: Req = (url(baseUrl) / "_mem" / "get" / id.toString).addQueryParameter("time", time.toString)
-    req = ifModifiedSince.map(ifModifiedSince => req.addQueryParameter("ifModifiedSince", ifModifiedSince.toString))
-      .getOrElse(req)
+  override def _getValue(id: PointerType, time: TimeStamp): Future[Option[ValueType]] = monitorFuture("RestmInternalRestmHttpClient._getValue") {
+    val req: Req = (url(baseUrl) / "_mem" / "get" / id.toString).addQueryParameter("time", time.toString)
     Http(req > { response => {
       response.getStatusCode match {
         case 200 => Option(new ValueType(response.getResponseBody))

@@ -74,7 +74,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   def getValue(id: String, time: Option[String], ifModifiedSince: Option[String]): Action[AnyContent] = Action.async {
     Util.monitorFuture("RestmController.getValue") {
       val value = if (time.isDefined) {
-        storageService.getPtr(new PointerType(id), new TimeStamp(time.get), ifModifiedSince.map(new TimeStamp(_)))
+        storageService.getPtr(new PointerType(id), new TimeStamp(time.get))
       } else {
         storageService.getPtr(new PointerType(id))
       }
@@ -160,7 +160,7 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
   def _getValue(id: String, time: Option[String], ifModifiedSince: Option[String]): Action[AnyContent] = Action.async {
     Util.monitorFuture("RestmController._getValue") {
       if (time.isDefined) {
-        storageService.internal._getValue(new PointerType(id), new TimeStamp(time.get), ifModifiedSince.map(new TimeStamp(_)))
+        storageService.internal._getValue(new PointerType(id), new TimeStamp(time.get))
           .map(x => Ok(x.map(_.toString).getOrElse(""))).recover({
           case e: TransactionConflict => Conflict(e.conflitingTxn.toString)
           case e: Throwable => throw e

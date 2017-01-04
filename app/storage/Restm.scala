@@ -52,7 +52,7 @@ trait Restm {
 
   @throws[TransactionConflict] def getPtr(id: PointerType): Future[Option[ValueType]]
 
-  @throws[TransactionConflict] def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp] = None): Future[Option[ValueType]]
+  @throws[TransactionConflict] def getPtr(id: PointerType, time: TimeStamp): Future[Option[ValueType]]
 
   def newTxn(priority: Duration = 0.seconds): Future[TimeStamp]
 

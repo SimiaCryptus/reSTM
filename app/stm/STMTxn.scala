@@ -53,9 +53,8 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
     metrics.callSites.getOrElseUpdate(caller, new AtomicInteger(0)).incrementAndGet()
     monitorFuture("STMTxn.txnRun") {
       val opId = UUID.randomUUID().toString
-
-      def _txnRun(retryNumber: Int, prior: Option[STMTxnCtx]): Future[R] = {
-        val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds, prior)
+      def _txnRun(retryNumber: Int = 0): Future[R] = {
+        val ctx: STMTxnCtx = new STMTxnCtx(cluster, priority + 0.milliseconds)
         chainEx("Transaction Exception") {
           metrics.numberAttempts.incrementAndGet()
           Future{ txnLogic()(ctx) }
@@ -86,9 +85,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
               val promisedFuture = Promise[Future[R]]()
               STMTxn.retryPool.schedule(new Callable[Future[R]] {
                 override def call(): Future[R] = {
-                  val future = _txnRun(retryNumber + 1, Option(ctx)
-                    .filter(_ => false) // TODO: Seems to be a problem enabling this
-                  )
+                  val future = _txnRun(retryNumber + 1)
                   promisedFuture.success(future)
                   future
                 }
@@ -108,8 +105,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
               Future.failed(new RuntimeException(s"Failed operation $opId after $retryNumber attempts, ${toString(e)}"))
           })
       }
-
-      _txnRun(0, None)
+      _txnRun()
     }
   }
 

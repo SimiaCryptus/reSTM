@@ -32,7 +32,7 @@ trait RestmInternal {
 
   def _getValue(id: PointerType): Future[Option[ValueType]]
 
-  def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]]
+  def _getValue(id: PointerType, time: TimeStamp): Future[Option[ValueType]]
 
   def _initValue(time: TimeStamp, value: ValueType, id: PointerType): Future[Boolean]
 

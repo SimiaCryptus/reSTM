@@ -188,8 +188,8 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     getPtrActor(id, None).flatMap(_.getCurrentValue.map(_.map(_._2)))
   }
 
-  def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = {
-    getPtrActor(id, Option(time)).flatMap(_.getValue(time, ifModifiedSince))
+  def _getValue(id: PointerType, time: TimeStamp): Future[Option[ValueType]] = {
+    getPtrActor(id, Option(time)).flatMap(_.getValue(time))
   }
 
   def _addLock(id: PointerType, time: TimeStamp): Future[String] = {

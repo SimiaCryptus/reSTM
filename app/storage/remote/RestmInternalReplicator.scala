@@ -53,8 +53,8 @@ trait RestmInternalReplicator extends RestmInternal {
       }
     })
 
-  override def _getValue(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] =
-    Future.find(inner().map(_._getValue(id, time, ifModifiedSince)))(_.isDefined).map(_.flatten)
+  override def _getValue(id: PointerType, time: TimeStamp): Future[Option[ValueType]] =
+    Future.find(inner().map(_._getValue(id, time)))(_.isDefined).map(_.flatten)
 
   override def _addLock(id: PointerType, time: TimeStamp): Future[String] =
     Future.sequence(inner().map(_._addLock(id, time).map(Option(_).filterNot(_.isEmpty).filterNot(_ == "OPEN"))))

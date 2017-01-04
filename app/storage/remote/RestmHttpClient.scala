@@ -72,9 +72,8 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
     }).map(_.get)
   }
 
-  override def getPtr(id: PointerType, time: TimeStamp, ifModifiedSince: Option[TimeStamp]): Future[Option[ValueType]] = monitorFuture("RestmHttpClient.getPtr") {
-    var req: Req = (url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString)
-    req = ifModifiedSince.map(ifModifiedSince => req.addQueryParameter("ifModifiedSince", ifModifiedSince.toString)).getOrElse(req)
+  override def getPtr(id: PointerType, time: TimeStamp): Future[Option[ValueType]] = monitorFuture("RestmHttpClient.getPtr") {
+    val req: Req = (url(baseUrl) / "mem" / id.toString).addQueryParameter("time", time.toString)
     Http(req > { response => {
       response.getStatusCode match {
         case 200 => Success(Option(new ValueType(response.getResponseBody)))
