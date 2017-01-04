@@ -46,20 +46,20 @@ abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
     "basic writes" in {
       val ptr = new STMPtr[String](new PointerType)
       Await.result(new STMTxn[Option[String]] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[String]] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[Option[String]] = {
           ptr.readOpt()
         }
-      }.txnRun(cluster)(executionContext), 30.seconds) mustBe None
+      }.txnRun(cluster), 30.seconds) mustBe None
       Await.result(new STMTxn[Unit] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[Unit] = {
           ptr.write("true")
         }
-      }.txnRun(cluster)(executionContext), 30.seconds)
+      }.txnRun(cluster), 30.seconds)
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           ptr.read()
         }
-      }.txnRun(cluster)(executionContext), 30.seconds) mustBe "true"
+      }.txnRun(cluster), 30.seconds) mustBe "true"
     }
   }
 
@@ -78,12 +78,12 @@ abstract class StmRecoverySpecBase extends WordSpec with MustMatchers {
       // Insert collection and expire transactions (never commit nor rollback)
       for (item <- Stream.continually(UUID.randomUUID().toString.take(6)).take(1).toList) Try {
         Await.result(new STMTxn[Unit] {
-          override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = Future {
+          override def txnLogic()(implicit ctx: STMTxnCtx) = Future {
             collection.sync.contains(item) mustBe false
             collection.sync.add(item)
             collection.sync.contains(item) mustBe true
           }
-        }.testAbandoned().txnRun(cluster)(executionContext), 30.seconds)
+        }.testAbandoned().txnRun(cluster), 30.seconds)
       }
       Thread.sleep(5000)
 
@@ -161,11 +161,12 @@ class ActorServletStmRecoverySpec extends StmRecoverySpecBase with OneServerPerS
 
 object StmRecoverySpecBase {
   def recursiveTask(counter: STMPtr[java.lang.Integer], n: Int)(cluster: Restm, executionContext: ExecutionContext): TaskResult[String] = {
+    implicit val _executionContext = executionContext
     Await.result(new STMTxn[Int] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[Int] = {
         counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
       }
-    }.txnRun(cluster)(executionContext), 100.milliseconds)
+    }.txnRun(cluster), 100.milliseconds)
     if (n > 1) {
       val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
       Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())

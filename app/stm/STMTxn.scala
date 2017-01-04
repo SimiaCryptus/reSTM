@@ -31,14 +31,16 @@ import storage.actors.ActorLog
 import storage.{Restm, TransactionConflict}
 
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{Future, Promise}
 import scala.util.{Random, Try}
 
 trait STMTxn[+R] extends STMTxnInstrumentation {
+  private implicit def executionContext = StmPool.executionContext
+
   private[this] val startTime = now
   private[this] var allowCompletion = true
 
-  def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[R]
+  def txnLogic()(implicit ctx: STMTxnCtx): Future[R]
 
   @VisibleForTesting
   def testAbandoned(): STMTxn[R] = {
@@ -46,7 +48,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
     this
   }
 
-  final def txnRun(cluster: Restm, maxRetry: Int = 50, priority: Duration = 0.seconds)(implicit executionContext: ExecutionContext): Future[R] = chainEx("Transaction Exception") {
+  final def txnRun(cluster: Restm, maxRetry: Int = 50, priority: Duration = 0.seconds): Future[R] = chainEx("Transaction Exception") {
     metrics.numberExecuted.incrementAndGet()
     metrics.callSites.getOrElseUpdate(caller, new AtomicInteger(0)).incrementAndGet()
     monitorFuture("STMTxn.txnRun") {
@@ -57,7 +59,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
         chainEx("Transaction Exception") {
           metrics.numberAttempts.incrementAndGet()
           Future.fromTry{ Try {
-            txnLogic()(ctx, executionContext)
+            txnLogic()(ctx)
           } }
             .flatMap(x => x)
             .flatMap(result => {

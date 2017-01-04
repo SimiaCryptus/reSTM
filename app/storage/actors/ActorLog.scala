@@ -20,6 +20,7 @@
 package storage.actors
 
 import java.io.{File, FileOutputStream, PrintWriter}
+import java.util.concurrent.Executors
 
 import util.Config
 
@@ -27,15 +28,17 @@ import scala.concurrent.{ExecutionContext, Future}
 
 
 object ActorLog extends ActorQueue {
+  val pool = Executors.newFixedThreadPool(1)
+  implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 
   private lazy val writer: PrintWriter = new PrintWriter(new FileOutputStream(file))
-  val enabled: Boolean = Config.getConfig("ActorLog").exists(java.lang.Boolean.parseBoolean)
+  val enabled: Boolean = true || Config.getConfig("ActorLog").exists(java.lang.Boolean.parseBoolean)
   private val file: File = new File(s"logs/actors.$now.log")
   private val start = now
 
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"ActorLog: $msg")
+  def logMsg(msg: String): Unit = log(s"ActorLog: $msg")
 
-  override def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = if (!enabled) Future.successful(Unit) else withActor {
+  override def log(str: String): Future[Unit] = if (!enabled) Future.successful(Unit) else withActor {
     writer.println(s"[$elapsed] " + str)
     writer.flush()
   }

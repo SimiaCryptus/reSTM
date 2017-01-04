@@ -35,7 +35,7 @@ trait ActorQueue {
 
   def close(): Unit = closed = true
 
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext)
+  def logMsg(msg: String)
 
   def withActor[T](f: => T)(implicit exeCtx: ExecutionContext): Future[T] = Util.chainEx("Error running actor task") {
     if (closed) throw new TransactionConflict(s"Actor ${ActorQueue.this} is closed")
@@ -68,7 +68,7 @@ trait ActorQueue {
     promise.future
   }
 
-  def log(str: String)(implicit exeCtx: ExecutionContext): Future[Unit] = ActorLog.log(str)
+  def log(str: String): Future[Unit] = ActorLog.log(str)
 
   protected def messageNumber: Int = processedMessages
 

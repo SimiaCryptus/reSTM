@@ -33,8 +33,9 @@ import scala.util.Random
 
 
 object TreeCollection {
+  private implicit def executionContext = StmPool.executionContext
 
-  def apply[T]()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+  def apply[T]()(implicit ctx: STMTxnCtx) =
     new TreeCollection(STMPtr.dynamicSync[Option[TreeCollectionNode[T]]](None))
 
   case class TreeCollectionNode[T]
@@ -44,7 +45,7 @@ object TreeCollection {
     right: Option[STMPtr[TreeCollectionNode[T]]] = None
   ) {
 
-    def apxSize(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
+    def apxSize(implicit ctx: STMTxnCtx): Future[Long] = {
       if (right.isEmpty && left.isEmpty) {
         Future.successful(1)
       } else if (right.isDefined && left.isDefined) {
@@ -60,15 +61,15 @@ object TreeCollection {
       }
     }
 
-    def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[T] = {
+    def min()(implicit ctx: STMTxnCtx): Future[T] = {
       right.map(_.read.flatMap(_.min)).getOrElse(Future.successful(value))
     }
 
-    def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[T] = {
+    def max()(implicit ctx: STMTxnCtx): Future[T] = {
       left.map(_.read.flatMap(_.max)).getOrElse(Future.successful(value))
     }
 
-    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(Option[TreeCollectionNode[T]], T)] = {
+    def get()(implicit ctx: STMTxnCtx): Future[(Option[TreeCollectionNode[T]], T)] = {
       val childResult: Option[Future[(Option[TreeCollectionNode[T]], T)]] = if (Random.nextBoolean()) {
         left.map(ptr => {
           ptr.read.flatMap(_.get()).flatMap(f => {
@@ -117,7 +118,7 @@ object TreeCollection {
       childResult.getOrElse(Future.successful((None, value)))
     }
 
-    def +=(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeCollectionNode[T]] = {
+    def +=(newValue: T)(implicit ctx: STMTxnCtx): Future[TreeCollectionNode[T]] = {
       if (Random.nextBoolean()) {
         left.map(leftPtr => {
           leftPtr.read.flatMap(_ += newValue).flatMap(leftPtr.write).map(_ => TreeCollectionNode.this)
@@ -142,29 +143,29 @@ object TreeCollection {
       case _ => false
     }
 
-    def sortTask(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]): Task[LinkedList[T]] = {
+    def sortTask(cluster: Restm)(implicit ordering: Ordering[T]): Task[LinkedList[T]] = {
       implicit val _cluster = cluster
       implicit val _executionContext = executionContext
       StmExecutionQueue.get().atomic.sync.add(sort())
     }
 
-    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Stream[T]] = {
+    def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Stream[T]] = {
       Future.sequence(List(
-        right.map(_.read().flatMap[Stream[T]](x => x.stream()(ctx, executionContext, classTag))).getOrElse(Future.successful(Stream.empty)),
+        right.map(_.read().flatMap[Stream[T]](x => x.stream()(ctx, classTag))).getOrElse(Future.successful(Stream.empty)),
         Future.successful(Stream(value)),
-        left.map(_.read().flatMap[Stream[T]](x => x.stream()(ctx, executionContext, classTag))).getOrElse(Future.successful(Stream.empty))
+        left.map(_.read().flatMap[Stream[T]](x => x.stream()(ctx, classTag))).getOrElse(Future.successful(Stream.empty))
       )).map(_.reduce(_ ++ _))
     }
 
     def sort()(cluster: Restm, executionContext: ExecutionContext)(implicit ordering: Ordering[T]): TaskResult[LinkedList[T]] = {
+      implicit val _cluster = cluster
+      implicit val _executionContext = executionContext
       val tasks: List[Task[LinkedList[T]]] = {
-        implicit val _cluster = cluster
-        implicit val _executionContext = executionContext
-        val leftList: Option[Task[LinkedList[T]]] = left.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster, executionContext))
-        val rightList: Option[Task[LinkedList[T]]] = right.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster, executionContext))
+        val leftList: Option[Task[LinkedList[T]]] = left.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster))
+        val rightList: Option[Task[LinkedList[T]]] = right.flatMap(_.atomic.sync.readOpt).map(_.sortTask(cluster))
         List(leftList, rightList).filter(_.isDefined).map(_.get)
       }
-      Task.TaskContinue(newFunction = (cluster, executionContext) => {
+      Task.TaskContinue(newFunction = (cluster, executionContext: ExecutionContext) => {
         implicit val _cluster = cluster
         implicit val _executionContext = executionContext
         val sources = tasks.map(_.atomic().sync.result())
@@ -188,22 +189,23 @@ object TreeCollection {
 }
 
 class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
+  private implicit def executionContext = StmPool.executionContext
 
   def this(ptr: PointerType) = this(new STMPtr[Option[TreeCollectionNode[T]]](ptr))
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
   def sync = new SyncApi(10.seconds)
 
-  def add(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+  def add(value: T)(implicit ctx: STMTxnCtx): Future[Unit] = {
     rootPtr.readOpt().map(_.flatten).flatMap(prev => {
       prev.map(r => r += value).getOrElse(Future.successful(new TreeCollectionNode[T](value)))
     }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
-  def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[T]] = {
+  def get()(implicit ctx: STMTxnCtx): Future[Option[T]] = {
     rootPtr.readOpt().map(_.flatten).flatMap(value => {
       value.map(_.get()).map(_.flatMap(newRootData => {
         rootPtr.write(newRootData._1).map(_ => Option(newRootData._2))
@@ -211,33 +213,33 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
     })
   }
 
-  def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Object] = {
+  def min(value: T)(implicit ctx: STMTxnCtx): Future[Object] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.min()).getOrElse(None)
     })
   }
 
-  def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Object] = {
+  def max(value: T)(implicit ctx: STMTxnCtx): Future[Object] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(_.max()).getOrElse(None)
     })
   }
 
-  def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]): Future[Task[LinkedList[T]]] = {
+  def sort()(implicit ctx: STMTxnCtx, ordering: Ordering[T]): Future[Task[LinkedList[T]]] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
-      prev.map(_.sortTask(ctx.cluster, executionContext)(ordering)).get
+      prev.map(_.sortTask(ctx.cluster)(ordering)).get
     })
   }
 
-  def apxSize()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
+  def apxSize()(implicit ctx: STMTxnCtx): Future[Long] = {
     rootPtr.readOpt().map(_.flatten).flatMap(_.map(_.apxSize).getOrElse(Future.successful(0)))
   }
 
-  def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Int] = {
+  def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Int] = {
     rootPtr.readOpt().map(_.flatten).flatMap(_.map(_.stream().map(_.size)).getOrElse(Future.successful(0)))
   }
 
-  def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Stream[T]] = {
+  def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Stream[T]] = {
     rootPtr.readOpt().map(_.flatten).flatMap(x => {
       x.map(_.stream()).getOrElse(Future.successful(Stream.empty))
     })
@@ -245,31 +247,31 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
 
   private def this() = this(new PointerType)
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
     def sync = new SyncApi(10.seconds)
 
     def add(key: T): Future[Unit.type] = atomic {
-      TreeCollection.this.add(key)(_, executionContext).map(_ => Unit)
+      TreeCollection.this.add(key)(_).map(_ => Unit)
     }
 
     def get(): Future[Option[T]] = atomic {
-      TreeCollection.this.get()(_, executionContext)
+      TreeCollection.this.get()(_)
     }
 
     def apxSize(): Future[Long] = atomic {
-      TreeCollection.this.apxSize()(_, executionContext)
+      TreeCollection.this.apxSize()(_)
     }
 
     def sort()(implicit ordering: Ordering[T]): Future[Task[LinkedList[T]]] = atomic {
-      TreeCollection.this.sort()(_, executionContext, ordering)
+      TreeCollection.this.sort()(_, ordering)
     }
 
     def toList()(implicit classTag: ClassTag[T]): Future[List[T]] = {
       atomic { (ctx: STMTxnCtx) => {
-        TreeCollection.this.stream()(ctx, executionContext, classTag).map(_.toList)
+        TreeCollection.this.stream()(ctx, classTag).map(_.toList)
       }
       }
     }
@@ -299,27 +301,27 @@ class TreeCollection[T](val rootPtr: STMPtr[Option[TreeCollectionNode[T]]]) {
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add(key: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
+    def add(key: T)(implicit ctx: STMTxnCtx): Unit = sync {
       TreeCollection.this.add(key)
     }
 
-    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[T] = sync {
+    def get()(implicit ctx: STMTxnCtx): Option[T] = sync {
       TreeCollection.this.get()
     }
 
-    def apxSize()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Long = sync {
+    def apxSize()(implicit ctx: STMTxnCtx): Long = sync {
       TreeCollection.this.apxSize()
     }
 
-    def size()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Int = sync {
+    def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Int = sync {
       TreeCollection.this.size()
     }
 
-    def sort()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, ordering: Ordering[T]): Task[LinkedList[T]] = sync {
+    def sort()(implicit ctx: STMTxnCtx, ordering: Ordering[T]): Task[LinkedList[T]] = sync {
       TreeCollection.this.sort()
     }
 
-    def stream()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Stream[T] = sync {
+    def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Stream[T] = sync {
       TreeCollection.this.stream()
     }
   }

@@ -37,7 +37,7 @@ class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: Exe
   def taskResult(id: String): Action[AnyContent] = Action.async {
     Util.monitorFuture("ExecutionController.taskResult") {
       val task: Task[AnyRef] = new Task[AnyRef](new PointerType(id))
-      val future: Future[AnyRef] = task.future(storageService, exec)
+      val future: Future[AnyRef] = task.future(storageService)
       future.map(result => Ok(JacksonValue(result).pretty).as("application/json"))
     }
   }
@@ -45,7 +45,7 @@ class ExecutionController @Inject()(actorSystem: ActorSystem)(implicit exec: Exe
   def taskInfo(id: String): Action[AnyContent] = Action.async {
     Util.monitorFuture("ExecutionController.taskInfo") {
       val task: Task[AnyRef] = new Task(new PointerType(id))
-      val trace: Future[TaskStatusTrace] = task.atomic()(storageService, exec).getStatusTrace(StmExecutionQueue.get())
+      val trace: Future[TaskStatusTrace] = task.atomic()(storageService).getStatusTrace(StmExecutionQueue.get())
       trace.map(result => Ok(JacksonValue(result).pretty).as("application/json"))
     }
   }

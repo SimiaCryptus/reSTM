@@ -73,7 +73,7 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
   def init() = Action {
     Util.monitorBlock("SystemController.init") {
       StmDaemons.start()(storageService)
-      StmExecutionQueue.get().registerDaemons(workers)(storageService, exec)
+      StmExecutionQueue.get().registerDaemons(workers)(storageService)
       Ok("Node started")
     }
   }

@@ -18,11 +18,18 @@
  */
 
 import org.scalatest.{MustMatchers, WordSpec}
+import stm.task.Identifiable
 import storage.types.{JacksonValue, KryoValue}
 
 import scala.reflect.ClassTag
 
-case class TestObj(name: String)
+case class TestObj(id:String) extends Identifiable {
+  override def toString: String = id.toString
+
+  override def hashCode(): Int = id.hashCode()
+
+  override def equals(obj: scala.Any): Boolean = obj.equals(id)
+}
 
 class JacksonValueSpec extends WordSpec with MustMatchers {
 

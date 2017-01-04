@@ -44,12 +44,13 @@ case class ClassificationTreeNode
   rule: Option[KryoValue[(ClassificationTreeItem) => Boolean]] = None
 ) {
 
+  private implicit def executionContext = StmPool.executionContext
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new NodeAtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) = new NodeAtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
-  def getInfo(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[NodeInfo] = {
+  def getInfo(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[NodeInfo] = {
     getTreeId(self, root).flatMap(id => {
       val nodeInfo = NodeInfo(self, id)
       parent.map(parent => parent.read().flatMap(_.getInfo(parent, root)).map(parent => nodeInfo.copy(parent = Option(parent))))
@@ -57,7 +58,7 @@ case class ClassificationTreeNode
     })
   }
 
-  def find(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[STMPtr[ClassificationTreeNode]]] = {
+  def find(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx): Future[Option[STMPtr[ClassificationTreeNode]]] = {
     if (rule.isDefined) {
       try {
         if (rule.get.deserialize().get(value)) {
@@ -75,7 +76,7 @@ case class ClassificationTreeNode
   }
 
   def add(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1)
-         (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+         (implicit ctx: STMTxnCtx): Future[Int] = {
     if (itemBuffer.isDefined) {
       itemBuffer.get.add(value.toArray.toList)
         .flatMap(_ => autosplit(self, strategy, maxSplitDepth))
@@ -84,14 +85,14 @@ case class ClassificationTreeNode
     }
   }
 
-  def firstNode(self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[ClassificationTreeNode]] = {
+  def firstNode(self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = {
     pass.orElse(fail).orElse(exception)
       .map(ptr => ptr.read().flatMap(_.firstNode(ptr)))
       .getOrElse(Future.successful(self))
   }
 
   def nextNode(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])
-              (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[STMPtr[ClassificationTreeNode]]] = {
+              (implicit ctx: STMTxnCtx): Future[Option[STMPtr[ClassificationTreeNode]]] = {
     parent.filterNot(_ => self == root).map(parentPtr => parentPtr.read().flatMap(parentNode => {
       (Option(self) match {
         case parentNode.pass => parentNode.fail.orElse(parentNode.exception)
@@ -109,7 +110,7 @@ case class ClassificationTreeNode
     })).getOrElse(Future.successful(None))
   }
 
-  def recursePath(self: STMPtr[ClassificationTreeNode], path: List[Int])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[ClassificationTreeNode]] = {
+  def recursePath(self: STMPtr[ClassificationTreeNode], path: List[Int])(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = {
     if (path.isEmpty) Future.successful(self)
     else {
       path.head match {
@@ -129,7 +130,7 @@ case class ClassificationTreeNode
     }
   }
 
-  def getByTreeId(cursor: Long, self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[ClassificationTreeNode]] = {
+  def getByTreeId(cursor: Long, self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = {
     require(0 <= cursor)
     if (1 == cursor) {
       Future.successful(self)
@@ -149,7 +150,7 @@ case class ClassificationTreeNode
     }
   }
 
-  def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
+  def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[Long] = {
     getTreeId_Minus1(self, root).map(_ + 1).flatMap(id⇒{
       root.read().flatMap(rootValue⇒{rootValue.getByTreeId(id, root)})
         .map((verifyNode: STMPtr[ClassificationTreeNode]) ⇒{
@@ -159,7 +160,7 @@ case class ClassificationTreeNode
     })
   }
 
-  def getTreeId_Minus1(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Long] = {
+  def getTreeId_Minus1(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[Long] = {
     parent.filterNot(_ => self == root)
       .map(parentPtr => parentPtr.read().flatMap(parentNode => {
         parentNode.getTreeId_Minus1(parent.get, root).map(parentId => {
@@ -173,13 +174,13 @@ case class ClassificationTreeNode
       })
   }
 
-  def stream(self: STMPtr[ClassificationTreeNode], duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Stream[LabeledItem] = {
+  def stream(self: STMPtr[ClassificationTreeNode], duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Stream[LabeledItem] = {
     Stream.iterate((0l, Stream.empty[LabeledItem]))(t => sync(duration = duration).nextBlock(t._1, self, self)).takeWhile(_._1 > -2).flatMap(_._2)
   }
 
   def sync = new SyncApi(10.seconds)
 
-  def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[(Long, Stream[LabeledItem])] = {
+  def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[(Long, Stream[LabeledItem])] = {
     if (cursor < 0) {
       Future.successful((cursor - 1) -> Stream.empty)
     } else {
@@ -204,7 +205,7 @@ case class ClassificationTreeNode
   private def this() = this(None, itemBuffer = None)
 
   private def autosplit(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
-                       (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+                       (implicit ctx: STMTxnCtx): Future[Int] = {
     if (splitTask.isEmpty && maxSplitDepth > 0 && strategy.split(itemBuffer.get)) {
       self.lock().flatMap(locked => {
         if (locked) {
@@ -226,13 +227,13 @@ case class ClassificationTreeNode
   }
 
   def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
-                   (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+                   (implicit ctx: STMTxnCtx): Future[Int] = {
     val results: Map[Int, List[LabeledItem]] = split(value)
     insert(self, strategy, maxSplitDepth, results)
   }
 
   def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, List[LabeledItem]])
-                    (implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+                    (implicit ctx: STMTxnCtx) = {
     require(pass.isDefined)
     require(fail.isDefined)
     require(exception.isDefined)
@@ -275,28 +276,28 @@ case class ClassificationTreeNode
     rule.get.deserialize().get
   }
 
-  private def getTreeBit(node: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Int = {
+  private def getTreeBit(node: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Int = {
     if (pass.exists(_ == node)) 0
     else if (fail.exists(_ == node)) 1
     else if (exception.exists(_ == node)) 2
     else throw new RuntimeException()
   }
 
-  class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class NodeAtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
     def add(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = atomic {
-      ClassificationTreeNode.this.add(value, self, strategy, maxSplitDepth)(_, executionContext)
+      ClassificationTreeNode.this.add(value, self, strategy, maxSplitDepth)(_)
     }
 
     def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = {
       val results: Map[Int, List[LabeledItem]] = split(value)
-      atomic { ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_, executionContext) }
+      atomic { ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_) }
     }
 
     def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1, results: Map[Int, List[LabeledItem]]): Future[Int] = atomic {
-      ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_, executionContext)
+      ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_)
     }
 
     def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[(Long, Stream[LabeledItem])] = {
@@ -322,19 +323,19 @@ case class ClassificationTreeNode
     }
 
     def firstNode(self: STMPtr[ClassificationTreeNode]): Future[STMPtr[ClassificationTreeNode]] = atomic {
-      ClassificationTreeNode.this.firstNode(self)(_, executionContext)
+      ClassificationTreeNode.this.firstNode(self)(_)
     }
 
     def nextNode(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[Option[STMPtr[ClassificationTreeNode]]] = atomic {
-      ClassificationTreeNode.this.nextNode(self, root)(_, executionContext)
+      ClassificationTreeNode.this.nextNode(self, root)(_)
     }
 
     def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[Long] = atomic {
-      ClassificationTreeNode.this.getTreeId(self, root)(_, executionContext)
+      ClassificationTreeNode.this.getTreeId(self, root)(_)
     }
 
     def getByTreeId(cursor: Long, self: STMPtr[ClassificationTreeNode]): Future[STMPtr[ClassificationTreeNode]] = atomic {
-      ClassificationTreeNode.this.getByTreeId(cursor, self)(_, executionContext)
+      ClassificationTreeNode.this.getByTreeId(cursor, self)(_)
     }
 
     def getMembers(self: STMPtr[ClassificationTreeNode]): Future[Stream[LabeledItem]] = Future.successful {
@@ -383,7 +384,7 @@ case class ClassificationTreeNode
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
     def nextBlock(value: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])
-                 (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): (Long, Stream[LabeledItem]) =
+                 (implicit ctx: STMTxnCtx): (Long, Stream[LabeledItem]) =
       sync {
         ClassificationTreeNode.this.nextBlock(value, self, root)
       }
@@ -392,14 +393,15 @@ case class ClassificationTreeNode
 }
 
 object ClassificationTreeNode {
+  private implicit def executionContext = StmPool.executionContext
 
-  def apply(parent: Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) =
+  def apply(parent: Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx) =
     new ClassificationTreeNode(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
 
   def splitTaskFn(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int): (Restm, ExecutionContext) => TaskSuccess[String] =
     (c: Restm, e: ExecutionContext) => {
       println(s"Starting split task for $self")
-      val future = ClassificationTreeNode.split(self, strategy, maxSplitDepth)(c, e).map(_ => TaskSuccess("OK"))(e)
+      val future = ClassificationTreeNode.split(self, strategy, maxSplitDepth)(c).map(_ => TaskSuccess("OK"))(e)
       val result = Await.result(future, 10.minutes)
       println(s"Completed split task for $self - $result")
       result
@@ -407,11 +409,11 @@ object ClassificationTreeNode {
 
 
   def split(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 0)
-           (implicit cluster: Restm, executionContext: ExecutionContext): Future[Int] = {
+           (implicit cluster: Restm): Future[Int] = {
     def currentData = self.atomic.sync.read
 
     val obtainLock: Future[Option[BatchedTreeCollection[LabeledItem]]] = new STMTxn[Option[BatchedTreeCollection[LabeledItem]]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[BatchedTreeCollection[LabeledItem]]] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[Option[BatchedTreeCollection[LabeledItem]]] = {
         //println(s"Obtaining split lock for $self")
         self.read().flatMap(node => {
           if (node.splitBuffer.isDefined) {
@@ -434,7 +436,7 @@ object ClassificationTreeNode {
     }.txnRun(cluster)
 
     def transferBuffers() = new STMTxn[BatchedTreeCollection[LabeledItem]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[BatchedTreeCollection[LabeledItem]] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[BatchedTreeCollection[LabeledItem]] = {
         //println(s"Swapping queues for $self")
         self.read().flatMap(node => {
           val collection = node.itemBuffer.get
@@ -495,7 +497,7 @@ object ClassificationTreeNode {
 
     transferRecursive().flatMap(_.map(rowsTransfered => {
       new STMTxn[Int] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[Int] = {
           //println(s"Splitting (sync) on $self")
           self.read().flatMap((node: ClassificationTreeNode) => {
             val stream: Stream[LabeledItem] = node.itemBuffer.get.stream()
@@ -514,9 +516,9 @@ object ClassificationTreeNode {
   }
 
   private def createChildren(self: STMPtr[ClassificationTreeNode])
-                            (implicit cluster: Restm, executionContext: ExecutionContext): Future[List[STMPtr[ClassificationTreeNode]]] =
+                            (implicit cluster: Restm): Future[List[STMPtr[ClassificationTreeNode]]] =
     new STMTxn[List[STMPtr[ClassificationTreeNode]]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[List[STMPtr[ClassificationTreeNode]]] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[List[STMPtr[ClassificationTreeNode]]] = {
         Future.sequence(List(
           STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),
           STMPtr.dynamic(ClassificationTree.newClassificationTreeNode(Option(self))),

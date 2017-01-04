@@ -24,17 +24,18 @@ import storage.{Restm, TransactionConflict}
 import util.Util
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 import scala.reflect._
 
 object STMPtr {
+  private implicit def executionContext = StmPool.executionContext
 
-  def dynamicSync[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): STMPtr[T] = {
+  def dynamicSync[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx): STMPtr[T] = {
     require(null != ctx)
     Await.result(dynamic[T](value), ctx.defaultTimeout)
   }
 
-  def dynamic[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[STMPtr[T]] = {
+  def dynamic[T <: AnyRef](value: T)(implicit ctx: STMTxnCtx): Future[STMPtr[T]] = {
     require(null != ctx)
     val future: Future[PointerType] = ctx.newPtr(value)
     require(null != future)
@@ -44,49 +45,50 @@ object STMPtr {
 }
 
 class STMPtr[T <: AnyRef](val id: PointerType) {
+  private implicit def executionContext = StmPool.executionContext
 
-  def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+  def init(default: => T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
     optValue.map(_ => Future.successful(this)).getOrElse(write(default).map(_ => this))
   })
 
-  def initOrUpdate(default: => T, upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+  def initOrUpdate(default: => T, upadater: T => T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
     val x = optValue.map(upadater).getOrElse(default)
     write(x).map(_ => this)
   })
 
-  def readOpt()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] = Util.chainEx(s"failed readOpt to $id") {
+  def readOpt()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Option[T]] = Util.chainEx(s"failed readOpt to $id") {
     ctx.readOpt[T](id).flatMap(_.map(value => Future.successful(Option(value))).getOrElse(default))
   }
 
   def default: Future[Option[T]] = Future.successful(None)
 
-  def update(upadater: T => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
+  def update(upadater: T => T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[STMPtr[T]] = readOpt().flatMap(optValue => {
     write(upadater(optValue.get)).map(_ => this)
   })
 
-  def lock()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Boolean] = Util.chainEx(s"failed lock on $id") {
+  def lock()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Boolean] = Util.chainEx(s"failed lock on $id") {
     ctx.lockOptional(id)
   }
 
-  def read()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)
+  def read()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)
 
-  def read(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.getOrElse(default))
+  def read(default: => T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.getOrElse(default))
 
-  def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = {
+  def <=(value: T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Unit] = {
     STMPtr.this.write(value)
   }
 
-  def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
+  def write(value: T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Unit] = ctx.write(id, value)
     .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
 
-  def <=(value: Option[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = {
+  def <=(value: Option[T])(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Unit] = {
     value.map(STMPtr.this.write).getOrElse(STMPtr.this.delete())
   }
 
-  def delete()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = ctx.delete(id)
+  def delete()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Unit] = ctx.delete(id)
     .recover({ case e => throw new TransactionConflict(s"failed write to $id", e) })
 
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+  def atomic(implicit cluster: Restm) = new AtomicApi
 
   def sync(defaultTimeout: Duration) = new SyncApi(defaultTimeout)
 
@@ -101,37 +103,37 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     case _ => false
   }
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+  class AtomicApi()(implicit cluster: Restm) extends AtomicApiBase {
 
     def sync: SyncApi = sync(1.minutes)
 
     def sync(defaultTimeout: Duration): SyncApi = new SyncApi(defaultTimeout)
 
-    def readOpt(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Option[T]] =
+    def readOpt(implicit classTag: ClassTag[T]): Future[Option[T]] =
       atomic {
-        STMPtr.this.readOpt()(_, executionContext, classTag)
+        STMPtr.this.readOpt()(_, classTag)
       }
 
-    def read(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[T] =
+    def read(implicit classTag: ClassTag[T]): Future[T] =
       atomic {
-        STMPtr.this.read()(_, executionContext, classTag)
+        STMPtr.this.read()(_, classTag)
       }
 
-    def init(default: => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[STMPtr[T]] =
+    def init(default: => T)(implicit classTag: ClassTag[T]): Future[STMPtr[T]] =
       atomic {
-        STMPtr.this.init(default)(_, executionContext, classTag)
+        STMPtr.this.init(default)(_, classTag)
       }
 
-    def write(value: T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] =
+    def write(value: T)(implicit classTag: ClassTag[T]): Future[Unit] =
       atomic {
-        STMPtr.this.write(value)(_, executionContext, classTag)
+        STMPtr.this.write(value)(_, classTag)
       }
 
-    def update(fn: T => T)(implicit executionContext: ExecutionContext, classTag: ClassTag[T]): Future[Unit] = atomic {
+    def update(fn: T => T)(implicit classTag: ClassTag[T]): Future[Unit] = atomic {
       txn => {
-        STMPtr.this.read()(txn, executionContext, classTag)
+        STMPtr.this.read()(txn, classTag)
           .map(fn)
-          .flatMap(value => STMPtr.this.write(value)(txn, executionContext, classTag))
+          .flatMap(value => STMPtr.this.write(value)(txn, classTag))
       }
     }
 
@@ -148,17 +150,17 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def read(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): T = sync(STMPtr.this.read())
+    def read(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): T = sync(STMPtr.this.read())
 
-    def readOpt(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Option[T] = sync(STMPtr.this.readOpt())
+    def readOpt(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Option[T] = sync(STMPtr.this.readOpt())
 
-    def init(default: => T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): STMPtr[T] = sync(STMPtr.this.init(default))
+    def init(default: => T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): STMPtr[T] = sync(STMPtr.this.init(default))
 
-    def write(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Unit = sync(STMPtr.this.write(value))
+    def write(value: T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Unit = sync(STMPtr.this.write(value))
 
-    def <=(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Unit = sync(STMPtr.this <= value)
+    def <=(value: T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Unit = sync(STMPtr.this <= value)
 
-    def <=(value: Option[T])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext, classTag: ClassTag[T]): Unit = sync(STMPtr.this <= value)
+    def <=(value: Option[T])(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Unit = sync(STMPtr.this <= value)
   }
 
 

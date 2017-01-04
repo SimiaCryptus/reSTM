@@ -48,7 +48,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
     }
   }
 
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
+  def logMsg(msg: String): Unit = log(s"$this $msg")
 
   def setState(s: String): Future[Set[PointerType]] = Util.monitorFuture("TxnActor.setState") {
     {

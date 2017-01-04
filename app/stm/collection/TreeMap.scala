@@ -23,73 +23,76 @@ import stm._
 import storage.Restm
 import storage.Restm.PointerType
 
+import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
 
 object TreeMap {
+  private implicit def executionContext = StmPool.executionContext
+
   def empty[T <: Comparable[T], V] = new STMTxn[TreeMap[T, V]] {
-    override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T, V]] = create[T, V]
+    override def txnLogic()(implicit ctx: STMTxnCtx): Future[TreeMap[T, V]] = create[T, V]
   }
 
-  def create[T <: Comparable[T], V](implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[TreeMap[T, V]] = STMPtr.dynamic[Option[BinaryTreeMapNode[T, V]]](None).map(new TreeMap(_))
+  def create[T <: Comparable[T], V](implicit ctx: STMTxnCtx): Future[TreeMap[T, V]] = STMPtr.dynamic[Option[BinaryTreeMapNode[T, V]]](None).map(new TreeMap(_))
 
 }
 
 class TreeMap[T <: Comparable[T], V](rootPtr: STMPtr[Option[BinaryTreeMapNode[T, V]]]) {
+  implicit def executionContext = StmPool.executionContext
 
   def this(ptr: PointerType) = this(new STMPtr[Option[BinaryTreeMapNode[T, V]]](ptr))
 
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+  def atomic(implicit cluster: Restm) = new AtomicApi
 
-  def add(key: T, value: V)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+  def add(key: T, value: V)(implicit ctx: STMTxnCtx): Future[Unit] = {
     rootPtr.readOpt().map(_.flatten).map(prev => {
       prev.map(r => r += key -> value).getOrElse(new BinaryTreeMapNode[T, V](key, value))
     }).flatMap(newRootData => rootPtr.write(Option(newRootData)))
   }
 
-  def remove(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+  def remove(value: T)(implicit ctx: STMTxnCtx): Future[Unit] = {
     rootPtr.readOpt().map(_.flatten).map(_.flatMap(r => r -= value))
       .flatMap(newRootData => rootPtr.write(newRootData))
   }
 
-  def contains(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Boolean] = {
+  def contains(value: T)(implicit ctx: STMTxnCtx): Future[Boolean] = {
     rootPtr.readOpt().map(_.flatten).map(_.exists(_.contains(value)))
   }
 
-  def get(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[V]] = {
+  def get(value: T)(implicit ctx: STMTxnCtx): Future[Option[V]] = {
     rootPtr.readOpt().map(_.flatten).flatMap(_.map(_.get(value)).getOrElse(Future.successful(None)))
   }
 
-  def min(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Product with Serializable] = {
+  def min(value: T)(implicit ctx: STMTxnCtx): Future[Product with Serializable] = {
     rootPtr.readOpt().map(_.flatten).map(_.map(_.min()).getOrElse(None))
   }
 
-  def max(value: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Product with Serializable] = {
+  def max(value: T)(implicit ctx: STMTxnCtx): Future[Product with Serializable] = {
     rootPtr.readOpt().map(_.flatten).map(_.map(_.max()).getOrElse(None))
   }
 
   private def this() = this(new PointerType)
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+  class AtomicApi()(implicit cluster: Restm) extends AtomicApiBase {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
     def sync = new SyncApi(10.seconds)
 
     def add(key: T, value: V): Future[Unit.type] = atomic {
-      TreeMap.this.add(key, value)(_, executionContext).map(_ => Unit)
+      TreeMap.this.add(key, value)(_).map(_ => Unit)
     }
 
     def remove(key: T): Future[Unit] = atomic {
-      TreeMap.this.remove(key)(_, executionContext)
+      TreeMap.this.remove(key)(_)
     }
 
     def contains(key: T): Future[Boolean] = atomic {
-      TreeMap.this.contains(key)(_, executionContext)
+      TreeMap.this.contains(key)(_)
     }
 
     def get(key: T): Future[Option[V]] = atomic {
-      TreeMap.this.get(key)(_, executionContext)
+      TreeMap.this.get(key)(_)
     }
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
@@ -121,16 +124,17 @@ private case class BinaryTreeMapNode[T <: Comparable[T], V]
   left: Option[STMPtr[BinaryTreeMapNode[T, V]]] = None,
   right: Option[STMPtr[BinaryTreeMapNode[T, V]]] = None
 ) {
+  private implicit def executionContext = StmPool.executionContext
 
-  def min()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T, V] = {
+  def min()(implicit ctx: STMTxnCtx): BinaryTreeMapNode[T, V] = {
     right.map(_.sync.read.min).getOrElse(this)
   }
 
-  def max()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T, V] = {
+  def max()(implicit ctx: STMTxnCtx): BinaryTreeMapNode[T, V] = {
     left.map(_.sync.read.min).getOrElse(this)
   }
 
-  def -=(toRemove: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Option[BinaryTreeMapNode[T, V]] = {
+  def -=(toRemove: T)(implicit ctx: STMTxnCtx): Option[BinaryTreeMapNode[T, V]] = {
     val compare: Int = key.compareTo(toRemove)
     if (compare == 0) {
       if (left.isEmpty && right.isEmpty) {
@@ -177,7 +181,7 @@ private case class BinaryTreeMapNode[T <: Comparable[T], V]
     }
   }
 
-  def +=(newValue: (T, V))(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): BinaryTreeMapNode[T, V] = {
+  def +=(newValue: (T, V))(implicit ctx: STMTxnCtx): BinaryTreeMapNode[T, V] = {
     if (key.compareTo(newValue._1) < 0) {
       left.map(leftPtr => {
         leftPtr.sync <= (leftPtr.sync.read += newValue)
@@ -195,7 +199,7 @@ private case class BinaryTreeMapNode[T <: Comparable[T], V]
     }
   }
 
-  def contains(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = {
+  def contains(newValue: T)(implicit ctx: STMTxnCtx): Boolean = {
     if (key.compareTo(newValue) == 0) {
       true
     } else if (key.compareTo(newValue) < 0) {
@@ -205,7 +209,7 @@ private case class BinaryTreeMapNode[T <: Comparable[T], V]
     }
   }
 
-  def get(newValue: T)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[V]] = {
+  def get(newValue: T)(implicit ctx: STMTxnCtx): Future[Option[V]] = {
     if (key.compareTo(newValue) == 0) {
       Future.successful(Option(value))
     } else if (key.compareTo(newValue) < 0) {

@@ -104,7 +104,7 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
     }
   }
 
-  def logMsg(msg: String)(implicit exeCtx: ExecutionContext): Unit = log(s"$this $msg")
+  def logMsg(msg: String): Unit = log(s"$this $msg")
 
   def init(time: TimeStamp, value: ValueType): Future[Boolean] = Util.monitorFuture("MemActor.init") {
     {

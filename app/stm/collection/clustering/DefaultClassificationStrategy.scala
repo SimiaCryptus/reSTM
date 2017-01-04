@@ -41,9 +41,9 @@ object DefaultClassificationStrategy {
 case class DefaultClassificationStrategy(
                                           branchThreshold: Int = 8
                                         ) extends ClassificationStrategy {
+  private implicit val _executionContext = DefaultClassificationStrategy.workerPool
   def getRule(values: Stream[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val valuesList = values.take(100).toList
-    implicit val _exe = DefaultClassificationStrategy.workerPool
     val fieldResults = valuesList.flatMap(_.value.attributes.keys).toSet.map((field: String) => Future {
       rules_Levenshtein(valuesList, field) ++ rules_SimpleScalar(valuesList, field)
     })
@@ -146,7 +146,7 @@ case class DefaultClassificationStrategy(
     result
   }
 
-  def split(buffer: BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Boolean = {
+  def split(buffer: BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx): Boolean = {
     buffer.sync(30.seconds).apxSize() > branchThreshold //|| buffer.sync.size() > branchThreshold
   }
 }

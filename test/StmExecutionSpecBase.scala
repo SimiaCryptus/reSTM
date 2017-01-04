@@ -72,11 +72,11 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
         val hasRun = new STMPtr[java.lang.Integer](new PointerType)
         hasRun.atomic.sync.init(0)
         Await.result(StmExecutionQueue.get().atomic.sync.add((cluster, executionContext) => {
-          hasRun.atomic(cluster, executionContext).sync.write(1)
+          hasRun.atomic(cluster).sync.write(1)
           Task.TaskSuccess("foo")
         }).atomic().sync.map(StmExecutionQueue.get(), (value, cluster, executionContext) => {
           require(value == "foo")
-          hasRun.atomic(cluster, executionContext).sync.write(2)
+          hasRun.atomic(cluster).sync.write(2)
           Task.TaskSuccess("bar")
         }).future, 10.seconds)
         hasRun.atomic.sync.readOpt mustBe Some(2)
@@ -91,7 +91,7 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
         val hasRun = new STMPtr[java.lang.Integer](new PointerType)
         hasRun.atomic.sync.init(0)
         val task: Task[String] = StmExecutionQueue.get().atomic.sync.add((cluster, executionContext) => {
-          hasRun.atomic(cluster, executionContext).sync.write(1)
+          hasRun.atomic(cluster).sync.write(1)
           Task.TaskSuccess("foo")
         })
         Await.result(task.future, 30.seconds) mustBe "foo"
@@ -125,10 +125,11 @@ abstract class StmExecutionSpecBase extends WordSpec with MustMatchers {
         StmDaemons.config.atomic().sync.add(DaemonConfig("SimpleTest/StmDaemons", (cluster: Restm, executionContext: ExecutionContext) => {
           while (!Thread.interrupted()) {
             new STMTxn[Integer] {
-              override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Integer] = {
+              override def txnLogic()(implicit ctx: STMTxnCtx): Future[Integer] = {
+                implicit val _executionContext = executionContext
                 counter.read().flatMap(prev => counter.write(prev + 1).map(_ => prev + 1))
               }
-            }.txnRun(cluster)(executionContext)
+            }.txnRun(cluster)
             Thread.sleep(100)
           }
         }))
@@ -183,10 +184,11 @@ class ActorServletStmExecutionSpec extends StmExecutionSpecBase with OneServerPe
 object StmExecutionSpecBase {
   def recursiveTask(counter: STMPtr[java.lang.Integer], n: Int)(cluster: Restm, executionContext: ExecutionContext): TaskResult[String] = {
     Await.result(new STMTxn[Int] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Int] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[Int] = {
+        implicit val _executionContext = executionContext
         counter.read().map(_ + 1).flatMap(x => counter.write(x).map(_ => x))
       }
-    }.txnRun(cluster)(executionContext), 100.milliseconds)
+    }.txnRun(cluster), 100.milliseconds)
     if (n > 1) {
       val function: (Restm, ExecutionContext) => TaskResult[String] = recursiveTask(counter, n - 1)
       Task.TaskContinue(newFunction = function, queue = StmExecutionQueue.get())

@@ -37,8 +37,8 @@ class DemoController @Inject()(actorSystem: ActorSystem)(implicit exec: Executio
   def demoSort(n: Int): Action[AnyContent] = Action.async {
     Util.monitorFuture("DemoController.demoSort") {
       val collection = new TreeCollection[String](new PointerType)
-      Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x: String) => collection.atomic()(storageService, exec).sync.add(x))
-      collection.atomic()(storageService, exec).sort()
+      Stream.continually(UUID.randomUUID().toString.take(8)).take(n).foreach((x: String) => collection.atomic()(storageService).sync.add(x))
+      collection.atomic()(storageService).sort()
         .map(task => Ok(s"""<html><body><a href="/task/result/${task.id}">Task ${task.id} started</a></body></html>""")
           .as("text/html"))
     }

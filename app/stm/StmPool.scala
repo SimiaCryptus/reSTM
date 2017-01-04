@@ -17,19 +17,13 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm
 
-import stm.STMTxnCtx
-import stm.collection.BatchedTreeCollection
-import stm.collection.clustering.ClassificationTree.ClassificationTreeItem
+import java.util.concurrent.Executors
 
+import scala.concurrent.ExecutionContext
 
-trait ClassificationStrategy {
-
-  def getRule(values: Stream[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean
-
-  def split(buffer: BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx): Boolean
-
+object StmPool {
+  val pool = Executors.newFixedThreadPool(4)
+  val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 }
-
-

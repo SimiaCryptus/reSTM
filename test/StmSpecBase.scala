@@ -48,7 +48,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
     "support basic operations" in {
       val id: PointerType = new PointerType
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           val ptr: STMPtr[String]#SyncApi = new STMPtr[String](id).sync
           ptr.init("foo")
           ptr.read mustBe "foo"
@@ -56,12 +56,12 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
         }
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "foo"
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           val ptr: STMPtr[String]#SyncApi = new STMPtr[String](id).sync
           ptr.read mustBe "foo"
           ptr.write("bar")
@@ -69,7 +69,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
         }
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "bar"
@@ -77,7 +77,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
     "support in-txn overwrites" in {
       val id: PointerType = new PointerType
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           val ptr: STMPtr[String]#SyncApi = new STMPtr[String](id).sync
           ptr.init("foo")
           ptr.read mustBe "foo"
@@ -87,12 +87,12 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
         }
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "bar"
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           val ptr: STMPtr[String]#SyncApi = new STMPtr[String](id).sync
           ptr.read mustBe "bar"
           ptr.write("jack")
@@ -103,7 +103,7 @@ abstract class StmSpecBase extends WordSpec with MustMatchers with BeforeAndAfte
         }
       }.txnRun(cluster), 30.seconds) mustBe "OK"
       Await.result(new STMTxn[String] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[String] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[String] = {
           new STMPtr[String](id).read.map(x => x)
         }
       }.txnRun(cluster), 30.seconds) mustBe "jill"

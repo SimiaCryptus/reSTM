@@ -45,16 +45,16 @@ object StmDaemons {
   val config: LinkedList[DaemonConfig] = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String, Thread]
   private[this] var mainThread: Option[Thread] = None
+  private[this] val pool = new ThreadPoolExecutor(32, 128, 5L, TimeUnit.SECONDS,
+    new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
+    new ThreadFactoryBuilder().setNameFormat("daemon-pool-%d").build())
+  private[task] val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 
   def start()(implicit cluster: Restm): Unit = {
     if (mainThread.filter(_.isAlive).isEmpty) mainThread = Option({
 
 
-      val pool = new ThreadPoolExecutor(32, 128, 5L, TimeUnit.SECONDS,
-        new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
-        new ThreadFactoryBuilder().setNameFormat("daemon-pool-%d").build())
-      val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
-      Await.result(StmExecutionQueue.init()(cluster, executionContext), 30.seconds)
+      Await.result(StmExecutionQueue.init()(cluster), 30.seconds)
       val thread: Thread = new Thread(new Runnable {
         override def run(): Unit = {
           implicit def _exe: ExecutionContext = executionContext

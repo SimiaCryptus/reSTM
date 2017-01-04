@@ -22,8 +22,8 @@ package stm.task
 import java.util.Date
 
 import _root_.util.Util._
+import stm._
 import stm.task.Task._
-import stm.{AtomicApiBase, STMTxn, STMTxnCtx, SyncApiBase}
 import storage.Restm
 
 import scala.concurrent.duration._
@@ -34,9 +34,10 @@ import scala.util.{Failure, Try}
 object StmExecutionQueue {
   private var default: StmExecutionQueue = _
 
-  def init()(implicit cluster: Restm, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
+  def init()(implicit cluster: Restm): Future[StmExecutionQueue] = {
+    implicit def executionContext = StmDaemons.executionContext
     new STMTxn[StmExecutionQueue] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[StmExecutionQueue] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[StmExecutionQueue] = {
         TaskQueue.create[Task[_]](5).map(new StmExecutionQueue(_))
       }
     }.txnRun(cluster).map(x => {
@@ -49,30 +50,32 @@ object StmExecutionQueue {
     default
   }
 
-  def reset()(implicit cluster: Restm, executionContext: ExecutionContext): Unit = {
+  def reset()(implicit cluster: Restm): Unit = {
     default = null
   }
 }
 
 class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
+  private implicit def executionContext = StmDaemons.executionContext
 
   var verbose = false
 
-  def atomic(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi
+  def atomic(implicit cluster: Restm) = new AtomicApi
 
   def sync(duration: Duration) = new SyncApi(duration)
 
   def sync = new SyncApi(10.seconds)
 
-  def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Task[T]] = {
+  def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx): Future[Task[T]] = {
+    implicit def executionContext = StmPool.executionContext
     Task.create(f, ancestors).flatMap(task => task.initTriggers(StmExecutionQueue.this).map(_ => task))
   }
 
-  def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+  def add(f: Task[_])(implicit ctx: STMTxnCtx): Future[Unit] = {
     workQueue.add(f)
   }
 
-  def registerDaemons(count: Int = 1)(implicit cluster: Restm, executionContext: ExecutionContext): Unit = {
+  def registerDaemons(count: Int = 1)(implicit cluster: Restm): Unit = {
     (1 to count).map(i => {
       val f: (Restm, ExecutionContext) => Unit = task()
       DaemonConfig(s"Queue-${workQueue.id}-$i", f)
@@ -80,11 +83,12 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
   }
 
   def task()(cluster: Restm, executionContext: ExecutionContext): Unit = {
+    implicit val _executionContext = executionContext
     try {
       var lastExecuted = now
       while (!Thread.interrupted()) {
         try {
-          val future = runTask(cluster, executionContext)
+          val future = runTask(cluster)
           val result = Await.result(future, 10.minutes)
           if (!result) {
             Thread.sleep(Math.min((now - lastExecuted).toMillis, 500))
@@ -104,18 +108,18 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
     }
   }
 
-  private[this] def runTask(implicit cluster: Restm, executionContext: ExecutionContext): Future[Boolean] = {
+  private[this] def runTask(implicit cluster: Restm): Future[Boolean] = {
     val executorId = ExecutionStatusManager.getName
     val taskFuture = monitorFuture("StmExecutionQueue.getTask") {
       new STMTxn[Option[(Task[_], (Restm, ExecutionContext) => TaskResult[_])]] {
-        override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
+        override def txnLogic()(implicit ctx: STMTxnCtx): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
           getTask(executorId)
         }
-      }.txnRun(cluster)(executionContext)
+      }.txnRun(cluster)
     }
     taskFuture.flatMap(taskTuple => {
       taskTuple.map(tuple => {
-        val function = tuple._2
+        val function: (Restm, ExecutionContext) ⇒ TaskResult[_] = tuple._2
         val task = tuple._1.asInstanceOf[Task[AnyRef]]
         if (verbose) println(s"Starting task ${task.id} at ${new Date()}")
         val result = monitorBlock("StmExecutionQueue.runTask") {
@@ -134,19 +138,19 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
           Failure(e)
         }).asInstanceOf[Try[TaskResult[AnyRef]]]
         monitorFuture("StmExecutionQueue.completeTask") {
-          task.atomic()(cluster, executionContext).complete(result)
+          task.atomic()(cluster).complete(result)
         }.map(_ => {
           if (verbose) println(s"Completed task ${task.id} at ${new Date()}")
           ExecutionStatusManager.end(executorId, task)
           true
         })
       }).getOrElse(Future.successful(false))
-    })(executionContext)
+    })
 
   }
 
   private def getTask(executorName: String = ExecutionStatusManager.getName)
-                     (implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
+                     (implicit ctx: STMTxnCtx): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
     workQueue.take(2).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap((task: Option[Task[AnyRef]]) => {
       task.map(task => {
         val obtainTask: Future[Option[(Restm, ExecutionContext) => TaskResult[AnyRef]]] = task.obtainTask(executorName)
@@ -158,13 +162,13 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
     })
   }
 
-  class AtomicApi()(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase {
+  class AtomicApi()(implicit cluster: Restm) extends AtomicApiBase {
     def add(f: Task[_]): Future[Unit] = atomic {
-      StmExecutionQueue.this.add(f)(_, executionContext)
+      StmExecutionQueue.this.add(f)(_)
     }
 
     def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty): Future[Task[T]] = atomic {
-      StmExecutionQueue.this.add[T](f, ancestors)(_, executionContext)
+      StmExecutionQueue.this.add[T](f, ancestors)(_)
     }
 
     def sync(duration: Duration) = new SyncApi(duration)
@@ -172,7 +176,7 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
     def sync = new SyncApi(10.seconds)
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def add(f: Task[_]): Unit = sync {
+      def add[T](f: Task[T]): Unit = sync {
         AtomicApi.this.add(f)
       }
 
@@ -184,12 +188,12 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Task[T] =
+    def add[T](f: (Restm, ExecutionContext) => TaskResult[T], ancestors: List[Task[_]] = List.empty)(implicit ctx: STMTxnCtx): Task[T] =
       sync {
         StmExecutionQueue.this.add[T](f, ancestors)
       }
 
-    def add(f: Task[_])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
+    def add(f: Task[_])(implicit ctx: STMTxnCtx): Unit = sync {
       StmExecutionQueue.this.add(f)
     }
   }

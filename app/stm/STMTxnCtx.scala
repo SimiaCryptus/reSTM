@@ -27,10 +27,11 @@ import util.Util.{chainEx, monitorFuture}
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration.{Duration, _}
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 import scala.reflect.ClassTag
 
 class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxnCtx]) {
+  private implicit def executionContext = StmPool.executionContext
 
   private[stm] lazy val txnId = cluster.newTxn(priority)
   private[stm] val defaultTimeout: Duration = 5.seconds
@@ -40,19 +41,19 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   private[stm] val writeCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
   var isClosed = false
 
-  final def log(msg: ⇒String)(implicit executionContext: ExecutionContext): Future[Unit] = chainEx("Transaction Exception") {
+  final def log(msg: ⇒String): Future[Unit] = chainEx("Transaction Exception") {
     monitorFuture("STMTxn.txnLog") {
       txnId.flatMap(id⇒ActorLog.log(s"$id - $msg"))
     }
   }
 
-  def newPtr[T <: AnyRef](value: T)(implicit executionContext: ExecutionContext): Future[PointerType] =
+  def newPtr[T <: AnyRef](value: T): Future[PointerType] =
     txnId.flatMap(cluster.newPtr(_, Restm.value(value)).map(ptr => {
       initCache.put(ptr, Option(value))
       ptr
     }))
 
-  def delete(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit] = Util.chainEx(s"Delete $id") {
+  def delete(id: PointerType): Future[Unit] = Util.chainEx(s"Delete $id") {
     txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.delete") {
       require(!isClosed)
       readOpt(id).flatMap(prior => {
@@ -75,7 +76,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
   }
 
   private[stm] def readOpt[T <: AnyRef : ClassTag](id: PointerType)
-                                                  (implicit executionContext: ExecutionContext): Future[Option[T]] = //Util.monitorFuture("STMTxnCtx.readOpt")
+                                                  : Future[Option[T]] = //Util.monitorFuture("STMTxnCtx.readOpt")
   {
     require(!isClosed)
     writeCache.get(id).orElse(initCache.get(id))
@@ -98,11 +99,11 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
       ).map(_.map(_.asInstanceOf[T])))
   }
 
-  private[stm] def lock(id: PointerType)(implicit executionContext: ExecutionContext): Future[Unit] = {
+  private[stm] def lock(id: PointerType): Future[Unit] = {
     lockOptional(id).map(success => if (!success) throw new RuntimeException(s"Lock failed: $id in txn $txnId"))
   }
 
-  private[stm] def lockOptional(id: PointerType)(implicit executionContext: ExecutionContext): Future[Boolean] = {
+  private[stm] def lockOptional(id: PointerType): Future[Boolean] = {
     writeLocks.getOrElseUpdate(id, txnId.flatMap(txnId => {
       require(!isClosed)
       cluster.lock(id, txnId)
@@ -114,7 +115,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
       .map(_.toString).getOrElse("???")
   }
 
-  private[stm] def commit()(implicit executionContext: ExecutionContext): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
+  private[stm] def commit(): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
     //if(writeLocks.isEmpty) Future.successful(Unit) else
     isClosed = true
     txnId.flatMap(txnId => {
@@ -127,13 +128,13 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration, prior: Option[STMTxn
     })
   }
 
-  private[stm] def revert()(implicit executionContext: ExecutionContext): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
+  private[stm] def revert(): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {
     isClosed = true
     //if(writeLocks.isEmpty) Future.successful(Unit) else
     txnId.flatMap(cluster.reset)
   }
 
-  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T)(implicit executionContext: ExecutionContext): Future[Unit] = Util.chainEx(s"write to $id") {
+  private[stm] def write[T <: AnyRef : ClassTag](id: PointerType, value: T): Future[Unit] = Util.chainEx(s"write to $id") {
     txnId.flatMap(txnId => Util.monitorFuture("STMTxnCtx.write") {
       require(!isClosed)
       readOpt(id).flatMap(prior => {

@@ -27,19 +27,20 @@ import storage.{Restm, TransactionConflict}
 
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 import scala.util.Random
 
 object ScalarArray {
+  private implicit def executionContext = StmPool.executionContext
 
-  def createSync(size: Int = 8)(implicit cluster: Restm, executionContext: ExecutionContext): ScalarArray =
+  def createSync(size: Int = 8)(implicit cluster: Restm): ScalarArray =
     Await.result(new STMTxn[ScalarArray] {
-      override def txnLogic()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[ScalarArray] = {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[ScalarArray] = {
         create(size)
       }
     }.txnRun(cluster), 60.seconds)
 
-  def create(size: Int = 8)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[ScalarArray] =
+  def create(size: Int = 8)(implicit ctx: STMTxnCtx): Future[ScalarArray] =
     Future.sequence((1 to size).map(_ => STMPtr.dynamic(Double.valueOf(0.0)))).flatMap(ptrs => {
       STMPtr.dynamic(ScalarArray.ScalarData(ptrs.toList)).map(new ScalarArray(_))
     })
@@ -49,7 +50,7 @@ object ScalarArray {
     values: List[STMPtr[java.lang.Double]] = List.empty
   ) {
 
-    def add(value: Double, rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+    def add(value: Double, rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx): Future[Unit] = {
       val shuffledLists = values.map(_ -> Random.nextDouble()).sortBy(_._2).map(_._1)
 
       def add(list: Seq[STMPtr[java.lang.Double]] = shuffledLists): Future[Unit] = {
@@ -69,7 +70,7 @@ object ScalarArray {
       add()
     }
 
-    def get(rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[scala.Double] = {
+    def get(rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx): Future[scala.Double] = {
       Future.sequence(values.map(_.read()))
         .map((sequence: List[java.lang.Double]) => {
           sequence.map(_.toDouble).reduceOption(_ + _).getOrElse(0.0)
@@ -81,27 +82,29 @@ object ScalarArray {
 }
 
 class ScalarArray(rootPtr: STMPtr[ScalarArray.ScalarData]) {
+  private implicit def executionContext = StmPool.executionContext
+
   def id: String = rootPtr.id.toString
 
   def this(ptr: PointerType) = this(new STMPtr[ScalarArray.ScalarData](ptr))
 
-  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) = new AtomicApi(priority, maxRetries)
+  def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
   def sync = new SyncApi(10.seconds)
 
-  def add(value: Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[Unit] = {
+  def add(value: Double)(implicit ctx: STMTxnCtx): Future[Unit] = {
     getInner().flatMap(inner => {
       inner.add(value, rootPtr)
     })
   }
 
-  private def getInner()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext) = {
+  private def getInner()(implicit ctx: STMTxnCtx) = {
     rootPtr.readOpt().map(_.orElse(Option(ScalarArray.ScalarData()))).map(_.get)
   }
 
-  def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Future[scala.Double] = {
+  def get()(implicit ctx: STMTxnCtx): Future[scala.Double] = {
     getInner().flatMap(inner => {
       inner.get(rootPtr)
     })
@@ -109,18 +112,18 @@ class ScalarArray(rootPtr: STMPtr[ScalarArray.ScalarData]) {
 
   private def this() = this(null: STMPtr[ScalarArray.ScalarData])
 
-  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm, executionContext: ExecutionContext) extends AtomicApiBase(priority, maxRetries) {
+  class AtomicApi(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) extends AtomicApiBase(priority, maxRetries) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
     def sync = new SyncApi(10.seconds)
 
     def add(value: Double): Future[Unit.type] = atomic {
-      ScalarArray.this.add(value)(_, executionContext).map(_ => Unit)
+      ScalarArray.this.add(value)(_).map(_ => Unit)
     }
 
     def get(): Future[scala.Double] = atomic {
-      ScalarArray.this.get()(_, executionContext)
+      ScalarArray.this.get()(_)
     }
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
@@ -136,11 +139,11 @@ class ScalarArray(rootPtr: STMPtr[ScalarArray.ScalarData]) {
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def add(value: Double)(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): Unit = sync {
+    def add(value: Double)(implicit ctx: STMTxnCtx): Unit = sync {
       ScalarArray.this.add(value)
     }
 
-    def get()(implicit ctx: STMTxnCtx, executionContext: ExecutionContext): scala.Double = sync {
+    def get()(implicit ctx: STMTxnCtx): scala.Double = sync {
       ScalarArray.this.get()
     }
   }
