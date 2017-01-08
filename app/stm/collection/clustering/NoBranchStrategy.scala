@@ -20,11 +20,10 @@
 package stm.collection.clustering
 
 import stm.STMTxnCtx
-import stm.collection.BatchedTreeCollection
 import stm.collection.clustering.ClassificationTree.LabeledItem
 
 class NoBranchStrategy extends ClassificationStrategy {
   override def getRule(values: Stream[LabeledItem]) = new RuleData(_ => true, "NoBranch Rule")
 
-  override def split(buffer: BatchedTreeCollection[LabeledItem])(implicit ctx: STMTxnCtx): Boolean = false
+  override def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = false
 }

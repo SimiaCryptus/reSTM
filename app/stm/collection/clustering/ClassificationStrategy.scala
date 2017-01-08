@@ -20,7 +20,6 @@
 package stm.collection.clustering
 
 import stm.STMTxnCtx
-import stm.collection.BatchedTreeCollection
 import stm.collection.clustering.ClassificationTree.ClassificationTreeItem
 
 case class RuleData(fn : (ClassificationTreeItem) => Boolean, name : String = "???")
@@ -29,7 +28,7 @@ trait ClassificationStrategy {
 
   def getRule(values: Stream[ClassificationTree.LabeledItem]): RuleData
 
-  def split(buffer: BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx): Boolean
+  def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean
 
 }
 

@@ -17,10 +17,11 @@
  * under the License.
  */
 
-package stm.collection
+package stm.collection.clustering
 
 import stm._
-import stm.collection.BatchedTreeCollection._
+import stm.collection.clustering.ClassificationTree.LabeledItem
+import stm.collection.clustering.PageTree.PageTreeNode
 import storage.Restm
 import storage.Restm.PointerType
 import storage.types.KryoValue
@@ -32,29 +33,29 @@ import scala.reflect.ClassTag
 import scala.util.{Random, Try}
 
 
-object BatchedTreeCollection {
+object PageTree {
   private implicit def executionContext = StmPool.executionContext
 
-  def apply[T]()(implicit ctx: STMTxnCtx) =
-    new BatchedTreeCollection(STMPtr.dynamicSync[TreeCollectionNode[T]](null))
+  def apply()(implicit ctx: STMTxnCtx) =
+    new PageTree(STMPtr.dynamicSync[PageTreeNode](null))
 
-  def create[T]()(implicit ctx: STMTxnCtx): Future[BatchedTreeCollection[T]] =
-    STMPtr.dynamic[TreeCollectionNode[T]](null).map(new BatchedTreeCollection(_))
+  def create()(implicit ctx: STMTxnCtx): Future[PageTree] =
+    STMPtr.dynamic[PageTreeNode](null).map(new PageTree(_))
 
-  case class TreeCollectionNode[T]
+  case class PageTreeNode
   (
-    parent: Option[STMPtr[TreeCollectionNode[T]]],
-    value: STMPtr[KryoValue[List[T]]],
-    left: Option[STMPtr[TreeCollectionNode[T]]] = None,
-    right: Option[STMPtr[TreeCollectionNode[T]]] = None
+    parent: Option[STMPtr[PageTreeNode]],
+    value: STMPtr[KryoValue[List[LabeledItem]]],
+    left: Option[STMPtr[PageTreeNode]] = None,
+    right: Option[STMPtr[PageTreeNode]] = None
   ) {
 
-    def getCursorBlock(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[List[T]])] = {
+    def getCursorBlock(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[List[LabeledItem]])] = {
       val nextNodeFuture = nextNode(self)
       val valueFuture = value.read()
       valueFuture.flatMap(list => {
-        nextNodeFuture.flatMap((nextNodeOptPtr: Option[STMPtr[TreeCollectionNode[T]]]) => {
-          nextNodeOptPtr.map((nextPtr: STMPtr[TreeCollectionNode[T]]) => {
+        nextNodeFuture.flatMap((nextNodeOptPtr: Option[STMPtr[PageTreeNode]]) => {
+          nextNodeOptPtr.map((nextPtr: STMPtr[PageTreeNode]) => {
             nextPtr.read().flatMap(next => next.getTreeId(nextPtr))
               .map((nextId: Long) => nextId -> list)
           }).getOrElse(Future.successful(-1l -> list))
@@ -68,7 +69,7 @@ object BatchedTreeCollection {
       child.map(_.read().flatMap(_.apxSize).map(_ * 2)).getOrElse(value.read().map(_.deserialize()).map(_.size))
     }
 
-    def get(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[List[T]] = {
+    def get(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[List[LabeledItem]] = {
       val (a, b) = if (Random.nextBoolean()) (left, right) else (right, left)
       a.map(ptr => {
         ptr.read.flatMap(_.get(ptr))
@@ -81,14 +82,14 @@ object BatchedTreeCollection {
       })
     }
 
-    def add(newValue: List[T], self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[Unit] = {
+    def add(newValue: List[LabeledItem], self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Unit] = {
       //println(s"Write ${newValue.size} items to $self")
       if (Random.nextBoolean()) {
         left.map(leftPtr => {
           leftPtr.read.flatMap(_.add(newValue, leftPtr))
         }).getOrElse({
           STMPtr.dynamic(KryoValue(newValue))
-            .flatMap(ptr => STMPtr.dynamic(TreeCollectionNode(Some(self), ptr)))
+            .flatMap(ptr => STMPtr.dynamic(PageTreeNode(Some(self), ptr)))
             .flatMap(x => self.write(this.copy(left = Option(x))))
         })
       } else {
@@ -96,7 +97,7 @@ object BatchedTreeCollection {
           rightPtr.read.flatMap(_.add(newValue, rightPtr))
         }).getOrElse({
           STMPtr.dynamic(KryoValue(newValue))
-            .flatMap(ptr => STMPtr.dynamic(TreeCollectionNode(Some(self), ptr)))
+            .flatMap(ptr => STMPtr.dynamic(PageTreeNode(Some(self), ptr)))
             .flatMap(x => self.write(this.copy(right = Option(x))))
         })
       }
@@ -105,19 +106,19 @@ object BatchedTreeCollection {
     override def hashCode(): Int = equalityFields.hashCode()
 
     override def equals(obj: scala.Any): Boolean = obj match {
-      case x: TreeCollectionNode[_] => x.equalityFields == equalityFields
+      case x: PageTreeNode => x.equalityFields == equalityFields
       case _ => false
     }
 
     private def equalityFields = List(value, left, right)
 
-    def leftChild(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[STMPtr[TreeCollectionNode[T]]] = {
+    def leftChild(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[STMPtr[PageTreeNode]] = {
       left.map(left => {
         left.read().flatMap(_.leftChild(left))
       }).getOrElse(Future.successful(self))
     }
 
-    def rightParent(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[Option[STMPtr[TreeCollectionNode[T]]]] = {
+    def rightParent(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Option[STMPtr[PageTreeNode]]] = {
       parent.map(parentPtr => {
         parentPtr.read().flatMap(parentValue => {
           if (parentValue.left == Option(self)) {
@@ -129,11 +130,11 @@ object BatchedTreeCollection {
       }).getOrElse(Future.successful(None))
     }
 
-    def nextNode(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[Option[STMPtr[TreeCollectionNode[T]]]] = {
+    def nextNode(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Option[STMPtr[PageTreeNode]]] = {
       right.map(rightPtr => rightPtr.read().flatMap(_.leftChild(rightPtr).map(Option(_)))).getOrElse(rightParent(self))
     }
 
-    private[BatchedTreeCollection] def getByTreePath(self: STMPtr[TreeCollectionNode[T]], path: List[Int])(implicit ctx: STMTxnCtx): Future[STMPtr[TreeCollectionNode[T]]] = {
+    private[PageTree] def getByTreePath(self: STMPtr[PageTreeNode], path: List[Int])(implicit ctx: STMTxnCtx): Future[STMPtr[PageTreeNode]] = {
       if (path.isEmpty) Future.successful(self)
       else {
         path.head match {
@@ -145,10 +146,10 @@ object BatchedTreeCollection {
       }
     }
 
-    def getByTreeId(cursor: Long, self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[STMPtr[TreeCollectionNode[T]]] = {
+    def getByTreeId(cursor: Long, self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[STMPtr[PageTreeNode]] = {
       require(0 <= cursor)
       val path = Util.toDigits(cursor, 2).tail
-      val fromTry: Future[STMPtr[TreeCollectionNode[T]]] = Future.fromTry(Try {
+      val fromTry: Future[STMPtr[PageTreeNode]] = Future.fromTry(Try {
         getByTreePath(self, path)
       }).flatMap(x⇒x)
       fromTry.recoverWith({
@@ -156,13 +157,13 @@ object BatchedTreeCollection {
       })
     }
 
-    def getTreeBit(node: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Int = {
+    def getTreeBit(node: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Int = {
       if (left.exists(_ == node)) 0
       else if (right.exists(_ == node)) 1
       else throw new RuntimeException()
     }
 
-    def getTreeId(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[Long] = {
+    def getTreeId(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Long] = {
       parent.map(parentPtr => parentPtr.read().flatMap(parentNode => {
         parentNode.getTreeId(parent.get).map(parentId => {
           val bit: Int = parentNode.getTreeBit(self)
@@ -174,7 +175,7 @@ object BatchedTreeCollection {
       })
     }
 
-    private def unlinkParent(self: STMPtr[TreeCollectionNode[T]])(implicit ctx: STMTxnCtx): Future[Unit] = {
+    private def unlinkParent(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Unit] = {
       parent.map(parentPtr => {
         parentPtr.read().flatMap(parentValue => {
           if (parentValue.left == Option(self)) {
@@ -193,41 +194,41 @@ object BatchedTreeCollection {
 
 }
 
-class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
+class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
   private implicit def executionContext = StmPool.executionContext
 
-  def this(ptr: PointerType) = this(new STMPtr[TreeCollectionNode[T]](ptr))
+  def this(ptr: PointerType) = this(new STMPtr[PageTreeNode](ptr))
 
   def atomic(priority: Duration = 0.seconds, maxRetries: Int = 20)(implicit cluster: Restm) = new AtomicApi(priority, maxRetries)
 
   def sync(duration: Duration) = new SyncApi(duration)
 
-  def add(value: List[T])(implicit ctx: STMTxnCtx): Future[Unit] = {
+  def add(value: List[LabeledItem])(implicit ctx: STMTxnCtx): Future[Unit] = {
     rootPtr.readOpt().flatMap(rootOpt => {
       rootOpt.map(root => root.add(value, rootPtr))
         .getOrElse({
           STMPtr.dynamic(KryoValue(value))
-            .map(new TreeCollectionNode[T](None, _))
+            .map(new PageTreeNode(None, _))
             .flatMap(
               rootPtr.write)
         })
     })
   }
 
-  def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[List[T]])] = {
+  def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[List[LabeledItem]])] = {
     if (cursor < 0) {
       Future.successful((cursor - 1) -> KryoValue.empty)
     } else {
       rootPtr.readOpt().flatMap(rootOpt => {
         rootOpt.map(root => {
           if (cursor == 0) {
-            root.leftChild(rootPtr).flatMap((nodePtr: STMPtr[TreeCollectionNode[T]]) => {
+            root.leftChild(rootPtr).flatMap((nodePtr: STMPtr[PageTreeNode]) => {
               nodePtr.read().flatMap(node => {
                 node.getCursorBlock(nodePtr)
               })
             })
           } else {
-            root.getByTreeId(cursor, rootPtr).flatMap((nodePtr: STMPtr[TreeCollectionNode[T]]) => {
+            root.getByTreeId(cursor, rootPtr).flatMap((nodePtr: STMPtr[PageTreeNode]) => {
               nodePtr.read().flatMap(node => {
                 node.getCursorBlock(nodePtr)
               })
@@ -240,7 +241,7 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
     }
   }
 
-  def get()(implicit ctx: STMTxnCtx): Future[Option[List[T]]] = {
+  def get()(implicit ctx: STMTxnCtx): Future[Option[List[LabeledItem]]] = {
     rootPtr.readOpt().flatMap(rootOpt => {
       rootOpt.map(root => root.get(rootPtr).map(Option(_)))
         .getOrElse(Future.successful(None))
@@ -251,12 +252,12 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
     rootPtr.readOpt().flatMap(_.map(_.apxSize).getOrElse(Future.successful(0)))
   }
 
-  def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[Long] = {
+  def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Future[Long] = {
     Future.successful(stream().size)
   }
 
-  def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Stream[T] = {
-    Stream.iterate((0l, KryoValue.empty[List[T]]))(t => sync.nextBlock(t._1))
+  def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = {
+    Stream.iterate((0l, KryoValue.empty[List[LabeledItem]]))(t => sync.nextBlock(t._1))
       .flatMap(x ⇒ x._2.deserialize().map(x._1 → _)).takeWhile(_._1 > -2).flatMap(_._2)
   }
 
@@ -269,42 +270,42 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
-    def size()(implicit classTag: ClassTag[T]): Future[Long] = atomic {
-      BatchedTreeCollection.this.size()(_, classTag)
+    def size()(implicit classTag: ClassTag[LabeledItem]): Future[Long] = atomic {
+      PageTree.this.size()(_, classTag)
     }
 
-    def get(): Future[Option[List[T]]] = atomic {
-      BatchedTreeCollection.this.get()(_)
+    def get(): Future[Option[List[LabeledItem]]] = atomic {
+      PageTree.this.get()(_)
     }
 
-    def add(value: List[T]): Future[Unit] = atomic {
-      BatchedTreeCollection.this.add(value)(_)
+    def add(value: List[LabeledItem]): Future[Unit] = atomic {
+      PageTree.this.add(value)(_)
     }
 
     def apxSize(): Future[Long] = atomic {
-      BatchedTreeCollection.this.apxSize()(_)
+      PageTree.this.apxSize()(_)
     }
 
-    def nextBlock(cursor: Long): Future[(Long, KryoValue[List[T]])] = atomic {
-      BatchedTreeCollection.this.nextBlock(cursor)(_)
+    def nextBlock(cursor: Long): Future[(Long, KryoValue[List[LabeledItem]])] = atomic {
+      PageTree.this.nextBlock(cursor)(_)
     }
 
-    def stream()(implicit classTag: ClassTag[T]): Stream[T] = {
+    def stream()(implicit classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = {
       rawStream.flatMap(x⇒x.deserialize().getOrElse(List.empty))
     }
 
-    def rawStream()(implicit classTag: ClassTag[T]) = {
-      Stream.iterate((0l, KryoValue.empty[List[T]]))(t => sync.nextBlock(t._1)).takeWhile(_._1 > -2).map(_._2)
+    def rawStream()(implicit classTag: ClassTag[LabeledItem]) = {
+      Stream.iterate((0l, KryoValue.empty[List[LabeledItem]]))(t => sync.nextBlock(t._1)).takeWhile(_._1 > -2).map(_._2)
     }
 
     def sync = new SyncApi(10.seconds)
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def get(): Option[List[T]] = sync {
+      def get(): Option[List[LabeledItem]] = sync {
         AtomicApi.this.get()
       }
 
-      def size()(implicit classTag: ClassTag[T]): Long = sync {
+      def size()(implicit classTag: ClassTag[LabeledItem]): Long = sync {
         AtomicApi.this.size()
       }
 
@@ -312,40 +313,40 @@ class BatchedTreeCollection[T](val rootPtr: STMPtr[TreeCollectionNode[T]]) {
         AtomicApi.this.apxSize()
       }
 
-      def nextBlock(cursor: Long): (Long, KryoValue[List[T]]) = sync {
+      def nextBlock(cursor: Long): (Long, KryoValue[List[LabeledItem]]) = sync {
         AtomicApi.this.nextBlock(cursor)
       }
 
-      def add(value: List[T]): Unit = sync {
+      def add(value: List[LabeledItem]): Unit = sync {
         AtomicApi.this.add(value)
       }
 
-      def stream()(implicit classTag: ClassTag[T]): Stream[T] = AtomicApi.this.stream()
+      def stream()(implicit classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = AtomicApi.this.stream()
     }
 
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def get()(implicit ctx: STMTxnCtx): Option[List[T]] = sync {
-      BatchedTreeCollection.this.get()
+    def get()(implicit ctx: STMTxnCtx): Option[List[LabeledItem]] = sync {
+      PageTree.this.get()
     }
 
     def apxSize()(implicit ctx: STMTxnCtx): Long = sync {
-      BatchedTreeCollection.this.apxSize()
+      PageTree.this.apxSize()
     }
 
-    def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Long = sync {
-      BatchedTreeCollection.this.size()
+    def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Long = sync {
+      PageTree.this.size()
     }
 
-    def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Stream[T] = BatchedTreeCollection.this.stream()
+    def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = PageTree.this.stream()
 
-    def add(value: List[T])(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Unit = sync {
-      BatchedTreeCollection.this.add(value)
+    def add(value: List[LabeledItem])(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Unit = sync {
+      PageTree.this.add(value)
     }
 
-    def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): (Long, KryoValue[List[T]]) = sync {
-      BatchedTreeCollection.this.nextBlock(cursor)
+    def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): (Long, KryoValue[List[LabeledItem]]) = sync {
+      PageTree.this.nextBlock(cursor)
     }
   }
 

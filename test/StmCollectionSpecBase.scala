@@ -24,6 +24,8 @@ import _root_.util.Util
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection._
+import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
+import stm.collection.clustering.PageTree
 import stm.task.TaskQueue
 import storage.Restm._
 import storage._
@@ -52,17 +54,17 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   val threadCounts = List(1,8)
 
 
-  s"BatchedTreeCollection via ${getClass.getSimpleName}" must {
+  s"PageTree via ${getClass.getSimpleName}" must {
     def randomStr = UUID.randomUUID().toString.take(8)
-    def randomUUIDs = Stream.continually(randomStr)
+    def randomUUIDs = Stream.continually(randomStr).map(new LabeledItem(_, ClassificationTreeItem.empty))
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
           ActorLog.reset("BatchedTreeCollection")
           val bootstrapSize = 50
           try {
-            val collection = new BatchedTreeCollection[String](new PointerType)
-            val bootstrap: Set[String] = {
+            val collection = new PageTree(new PointerType)
+            val bootstrap = {
               implicit val _e = executionContext
               randomUUIDs.take(bootstrapSize).map(List(_)).flatMap(x ⇒ {
                 collection.atomic().sync.add(x)
@@ -80,7 +82,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
                 ), 30.seconds)
               }}
             }
-            def verify(input: Set[String], output: Set[String]) = {
+            def verify(input: Set[LabeledItem], output: Set[LabeledItem]) = {
               output.filterNot(bootstrap.contains).size mustBe input.size
               output.filterNot(bootstrap.contains) mustBe input
             }

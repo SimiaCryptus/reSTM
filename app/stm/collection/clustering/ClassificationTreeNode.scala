@@ -19,8 +19,6 @@
 
 package stm.collection.clustering
 
-
-import stm.collection.BatchedTreeCollection
 import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem, NodeInfo}
 import stm.task.Task.TaskSuccess
 import stm.task.{StmExecutionQueue, Task}
@@ -39,8 +37,8 @@ case class ClassificationTreeNode
   pass: Option[STMPtr[ClassificationTreeNode]] = None,
   fail: Option[STMPtr[ClassificationTreeNode]] = None,
   exception: Option[STMPtr[ClassificationTreeNode]] = None,
-  itemBuffer: Option[BatchedTreeCollection[LabeledItem]],
-  splitBuffer: Option[BatchedTreeCollection[LabeledItem]] = None,
+  itemBuffer: Option[PageTree],
+  splitBuffer: Option[PageTree] = None,
   splitTask: Option[Task[String]] = None,
   rule: Option[KryoValue[RuleData]] = None
 ) {
@@ -359,7 +357,7 @@ case class ClassificationTreeNode
     }
 
     def getMembers(self: STMPtr[ClassificationTreeNode]): Future[Stream[LabeledItem]] = Future.successful {
-      itemBuffer.map((x: BatchedTreeCollection[LabeledItem]) => x.atomic().stream()).getOrElse(Stream.empty)
+      itemBuffer.map((x: PageTree) => x.atomic().stream()).getOrElse(Stream.empty)
     }
 
     def stream(self: STMPtr[ClassificationTreeNode]): Future[Stream[LabeledItem]] = Future.successful {
@@ -416,7 +414,7 @@ object ClassificationTreeNode {
   private implicit def executionContext = StmPool.executionContext
 
   def apply(parent: Option[STMPtr[ClassificationTreeNode]])(implicit ctx: STMTxnCtx) =
-    new ClassificationTreeNode(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
+    new ClassificationTreeNode(parent, itemBuffer = Option(PageTree()))
 
   def splitTaskFn(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int): (Restm, ExecutionContext) => TaskSuccess[String] =
     (c: Restm, e: ExecutionContext) => {
@@ -432,8 +430,8 @@ object ClassificationTreeNode {
            (implicit cluster: Restm): Future[Int] = {
     def currentData = self.atomic.sync.read
 
-    val obtainLock: Future[Option[BatchedTreeCollection[LabeledItem]]] = new STMTxn[Option[BatchedTreeCollection[LabeledItem]]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx): Future[Option[BatchedTreeCollection[LabeledItem]]] = {
+    val obtainLock: Future[Option[PageTree]] = new STMTxn[Option[PageTree]] {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[Option[PageTree]] = {
         //println(s"Obtaining split lock for $self")
         self.read().flatMap(node => {
           if (node.splitBuffer.isDefined) {
@@ -441,7 +439,7 @@ object ClassificationTreeNode {
             Future.successful(None)
           } else if (node.itemBuffer.isDefined) {
             val prevRecieveBuffer = node.itemBuffer.get
-            BatchedTreeCollection.create[LabeledItem]().flatMap(newBuffer => {
+            PageTree.create().flatMap(newBuffer => {
               self.write(node.copy(
                 itemBuffer = Option(newBuffer),
                 splitBuffer = Option(prevRecieveBuffer))
@@ -455,20 +453,20 @@ object ClassificationTreeNode {
       }
     }.txnRun(cluster)
 
-    def transferBuffers() = new STMTxn[BatchedTreeCollection[LabeledItem]] {
-      override def txnLogic()(implicit ctx: STMTxnCtx): Future[BatchedTreeCollection[LabeledItem]] = {
+    def transferBuffers() = new STMTxn[PageTree] {
+      override def txnLogic()(implicit ctx: STMTxnCtx): Future[PageTree] = {
         //println(s"Swapping queues for $self")
         self.read().flatMap(node => {
           val collection = node.itemBuffer.get
           self.write(node.copy(
-            itemBuffer = Option(BatchedTreeCollection[LabeledItem]()),
+            itemBuffer = Option(PageTree()),
             splitBuffer = Option(collection))
           ).map(_ => collection)
         })
       }
     }.txnRun(cluster)
 
-    val makeRule: Future[Option[Int]] = obtainLock.flatMap(_.map((itemBuffer: BatchedTreeCollection[LabeledItem]) => {
+    val makeRule: Future[Option[Int]] = obtainLock.flatMap(_.map((itemBuffer: PageTree) => {
       println(s"Deriving rule for $self")
       val stream: Stream[LabeledItem] = itemBuffer.atomic().stream()
       val newRule = strategy.getRule(stream)
@@ -488,9 +486,9 @@ object ClassificationTreeNode {
       }
     }).getOrElse(Future.successful(None)))
 
-    def transferAsync(obtainLock: Future[Option[BatchedTreeCollection[LabeledItem]]] = obtainLock): Future[Option[Int]] = obtainLock.flatMap(lockOpt =>
+    def transferAsync(obtainLock: Future[Option[PageTree]] = obtainLock): Future[Option[Int]] = obtainLock.flatMap(lockOpt =>
       makeRule.flatMap(_ => {
-        lockOpt.map((itemBuffer: BatchedTreeCollection[LabeledItem]) => {
+        lockOpt.map((itemBuffer: PageTree) => {
           val node = currentData
           val routeTasks: Iterator[Future[Int]] = itemBuffer.atomic().rawStream().grouped(512)
             .flatMap(_.map((data: KryoValue[List[LabeledItem]]) ⇒ Future {
@@ -506,7 +504,7 @@ object ClassificationTreeNode {
       })
     )
 
-    def transferRecursive(obtainLock: Future[Option[BatchedTreeCollection[LabeledItem]]] = obtainLock): Future[Option[Int]] = {
+    def transferRecursive(obtainLock: Future[Option[PageTree]] = obtainLock): Future[Option[Int]] = {
       transferAsync(obtainLock).flatMap(optRows => {
         val rows = optRows.getOrElse(0)
         if (rows > 10) {

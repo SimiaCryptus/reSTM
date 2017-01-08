@@ -19,7 +19,6 @@
 
 package stm.collection.clustering
 
-import stm.collection.BatchedTreeCollection
 import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem, NodeInfo}
 import stm.task.Task.{TaskContinue, TaskResult, TaskSuccess}
 import stm.task.{StmExecutionQueue, Task}
@@ -37,7 +36,7 @@ object ClassificationTree {
   private implicit def executionContext = StmPool.executionContext
 
   def newClassificationTreeNode(parent: Option[STMPtr[ClassificationTreeNode]] = None)(implicit ctx: STMTxnCtx) =
-    new ClassificationTreeNode(parent, itemBuffer = Option(BatchedTreeCollection[LabeledItem]()))
+    new ClassificationTreeNode(parent, itemBuffer = Option(PageTree()))
 
   def applyStrategy(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy): (Restm, ExecutionContext) => TaskResult[Int] =
     (cluster, executionContext: ExecutionContext) => {
@@ -95,6 +94,10 @@ object ClassificationTree {
     new ClassificationTree(new STMPtr[ClassificationTree.ClassificationTreeData](new PointerType(id)))
 
   case class ClassificationTreeItem(attributes: Map[String, Any])
+
+  object ClassificationTreeItem {
+    lazy val empty = ClassificationTreeItem(Map.empty)
+  }
 
   case class LabeledItem(label: String, value: ClassificationTreeItem)
 

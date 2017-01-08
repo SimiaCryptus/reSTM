@@ -23,7 +23,6 @@ import java.util.concurrent.Executors
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm.STMTxnCtx
-import stm.collection.BatchedTreeCollection
 import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
 import util.{LevenshteinDistance, Util}
 
@@ -148,7 +147,7 @@ case class DefaultClassificationStrategy(
     result
   }
 
-  def split(buffer: BatchedTreeCollection[ClassificationTree.LabeledItem])(implicit ctx: STMTxnCtx): Boolean = {
+  def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = {
     buffer.sync(30.seconds).apxSize() > branchThreshold //|| buffer.sync.size() > branchThreshold
   }
 }
