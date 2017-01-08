@@ -122,7 +122,7 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
     root.read.flatMap(_.initTriggers(Task.this, queue)).map(_ => Unit)
   }
 
-  def future(implicit cluster: Restm): Future[T] = futureCache.getOrElseUpdate((cluster, this, executionContext), {
+  def future(implicit cluster: Restm): Future[T] = futureCache.getOrElseUpdate((cluster.toString, this.id), {
     implicit def executionContext = StmDaemons.executionContext
     val promise = Promise[T]()
     val schedule: ScheduledFuture[_] = scheduledThreadPool.scheduleAtFixedRate(new Runnable {
@@ -157,9 +157,9 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
     }).map(currentState => currentState.result.isDefined || currentState.exception.isDefined)
   }
 
-  def result()(implicit ctx: STMTxnCtx): Future[T] = Util.chainEx("Error getting result") {
+  def data()(implicit ctx: STMTxnCtx): Future[TaskData[T]] = Util.chainEx("Error getting result") {
     implicit def executionContext = StmDaemons.executionContext
-    root.read().map(currentState => currentState.exception.map(throw _).orElse(currentState.result).getOrElse(throw new RuntimeException(s"Task ${root.id} not complete")))
+    root.read()
   }
 
   @JsonIgnore def getStatusTrace(queue: StmExecutionQueue)(implicit ctx: STMTxnCtx): Future[TaskStatusTrace] = {
@@ -169,6 +169,7 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
   }
 
   def getStatusTrace(queue: StmExecutionQueue, threads: Iterable[Thread])(implicit ctx: STMTxnCtx): Future[TaskStatusTrace] = {
+    require(null != queue)
     def visit(currentState: TaskData[T], id: PointerType): TaskStatusTrace = {
       val status: TaskStatus = if (currentState.result.isDefined) {
         TaskStatus.Success
@@ -282,9 +283,9 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
   private def this() = this(new PointerType)
 
   class AtomicApi(priority: Duration = 0.seconds)(implicit cluster: Restm) extends AtomicApiBase(priority) {
-    def result(): Future[T] = atomic {
-      Task.this.result()(_)
-    }
+    def result() = atomic {
+      Task.this.data()(_)
+    }.map(currentState => currentState.exception.map(throw _).orElse(currentState.result).getOrElse(throw new RuntimeException(s"Task ${root.id} not complete")))
 
     def isComplete: Future[Boolean] = atomic {
       Task.this.isComplete()(_)
@@ -339,8 +340,8 @@ class Task[T](val root: STMPtr[TaskData[T]]) extends Identifiable {
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def result()(implicit ctx: STMTxnCtx): T = sync {
-      Task.this.result()
+    def data()(implicit ctx: STMTxnCtx) = sync {
+      Task.this.data()
     }
 
     def map[U](queue: StmExecutionQueue, function: (T, Restm, ExecutionContext) => TaskResult[U])(implicit ctx: STMTxnCtx): Task[U] = sync {

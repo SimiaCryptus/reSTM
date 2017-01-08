@@ -31,6 +31,7 @@ import util.Util
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.reflect._
 
 case class ClassificationTreeNode
 (
@@ -41,7 +42,7 @@ case class ClassificationTreeNode
   itemBuffer: Option[BatchedTreeCollection[LabeledItem]],
   splitBuffer: Option[BatchedTreeCollection[LabeledItem]] = None,
   splitTask: Option[Task[String]] = None,
-  rule: Option[KryoValue[(ClassificationTreeItem) => Boolean]] = None
+  rule: Option[KryoValue[RuleData]] = None
 ) {
 
   private implicit def executionContext = StmPool.executionContext
@@ -52,7 +53,7 @@ case class ClassificationTreeNode
 
   def getInfo(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[NodeInfo] = {
     getTreeId(self, root).flatMap(id => {
-      val nodeInfo = NodeInfo(self, id)
+      val nodeInfo = NodeInfo(self, id, rule.flatMap(_.deserialize()).map(_.name).orNull)
       parent.map(parent => parent.read().flatMap(_.getInfo(parent, root)).map(parent => nodeInfo.copy(parent = Option(parent))))
         .getOrElse(Future.successful(nodeInfo))
     })
@@ -61,7 +62,7 @@ case class ClassificationTreeNode
   def find(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx): Future[Option[STMPtr[ClassificationTreeNode]]] = {
     if (rule.isDefined) {
       try {
-        if (rule.get.deserialize().get(value)) {
+        if (rule.get.deserialize().get.fn(value)) {
           pass.get.read().flatMap(_.find(value)).map(_.orElse(pass))
         } else {
           fail.get.read().flatMap(_.find(value)).map(_.orElse(fail))
@@ -269,11 +270,11 @@ case class ClassificationTreeNode
           2
       }
     }
-    value.groupBy(x => eval(x.value))
+    value.toParArray.groupBy(x => eval(x.value)).mapValues(_.toList).toList.toMap
   }
 
   private def getRule: (ClassificationTreeItem) ⇒ Boolean = {
-    rule.get.deserialize().get
+    rule.get.deserialize().get.fn
   }
 
   private def getTreeBit(node: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Int = {
@@ -293,11 +294,30 @@ case class ClassificationTreeNode
 
     def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = {
       val results: Map[Int, List[LabeledItem]] = split(value)
-      atomic { ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_) }
+      insert(self, strategy, maxSplitDepth, results)
     }
 
-    def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1, results: Map[Int, List[LabeledItem]]): Future[Int] = atomic {
-      ClassificationTreeNode.this.insert(self, strategy, maxSplitDepth, results)(_)
+    def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, List[LabeledItem]]) = {
+      require(pass.isDefined)
+      require(fail.isDefined)
+      require(exception.isDefined)
+      Future.sequence(List(
+        if (results.get(0).isDefined) atomic { ctx ⇒ {
+          pass.get.read()(ctx, classTag[ClassificationTreeNode]).flatMap(_.add(results(0), pass.get, strategy, maxSplitDepth)(ctx))
+        }} else {
+          Future.successful(0)
+        },
+        if (results.get(1).isDefined) atomic { ctx ⇒ {
+          fail.get.read()(ctx, classTag[ClassificationTreeNode]).flatMap(_.add(results(1), fail.get, strategy, maxSplitDepth)(ctx))
+        }} else {
+          Future.successful(0)
+        },
+        if (results.get(2).isDefined) atomic { ctx ⇒ {
+          exception.get.read()(ctx, classTag[ClassificationTreeNode]).flatMap(_.add(results(2), exception.get, strategy, maxSplitDepth)(ctx))
+        }} else {
+          Future.successful(0)
+        }
+      )).map(_.reduceOption(_ + _).getOrElse(0))
     }
 
     def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[(Long, Stream[LabeledItem])] = {
@@ -472,10 +492,11 @@ object ClassificationTreeNode {
       makeRule.flatMap(_ => {
         lockOpt.map((itemBuffer: BatchedTreeCollection[LabeledItem]) => {
           val node = currentData
-          val stream: Stream[LabeledItem] = itemBuffer.atomic().stream()
-          val routeTasks: Iterator[Future[Int]] = stream.grouped(512).map(_.toList).map((block: List[LabeledItem]) => {
-            node.atomic().route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
-          })
+          val routeTasks: Iterator[Future[Int]] = itemBuffer.atomic().rawStream().grouped(100)
+            .map(_.flatMap(x ⇒ x.deserialize().getOrElse(List.empty)).toList)
+            .map((block: List[LabeledItem]) => {
+              node.atomic().route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
+            })
           Future.sequence(routeTasks).map(_.sum).map(sum => {
             println(s"Routed $sum items for $self")
             Option(sum)

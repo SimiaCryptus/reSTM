@@ -48,5 +48,6 @@ GET    /cluster/*treeId/*cluster/list   controllers.ClusterTreeController.list(t
 POST   /cluster/*treeId/*cluster/split  controllers.ClusterTreeController.split(treeId:String, cluster:Int)
 GET    /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
 POST   /cluster/*treeId/config          controllers.ClusterTreeController.config(treeId:String)
-POST    /cluster/*treeId/find           controllers.ClusterTreeController.find(treeId:String)
-PUT    /cluster/*treeId                 controllers.ClusterTreeController.add(treeId:String, label:String="_")
+POST   /cluster/*treeId/find            controllers.ClusterTreeController.find(treeId:String)
+GET    /cluster/*treeId/find            controllers.ClusterTreeController.find(treeId:String)
+PUT    /cluster/*treeId                 controllers.ClusterTreeController.add(treeId:String, label:String)

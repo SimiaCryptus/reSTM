@@ -51,7 +51,9 @@ trait STMTxnInstrumentation {
     }
     val stackTrace: List[StackTraceElement] = Thread.currentThread().getStackTrace.toList
       .filterNot(_.getClassName.contains("SyncApiBase"))
+      .filterNot(_.getClassName.startsWith("util."))
       .filterNot(_.getClassName.startsWith("scala."))
+      .filterNot(_.getClassName.startsWith("java."))
       .filterNot(_.getMethodName.equals("apply"))
     val dropFilter = stackTrace.dropWhile(!internalStack(_))
     dropFilter.splitAt(dropFilter.lastIndexWhere(internalStack)+1)
@@ -59,13 +61,16 @@ trait STMTxnInstrumentation {
 
   lazy val caller: String = {
     val (stmStack, callingStack) = creationStack
-    val frame = callingStack.head
-    s"${frame.getClassName}.${frame.getMethodName}(${frame.getFileName}:${frame.getLineNumber})"
+    callingStack.headOption
+      .map(frame⇒s"${frame.getClassName}.${frame.getMethodName}(${frame.getFileName}:${frame.getLineNumber})")
+      .getOrElse("_root_")
   }
 
   lazy val codeId: String = {
     val (stmStack, callingStack) = creationStack
-    val frame = stmStack.last
-    s"${frame.getClassName}.${frame.getMethodName}(${frame.getFileName}:${frame.getLineNumber})"
+    stmStack.lastOption
+      .map(frame⇒s"${frame.getClassName}.${frame.getMethodName}(${frame.getFileName}:${frame.getLineNumber})")
+      .getOrElse("????")
+
   }
 }

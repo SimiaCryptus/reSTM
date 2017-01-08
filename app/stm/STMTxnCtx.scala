@@ -26,15 +26,18 @@ import util.Util
 import util.Util.{chainEx, monitorFuture}
 
 import scala.collection.concurrent.TrieMap
+import scala.concurrent.Future
 import scala.concurrent.duration.{Duration, _}
-import scala.concurrent.{Await, Future}
 import scala.reflect.ClassTag
 
-class STMTxnCtx(val cluster: Restm, val priority: Duration) {
+class STMTxnCtx(val cluster: Restm, val priority: Duration, val txn: STMTxn[_]) {
   private implicit def executionContext = StmPool.executionContext
 
-  private[stm] lazy val txnId = cluster.newTxn(priority)
-  private[stm] val defaultTimeout: Duration = 5.seconds
+  private[stm] lazy val txnId = cluster.newTxn(priority).map(id⇒{
+    ActorLog.log(s"Txn $id defined at ${txn.codeId} called by ${txn.caller}, op id ${txn.opId}")
+    id
+  })
+  private[stm] val defaultTimeout: Duration = 15.seconds
   private[this] val writeLocks = new TrieMap[PointerType, Future[Boolean]]()
   private[stm] val readCache: TrieMap[PointerType, Future[Option[_]]] = new TrieMap()
   private[stm] val initCache: TrieMap[PointerType, Option[AnyRef]] = new TrieMap()
@@ -98,8 +101,7 @@ class STMTxnCtx(val cluster: Restm, val priority: Duration) {
   }
 
   override def toString: String = {
-    "txn@" + Option(txnId).filter(_.isCompleted).map(future => Await.result(future, 1.second))
-      .map(_.toString).getOrElse("???")
+    "txn@" + txnId.value.map(_.get.toString).getOrElse("???")
   }
 
   private[stm] def commit(): Future[Unit] = Util.monitorFuture("STMTxnCtx.getCurrentValue") {

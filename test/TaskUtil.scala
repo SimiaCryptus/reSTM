@@ -29,47 +29,56 @@ import scala.concurrent.{Await, ExecutionContext}
 import scala.util.Try
 
 object TaskUtil {
-  def awaitTask[T](sortTask: Task[T], taskTimeout: FiniteDuration = 10.minutes, diagnosticsTimeout: FiniteDuration = 30.seconds)(implicit cluster: Restm, executionContext: ExecutionContext): T = {
+  def awaitTask[T](sortTask: Task[T], taskTimeout: FiniteDuration = 10.minutes, diagnosticsTimeout: FiniteDuration = 60.seconds)(implicit cluster: Restm, executionContext: ExecutionContext): T = {
     def now = new Date()
-
     val timeout = new Date(now.getTime + taskTimeout.toMillis)
     val continueLoop = true
     var lastSummary = ""
     var lastChanged = now
+
+    val queue = StmExecutionQueue.get()
+    require(null != queue)
     while (!sortTask.future.isCompleted && continueLoop) {
       if (!timeout.after(now)) throw new RuntimeException("Time Out")
+      try {
+        System.out.println(s"Checking Status at ${new Date()}...")
+        val priority = 50.milliseconds
+        val statusTrace = sortTask.atomic(-priority).sync(diagnosticsTimeout).getStatusTrace(queue)
 
-      System.out.println(s"Checking Status at ${new Date()}...")
-      val statusTrace = sortTask.atomic(-0.milliseconds).sync(diagnosticsTimeout).getStatusTrace(StmExecutionQueue.get())
+        def isOrphaned(node: TaskStatusTrace): Boolean = node.status.isInstanceOf[Orphan] || node.children.exists(isOrphaned)
 
-      def isOrphaned(node: TaskStatusTrace): Boolean = node.status.isInstanceOf[Orphan] || node.children.exists(isOrphaned)
+        def statusSummary(node: TaskStatusTrace = statusTrace): Map[String, Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
+          .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ + _).getOrElse(0))
 
-      def statusSummary(node: TaskStatusTrace = statusTrace): Map[String, Int] = (List(node.status.toString -> 1) ++ node.children.flatMap(statusSummary(_).toList))
-        .groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ + _).getOrElse(0))
+        val numQueued = Option(queue).map(_.workQueue.atomic(priority = -priority).sync(diagnosticsTimeout).size()).getOrElse(-1)
+        val numRunning = ExecutionStatusManager.currentlyRunning()
 
-      val numQueued = Option(StmExecutionQueue.get()).map(_.workQueue.atomic().sync(diagnosticsTimeout).size()).getOrElse(-1)
-      val numRunning = ExecutionStatusManager.currentlyRunning()
-
-      val summary = JacksonValue.simple(statusSummary()).pretty
-      if (lastSummary == summary) {
-        System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
-        require(lastChanged.compareTo(new Date(now.getTime - 10.minutes.toMillis)) > 0)
-      } else if (isOrphaned(statusTrace)) {
-        //println(JacksonValue.simple(statusTrace).pretty)
-        System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
-        //continueLoop = false
-      } else if (numQueued > 0 || numRunning > 0) {
-        System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
-      } else {
-        System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
-        //continueLoop = false
-      }
-      if (lastSummary != summary) {
-        lastSummary = summary
-        lastChanged = now
-      }
-      if (continueLoop) Try {
-        Await.ready(sortTask.future, 15.seconds)
+        val summary = JacksonValue.simple(statusSummary()).pretty
+        if (lastSummary == summary) {
+          System.err.println(s"Stale Status at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
+          require(lastChanged.compareTo(new Date(now.getTime - 1000.minutes.toMillis)) > 0)
+        } else if (isOrphaned(statusTrace)) {
+          //println(JacksonValue.simple(statusTrace).pretty)
+          System.err.println(s"Orphaned Tasks at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
+          //continueLoop = false
+        } else if (numQueued > 0 || numRunning > 0) {
+          System.out.println(s"Status OK at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
+        } else {
+          System.err.println(s"Status Idle at ${new Date()} - $numQueued tasks queued, $numRunning runnung - $summary")
+          //continueLoop = false
+        }
+        if (lastSummary != summary) {
+          lastSummary = summary
+          lastChanged = now
+        }
+        if (continueLoop) Try {
+          Await.ready(sortTask.future, 15.seconds)
+        }
+      } catch {
+        case e : IllegalArgumentException if e.getMessage.contains("requirement failed") ⇒ throw e
+        case e : Throwable ⇒
+          e.printStackTrace()
+          //throw e
       }
     }
     System.out.println(s"Colleting Result at ${new Date()}")

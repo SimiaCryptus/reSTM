@@ -42,6 +42,8 @@ object ClassificationTree {
   def applyStrategy(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy): (Restm, ExecutionContext) => TaskResult[Int] =
     (cluster, executionContext: ExecutionContext) => {
       implicit val _executionContext = executionContext
+      val taskQueue = StmExecutionQueue.get()
+      require(null != taskQueue, "StmExecutionQueue not initialized")
       val task: Future[TaskContinue[Int]] = {
         lazy val stateFuture: Future[Option[ClassificationTreeNode]] = {
           implicit val _executionContext = executionContext
@@ -69,7 +71,7 @@ object ClassificationTree {
           }.txnRun(cluster)
         }).flatMap(list => {
           Future.sequence(list.map((x: (Restm, ExecutionContext) => TaskResult[Int]) => {
-            StmExecutionQueue.get().atomic(cluster).add(x)
+            taskQueue.atomic(cluster).add(x)
           }))
         })
       }.map(tasks => {
@@ -77,7 +79,7 @@ object ClassificationTree {
           implicit val _cluster = cluster
           implicit val _executionContext = executionContext
           TaskSuccess(Await.result(Future.sequence(tasks.map(_.atomic() result())), 90.seconds).sum)
-        }, queue = StmExecutionQueue.get(), newTriggers = tasks)
+        }, queue = taskQueue, newTriggers = tasks)
       })(executionContext)
       Await.result(task, 5.minutes)
     }
@@ -117,6 +119,7 @@ object ClassificationTree {
   (
     node: STMPtr[ClassificationTreeNode],
     treeId: Long,
+    rule: String,
     parent: Option[NodeInfo] = None
   )
 
@@ -177,11 +180,11 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
     })
   }
 
-  def getClusterCount(ptr: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[Map[String, Int]] = Util.monitorFuture("ClassificationTree.getClusterCount") {
+  def getClusterCount(ptr: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[Map[String, Int]] = Util.chainEx("getClusterCount") { Util.monitorFuture("ClassificationTree.getClusterCount") {
     ptr.read().map(node => {
       node.stream(ptr).groupBy(_.label).mapValues(_.size)
     })
-  }
+  }}
 
   def splitTree(strategy: ClassificationStrategy)
                (implicit ctx: STMTxnCtx): Future[Task[Int]] = {
@@ -192,7 +195,9 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
 
   def splitCluster(node: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy)
                   (implicit ctx: STMTxnCtx): Future[Task[Int]] = Util.monitorFuture("ClassificationTree.splitCluster") {
-    StmExecutionQueue.get().add(ClassificationTree.applyStrategy(node, strategy))
+    val queue = StmExecutionQueue.get()
+    require(null != queue)
+    queue.add(ClassificationTree.applyStrategy(node, strategy))
   }
 
   def stream(duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Future[Stream[LabeledItem]] = {
@@ -239,9 +244,9 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
       ClassificationTree.this.getClusterByTreeId(value)(_)
     }
 
-    def getClusterCount(value: STMPtr[ClassificationTreeNode]): Future[Map[String, Int]] = atomic {
-      ClassificationTree.this.getClusterCount(value)(_)
-    }
+    def getClusterCount(ptr: STMPtr[ClassificationTreeNode]): Future[Map[String, Int]] = Util.chainEx("getClusterCount") { Util.monitorFuture("ClassificationTree.getClusterCount") {
+      ptr.atomic.read.flatMap(_.atomic().stream(ptr).map(_.groupBy(_.label).mapValues(_.size)))
+    }}
 
     def splitCluster(node: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy): Future[Task[Int]] = atomic {
       ClassificationTree.this.splitCluster(node, strategy)(_)

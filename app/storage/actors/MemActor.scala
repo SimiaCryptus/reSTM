@@ -54,7 +54,7 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
   def collectGarbage(): Future[Int] = Util.monitorFuture("MemActor.gc") {
     withActor {
       val head = history.maxBy(_.time)
-      val garbage = history.filter(_.time.age > 15.seconds).filter(_!=head).toArray
+      val garbage = history.filter(_.time.age > 15.seconds.toMillis).filter(_!=head).toArray
       garbage.map(item⇒history.remove(history.indexOf(item))).size
     }.andThen({
       case Success(items) =>

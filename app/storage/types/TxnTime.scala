@@ -20,12 +20,11 @@
 package storage.types
 
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.function.LongUnaryOperator
 
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.duration.{Duration, _}
+import scala.concurrent.duration.Duration
 
 object TxnTime {
   val start: Long = timeVal()
@@ -33,7 +32,7 @@ object TxnTime {
   val safeLast: AtomicLong = new AtomicLong(0)
 
   def next(priority: Duration): TxnTime = {
-    recent.filterKeys(_.age > 1.seconds).keys.foreach(recent.remove)
+    recent.filterKeys(_.age > 1000).keys.foreach(recent.remove)
     Stream.iterate(new TxnTime(safeNow + priority.toMillis, 0))(_.next)
       .find(id => {
         val uuid = UUID.randomUUID()
@@ -52,7 +51,7 @@ object TxnTime {
 }
 
 case class TxnTime(epochMs: Long, sequence: Int) extends Ordered[TxnTime] {
-  def age = Duration(TxnTime.safeNow - epochMs, TimeUnit.MILLISECONDS)
+  def age = TxnTime.safeNow - epochMs
 
   def this() = this(TxnTime.safeNow, 0)
 

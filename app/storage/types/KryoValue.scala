@@ -30,7 +30,9 @@ import net.jpountz.lz4.{LZ4Compressor, LZ4Factory, LZ4SafeDecompressor}
 import scala.reflect._
 
 object KryoValue {
-  private val lZ4Factory = LZ4Factory.safeInstance()
+  def empty[T <: AnyRef] : KryoValue[T] = new KryoValue[T](null:String)
+
+  private def lZ4Factory = LZ4Factory.safeInstance()
 
   private val kryo: ThreadLocal[Kryo] = new ThreadLocal[Kryo] {
     override def initialValue(): Kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
@@ -40,6 +42,9 @@ object KryoValue {
   }
   private val safeDecompressor: ThreadLocal[LZ4SafeDecompressor] = new ThreadLocal[LZ4SafeDecompressor] {
     override def initialValue(): LZ4SafeDecompressor = lZ4Factory.safeDecompressor()
+  }
+  private val decompressionBuffer: ThreadLocal[Array[Byte]] = new ThreadLocal[Array[Byte]] {
+    override def initialValue(): Array[Byte] = new Array[Byte](8*1024*1024)
   }
 
   def apply[T <: AnyRef](value: T) = new KryoValue[T](toString(value))
@@ -69,9 +74,9 @@ object KryoValue {
   {
     Option(data)
       .map(x => {
-        safeDecompressor.get().decompress(x, 1024 * 1024)
+        safeDecompressor.get().decompress(x, decompressionBuffer.get())
       })
-      .map(new Input(_))
+      .map(new Input(decompressionBuffer.get, 0, _))
       .map(kryo.get().readClassAndObject(_))
       .map(_.asInstanceOf[T])
   }

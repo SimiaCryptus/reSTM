@@ -26,6 +26,7 @@ import play.api.mvc._
 import stm.STMPtr
 import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
 import stm.collection.clustering.{ClassificationStrategy, ClassificationTree, ClassificationTreeNode}
+import stm.task.Task
 import storage.RestmImpl
 import storage.types.JacksonValue
 import util.Util._
@@ -39,32 +40,61 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
   implicit val cluster: RestmImpl = RestmController.storageService
 
 
-  def add(treeId: String, label: String = "_"): Action[AnyContent] = Action.async { request =>
+  def add(treeId: String, label: String): Action[AnyContent] = Action.async { request =>
     monitorFuture("ClusterTreeController.add") {
       val tree = ClassificationTree(treeId)
-      val item: ClassificationTreeItem = getBodyAsItem(request)
-      tree.atomic().add(label, item).flatMap(_ => {
-        find(tree, item)
+      val items = bodyAsItems(request)
+      tree.atomic().addAll(label, items.toList).map(_ => {
+        Ok(JacksonValue.simple(Map(
+          "result" → "ok", "items" → items.size, "treeId" → treeId, "label" → label
+        )).pretty).as("application/json")
       })
     }
   }
 
+  private val digits = Set('0','1','2','3','4','5','6','7','8','9','-','.','e','+')
+
   private def getBodyAsItem(request: Request[AnyContent]) = {
-    val map = new JacksonValue(request.body.asText.get).deserialize[Map[String, Any]]().get
-    ClassificationTreeItem(attributes = map)
+    ClassificationTreeItem(attributes = bodyAsItem(request) ++ queryStringAsItem(request))
+  }
+
+  private def queryStringAsItem(request: Request[AnyContent]) = {
+    val queryStringAttributes = request.queryString.mapValues(_.head).mapValues(str ⇒ {
+      if (str.forall(digits.contains)) {
+        try {
+          java.lang.Double.parseDouble(str)
+        } catch {
+          case e: NumberFormatException ⇒ str
+        }
+      } else {
+        str
+      }
+    })
+    queryStringAttributes
+  }
+
+  private def bodyAsItems(request: Request[AnyContent]): Stream[ClassificationTreeItem] = {
+    val body = request.body.asText.getOrElse("")
+    val stream = JacksonValue.deserializeSimpleStream[AnyRef](body)
+    stream.map(_.asInstanceOf[Map[String,Any]]).map(x⇒new ClassificationTreeItem(attributes = x))
+  }
+
+  private def bodyAsItem(request: Request[AnyContent]) = {
+    val bodyAttributes = new JacksonValue(request.body.asText.getOrElse("")).deserialize[Map[String, Any]]().getOrElse(Map.empty)
+    bodyAttributes
   }
 
   private def find(tree: ClassificationTree, item: ClassificationTreeItem): Future[Result] = {
     tree.atomic().getClusterId(item).flatMap(ptr => {
-      find(tree, ptr)
+      info(tree, ptr)
     })
   }
 
-  private def find(tree: ClassificationTree, ptr: STMPtr[ClassificationTreeNode]) = {
+  private def info(tree: ClassificationTree, ptr: STMPtr[ClassificationTreeNode]) = {
     tree.atomic().getClusterPath(ptr).flatMap(path => {
       tree.atomic().getClusterCount(ptr).map(counts => {
         val returnValue = Map("path" -> path, "counts" -> counts)
-        Ok(JacksonValue(returnValue).pretty).as("application/json")
+        Ok(JacksonValue.simple(returnValue).pretty).as("application/json")
       })
     })
   }
@@ -107,7 +137,7 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
         tree.getClusterPath(ptr).flatMap(path => {
           tree.getClusterCount(ptr).map(counts => {
             val returnValue = Map("path" -> path, "counts" -> counts)
-            Ok(JacksonValue(returnValue).pretty).as("application/json")
+            Ok(JacksonValue.simple(returnValue).pretty).as("application/json")
           })
         })
       })
@@ -120,7 +150,7 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
         .flatMap((nodePtr: STMPtr[ClassificationTreeNode]) => {
           nodePtr.atomic.read.flatMap((node: ClassificationTreeNode) => {
             node.atomic().stream(nodePtr).map((items: Stream[LabeledItem]) => {
-              Ok(JacksonValue(items.toList).pretty).as("application/json")
+              Ok(JacksonValue.simple(items.toList).pretty).as("application/json")
             })
           })
         })
@@ -133,8 +163,8 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
       tree.getClusterByTreeId(clusterId).flatMap((ptr: STMPtr[ClassificationTreeNode]) => {
         val strategy = request.body.asText.flatMap(body => new JacksonValue(body).deserialize[ClassificationStrategy]())
         strategy.map(Future.successful).getOrElse(tree.getClusterStrategy).flatMap(strategy => {
-          tree.splitCluster(ptr, strategy).map(result => {
-            Ok(JacksonValue(result).pretty).as("application/json")
+          tree.splitCluster(ptr, strategy).map((result: Task[Int]) => {
+            Ok(JacksonValue.simple(Map("task"→result.id)).pretty).as("application/json")
           })
         })
       })

@@ -20,30 +20,62 @@
 package storage.actors
 
 import java.io.{File, FileOutputStream, PrintWriter}
-import java.util.concurrent.Executors
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.concurrent.{Executors, TimeUnit}
 
 import util.Config
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 
 object ActorLog extends ActorQueue {
-  val pool = Executors.newFixedThreadPool(1)
+  val pool = Executors.newSingleThreadExecutor()
   implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 
-  private lazy val writer: PrintWriter = new PrintWriter(new FileOutputStream(file))
-  val enabled: Boolean = true || Config.getConfig("ActorLog").exists(java.lang.Boolean.parseBoolean)
-  private val file: File = new File(s"logs/actors.$now.log")
+  private var writer: PrintWriter = _
+  var enabled: Boolean = Config.getConfig("ActorLog").exists(java.lang.Boolean.parseBoolean)
+
+  private def dateString = DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(LocalDateTime.now()).replaceAll(":","_")
+  private var logname: String = ""
+  private def file: File = {
+    val str = if(logname.isEmpty) {
+      s"logs/actors.$dateString.log"
+    } else if(!logname.startsWith(".")) {
+      s"logs/actors.$logname$dateString.log"
+    } else {
+      s"logs/actors$logname.$dateString.log"
+    }
+    new File(str)
+  }
   private val start = now
 
   def logMsg(msg: String): Unit = log(s"ActorLog: $msg")
 
-  override def log(str: String): Future[Unit] = if (!enabled) Future.successful(Unit) else withActor {
-    writer.println(s"[$elapsed] " + str)
-    writer.flush()
+  def reset(name:String = dateString): Unit = withActor {
+    logname = name
+    writer = null
   }
 
-  private def elapsed = (now - start) / 1000.0
+  private var byteCounter = 0
+  private var startAt = now
 
-  private def now = System.currentTimeMillis
+  override def log(str: String): Future[Unit] = if (!enabled) Future.successful(Unit) else withActor {
+    if(byteCounter > 256*1024*1024 || (now - startAt) > 1.hour) {
+      writer = null
+    }
+    if(null == writer) {
+      startAt = now
+      byteCounter = 0
+      writer = new PrintWriter(new FileOutputStream(file))
+    }
+    writer.println(s"[$elapsed] " + str.replaceAll("\n","\n\t"))
+    writer.flush()
+    byteCounter = byteCounter + str.length
+  }
+
+  private def elapsed = (now - start).toUnit(TimeUnit.SECONDS)
+
+  private def now = System.nanoTime().nanoseconds
 }

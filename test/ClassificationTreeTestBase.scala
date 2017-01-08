@@ -17,14 +17,12 @@
  * under the License.
  */
 
-import java.io.FileInputStream
 import java.util.Date
 import java.util.concurrent.{ExecutorService, Executors, TimeUnit}
 
 import TaskUtil._
 import _root_.util.Util
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import org.apache.commons.io.IOUtils
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.STMPtr
@@ -37,7 +35,6 @@ import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient}
 import storage.types.JacksonValue
 
-import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -204,27 +201,7 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
     //    })
 
 
-    val fields = List(
-      List("Elevation"), //                              quantitative    meters                       Elevation in meters
-      List("Aspect"), //                                 quantitative    azimuth                      Aspect in degrees azimuth
-      List("Slope"), //                                  quantitative    degrees                      Slope in degrees
-      List("Horizontal_Distance_To_Hydrology"), //       quantitative    meters                       Horz Dist to nearest surface water features
-      List("Vertical_Distance_To_Hydrology"), //         quantitative    meters                       Vert Dist to nearest surface water features
-      List("Horizontal_Distance_To_Roadways"), //        quantitative    meters                       Horz Dist to nearest roadway
-      List("Hillshade_9am"), //                          quantitative    0 to 255 index               Hillshade index at 9am, summer solstice
-      List("Hillshade_Noon"), //                         quantitative    0 to 255 index               Hillshade index at noon, summer soltice
-      List("Hillshade_3pm"), //                          quantitative    0 to 255 index               Hillshade index at 3pm, summer solstice
-      List("Horizontal_Distance_To_Fire_Points"), //    quantitative    meters                       Horz Dist to nearest wildfire ignition points
-      (1 to 4).map(i => s"Wilderness_Area_$i"), // (4 binary columns)     qualitative     0 (absence) or 1 (presence)  Wilderness area designation
-      (1 to 40).map(i => s"Soil_Type_$i"), // (40 binary columns)          qualitative     0 (absence) or 1 (presence)  Soil Type designation
-      List("Cover_Type") // (7 types)                    integer         1 to 7                       Forest Cover Type designation
-    ).flatten.toArray
-    lazy val dataSet = IOUtils.readLines(new FileInputStream("covtype.data.txt"), "UTF8").asScala
-      .map(_.trim).filterNot(_.isEmpty).toList.toParArray.map(_.split(",").map(Integer.parseInt).toArray)
-      .map((values: Array[Int]) => {
-        val combined = fields.zip(values).toMap
-        ClassificationTreeItem(combined)
-      }).filter(_.attributes.contains("Cover_Type")).map(_ -> Random.nextDouble()).toList.sortBy(_._2).map(_._1).toArray.toStream
+
     List(1, 100, 10000, 1000000).foreach(items => {
       s"modeling on $items items from forest cover" in {
         try {
@@ -236,8 +213,8 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
           StmExecutionQueue.get().registerDaemons(8)
           val collection = new ClassificationTree(new PointerType)
           collection.atomic().sync.setClusterStrategy(new NoBranchStrategy())
-          val testingSet = dataSet.take(100)
-          val trainingSet = dataSet.slice(100, items + 100)
+          val testingSet = ForestCoverDataset.dataSet.take(100)
+          val trainingSet = ForestCoverDataset.dataSet.slice(100, items + 100)
           require(testingSet.nonEmpty)
           require(trainingSet.nonEmpty)
 

@@ -40,7 +40,7 @@ object ExecutionStatusManager {
     pool.schedule(new Runnable {
       override def run(): Unit = {
         executorRecord.remove(task.id)
-        println(s"Task expired: $task on $executorName")
+        //println(s"Task expired: $task on $executorName")
       }
     }, 10, TimeUnit.SECONDS)
   }

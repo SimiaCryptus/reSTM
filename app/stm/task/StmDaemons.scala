@@ -57,10 +57,15 @@ object StmDaemons {
         override def run(): Unit = {
           try {
             while (!Thread.interrupted()) {
-              startAll()(cluster)
+              try {
+                startAll()(cluster)
+              } catch {
+                case e : Throwable ⇒ e.printStackTrace()
+              }
               Thread.sleep(1000)
             }
           } finally {
+            println("Daemon Thread Stopping")
             daemonThreads.values.foreach(_.interrupt())
             StmExecutionQueue.reset()
           }

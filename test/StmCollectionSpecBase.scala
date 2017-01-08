@@ -27,7 +27,7 @@ import stm.collection._
 import stm.task.TaskQueue
 import storage.Restm._
 import storage._
-import storage.actors.RestmActors
+import storage.actors.{ActorLog, RestmActors}
 import storage.remote.RestmCluster
 import storage.types.JacksonValue
 
@@ -39,13 +39,16 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
   override def afterEach() {
     Util.clearMetrics()
   }
+  override def beforeEach() {
+    ActorLog.enabled = true
+  }
 
   implicit def cluster: Restm
 
   val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
 
-  val itemCounts = List(1,100)
+  val itemCounts = List(1,100,1000)
   val threadCounts = List(1,8)
 
 
@@ -55,6 +58,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("BatchedTreeCollection")
           val bootstrapSize = 50
           try {
             val collection = new BatchedTreeCollection[String](new PointerType)
@@ -101,6 +105,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("DistributedScalar")
           try {
             val collection = ScalarArray.createSync()(cluster)
             withPool(numThreads = threads) { executionContext ⇒ {
@@ -129,6 +134,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("TreeSet")
           val bootstrapSize = 10
           try {
             val collection = new TreeSet[String](new PointerType)
@@ -166,6 +172,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("TreeCollection")
           val bootstrapSize = 10
           try {
             val collection = new TreeCollection[String](new PointerType)
@@ -209,6 +216,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("LinkedList")
           val bootstrapSize = 10
           try {
             val collection = LinkedList.static[String](new PointerType)
@@ -251,6 +259,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("TreeMap")
           val bootstrapSize = 10
           try {
             val collection = new TreeMap[String,String](new PointerType)
@@ -289,6 +298,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
     threadCounts.foreach(threads => {
       itemCounts.foreach(items => {
         s"support add and get with $items items and $threads threads" in {
+          ActorLog.reset("TaskQueue")
           val bootstrapSize = 10
           try {
             val collection = TaskQueue.createSync[TestObj](8)

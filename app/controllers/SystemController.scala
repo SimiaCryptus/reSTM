@@ -82,7 +82,7 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     Util.monitorBlock("SystemController.listLogs") {
       val fileListing: String = new File("logs").listFiles()
         .map(_.getName)
-        .map(name =>s"""<a href="$name">$name</a> - <a href="$name?search=setState">Txn Summary</a>""")
+        .map(name =>s"""<a href="$name">$name</a> - <a href="$name?search=setState">Actor Txn Summary</a> <a href="$name?search=TXN+END">Client Txn Summary</a>""")
         .map(link =>s"""<li>$link</li>""")
         .reduceOption(_ + _)
         .map(body =>s"""<ul>$body</ul>""")
@@ -95,11 +95,19 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
     import akka.stream.scaladsl.Source
     Util.monitorBlock("SystemController.listLogs") {
       val searchR = search.map(search => s"(?<![01-9a-z])$search".r)
-      val text = scala.io.Source.fromFile(new File(new File("logs"), name)).getLines.toStream
+      val text: Stream[String] = (scala.io.Source.fromFile(new File(new File("logs"), name)).getLines.toStream ++ Stream(""))
+        .scanLeft[(Option[String],String),Stream[(Option[String],String)]](None→"")((t,x)⇒{
+          if(x.startsWith("\t")) {
+            None→(t._2 + "\n" + x)
+          } else {
+            Option(t._2)→x
+          }
+        }).flatMap(_._1)
         .filter(line => searchR.isEmpty || searchR.get.findFirstIn(line).isDefined)
         .map(_.replaceAll("([01-9a-f]{8,8}-[01-9a-f]{4,4}-[01-9a-f]{4,4}-[01-9a-f]{4,4}-[01-9a-f]{12,12})", """<a href="?search=$1">$1</a>"""))
         .map(_.replaceAll("([01-9]{2,},[01-9]{1,2})", """<a href="?search=$1">$1</a>"""))
-        .map(_.replaceAll("([01-9a-zA-Z\\+]{32,}={0,2})", """..."""))
+        .map(_.replaceAll("([01-9a-zA-Z\\+/]{32,}={0,2})", """..."""))
+        .map(_.replaceAll("\n", "<br/>"))
         .map(line =>s"""<p>$line</p>""")
       val segments = List(
         Stream("<html><body>"),

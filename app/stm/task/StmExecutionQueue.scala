@@ -91,7 +91,7 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
           val future = runTask(cluster)
           val result = Await.result(future, 10.minutes)
           if (!result) {
-            Thread.sleep(Math.min(1 + (now - lastExecuted).toMillis / 2, 500))
+            Thread.sleep(Math.min(1 + (now - lastExecuted).toMillis * 2, 500))
           } else {
             lastExecuted = now
           }
@@ -151,7 +151,7 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
 
   private def getTask(executorName: String = ExecutionStatusManager.getName)
                      (implicit ctx: STMTxnCtx): Future[Option[(Task[AnyRef], (Restm, ExecutionContext) => TaskResult[AnyRef])]] = {
-    workQueue.take(2).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap((task: Option[Task[AnyRef]]) => {
+    workQueue.take(1).map(_.map(_.asInstanceOf[Task[AnyRef]])).flatMap((task: Option[Task[AnyRef]]) => {
       task.map(task => {
         val obtainTask: Future[Option[(Restm, ExecutionContext) => TaskResult[AnyRef]]] = task.obtainTask(executorName)
         obtainTask.map(_.map(function => {

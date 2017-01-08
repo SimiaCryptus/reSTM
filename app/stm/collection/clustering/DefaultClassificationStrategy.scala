@@ -42,7 +42,7 @@ case class DefaultClassificationStrategy(
                                           branchThreshold: Int = 8
                                         ) extends ClassificationStrategy {
   private implicit def _executionContext = DefaultClassificationStrategy.workerPool
-  def getRule(values: Stream[ClassificationTree.LabeledItem]): (ClassificationTreeItem) => Boolean = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
+  def getRule(values: Stream[ClassificationTree.LabeledItem]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val valuesList = values.take(100).toList
     val fieldResults = valuesList.flatMap(_.value.attributes.keys).toSet.map((field: String) => Future {
       rules_Levenshtein(valuesList, field) ++ rules_SimpleScalar(valuesList, field)
@@ -53,12 +53,12 @@ case class DefaultClassificationStrategy(
   }
 
   private def rules_SimpleScalar(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
-    metricRules(values,
+    metricRules(field, values,
       _.value.attributes.get(field).exists(_.isInstanceOf[Number]),
       _.attributes(field).asInstanceOf[Number].doubleValue())
   }
 
-  private def metricRules(values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
+  private def metricRules(field: String, values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
     val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter).map(item => item.label -> metric(item.value))
       .map(item => item._1 -> item._2.toDouble)
@@ -78,21 +78,22 @@ case class DefaultClassificationStrategy(
         val doubleToInt: mutable.Map[Double, Int] = counters -- leftItems.keys
         key -> doubleToInt
       }).mapValues(_.toMap).toMap
-      val rule: (ClassificationTreeItem) => Boolean = item => {
+      val ruleFn: (ClassificationTreeItem) => Boolean = item => {
         metric(item) <= threshold
       }
-      rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
+      val ruleName = s"$field <= $threshold"
+      new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
     })
   }
 
   private def rules_Levenshtein(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_Levenshtein") {
-    distanceRules(values,
+    distanceRules(field, "LevenshteinDistance", values,
       _.value.attributes.get(field).exists(_.isInstanceOf[String]),
       _.attributes(field).toString(),
       (a: String, b: String) => LevenshteinDistance.getDefaultInstance.apply(a, b))
   }
 
-  private def distanceRules[T](values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => T, distance: (T, T) => Int) = Util.monitorBlock("DefaultClassificationStrategy.distanceRules") {
+  private def distanceRules[T](field: String, metricName: String, values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => T, distance: (T, T) => Int) = Util.monitorBlock("DefaultClassificationStrategy.distanceRules") {
     val fileredItems: Seq[LabeledItem] = values.filter(filter)
     fileredItems.flatMap(center => {
       val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
@@ -118,13 +119,14 @@ case class DefaultClassificationStrategy(
           key -> doubleToInt
         }).mapValues(_.toMap).toMap
 
-        val rule: (ClassificationTreeItem) => Boolean = item => {
+        val ruleFn: (ClassificationTreeItem) => Boolean = item => {
           distance(
             metric(center.value),
             metric(item)
           ) <= value.asInstanceOf[Number].doubleValue()
         }
-        rule -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
+        val ruleName = s"$metricName from ${center.value} <= $value"
+        new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
       })
     })
   }

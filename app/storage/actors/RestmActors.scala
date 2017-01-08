@@ -42,7 +42,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     // Executors.newCachedThreadPool(
     Executors.newFixedThreadPool(8,
       new ThreadFactoryBuilder().setNameFormat("storage-actor-pool-%d").build()))
-  val freezeThread: Thread = {
+  lazy val freezeThread: Thread = {
     val thread: Thread = new Thread(new Runnable {
       override def run(): Unit = {
         while (!Thread.interrupted()) {
@@ -50,7 +50,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
             for (item <- Stream.continually(freezeQueue.poll()).takeWhile(null != _)) monitorBlock("RestmActors.dequeueStorage") {
               item match {
                 case id: PointerType =>
-                  val task = getPtrActor(id, None).map(actor => {
+                  val task = getPtrActor(id, None).map(actor => actor.withActor {
                     actor.collectGarbage()
                     val recordsToUpload = actor.history.filter(_.coldStorageTs.isEmpty).toList
                     if (recordsToUpload.nonEmpty) monitorBlock("Restm.coldStorage.store") {
@@ -96,14 +96,15 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     })
     thread.setDaemon(true)
     thread.setName("RestmActors.freezeThread")
-    thread.start()
     thread
   }
-  protected val freezeQueue = new java.util.concurrent.LinkedBlockingDeque[AnyRef]()
+  protected lazy val freezeQueue = new java.util.concurrent.LinkedBlockingDeque[AnyRef]()
   protected val txns: TrieMap[TimeStamp, TxnActor] = new scala.collection.concurrent.TrieMap[TimeStamp, TxnActor]()
   protected val ptrs1: TrieMap[PointerType, Future[MemActor]] = new scala.collection.concurrent.TrieMap[PointerType, Future[MemActor]]()
   protected val ptrs2: TrieMap[PointerType, Future[MemActor]] = new scala.collection.concurrent.TrieMap[PointerType, Future[MemActor]]()
   protected var expireQueue: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+
+  freezeThread.start()
 
   def flushColdStorage(): Future[Unit] = {
     val promise = Promise[Unit]()
