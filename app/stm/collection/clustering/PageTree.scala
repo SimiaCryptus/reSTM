@@ -20,7 +20,6 @@
 package stm.collection.clustering
 
 import stm._
-import stm.collection.clustering.ClassificationTree.LabeledItem
 import stm.collection.clustering.PageTree.PageTreeNode
 import storage.Restm
 import storage.Restm.PointerType
@@ -31,6 +30,9 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.{Random, Try}
+
+
+
 
 
 object PageTree {
@@ -45,12 +47,12 @@ object PageTree {
   case class PageTreeNode
   (
     parent: Option[STMPtr[PageTreeNode]],
-    value: STMPtr[KryoValue[List[LabeledItem]]],
+    value: STMPtr[KryoValue[Page]],
     left: Option[STMPtr[PageTreeNode]] = None,
     right: Option[STMPtr[PageTreeNode]] = None
   ) {
 
-    def getCursorBlock(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[List[LabeledItem]])] = {
+    def getCursorBlock(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[Page])] = {
       val nextNodeFuture = nextNode(self)
       val valueFuture = value.read()
       valueFuture.flatMap(list => {
@@ -69,7 +71,7 @@ object PageTree {
       child.map(_.read().flatMap(_.apxSize).map(_ * 2)).getOrElse(value.read().map(_.deserialize()).map(_.size))
     }
 
-    def get(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[List[LabeledItem]] = {
+    def get(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Page] = {
       val (a, b) = if (Random.nextBoolean()) (left, right) else (right, left)
       a.map(ptr => {
         ptr.read.flatMap(_.get(ptr))
@@ -82,7 +84,7 @@ object PageTree {
       })
     }
 
-    def add(newValue: List[LabeledItem], self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Unit] = {
+    def add(newValue: Page, self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Unit] = {
       //println(s"Write ${newValue.size} items to $self")
       if (Random.nextBoolean()) {
         left.map(leftPtr => {
@@ -203,7 +205,7 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
 
   def sync(duration: Duration) = new SyncApi(duration)
 
-  def add(value: List[LabeledItem])(implicit ctx: STMTxnCtx): Future[Unit] = {
+  def add(value: Page)(implicit ctx: STMTxnCtx): Future[Unit] = {
     rootPtr.readOpt().flatMap(rootOpt => {
       rootOpt.map(root => root.add(value, rootPtr))
         .getOrElse({
@@ -215,7 +217,7 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
     })
   }
 
-  def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[List[LabeledItem]])] = {
+  def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx): Future[(Long, KryoValue[Page])] = {
     if (cursor < 0) {
       Future.successful((cursor - 1) -> KryoValue.empty)
     } else {
@@ -241,7 +243,7 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
     }
   }
 
-  def get()(implicit ctx: STMTxnCtx): Future[Option[List[LabeledItem]]] = {
+  def get()(implicit ctx: STMTxnCtx): Future[Option[Page]] = {
     rootPtr.readOpt().flatMap(rootOpt => {
       rootOpt.map(root => root.get(rootPtr).map(Option(_)))
         .getOrElse(Future.successful(None))
@@ -257,8 +259,8 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
   }
 
   def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = {
-    Stream.iterate((0l, KryoValue.empty[List[LabeledItem]]))(t => sync.nextBlock(t._1))
-      .flatMap(x ⇒ x._2.deserialize().map(x._1 → _)).takeWhile(_._1 > -2).flatMap(_._2)
+    Stream.iterate((0l, KryoValue.empty[Page]))(t => sync.nextBlock(t._1))
+      .flatMap(x ⇒ x._2.deserialize().map(x._1 → _)).takeWhile(_._1 > -2).flatMap(_._2.rows.map(_.asLabeledItem))
   }
 
   def sync = new SyncApi(30.seconds)
@@ -274,11 +276,11 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
       PageTree.this.size()(_, classTag)
     }
 
-    def get(): Future[Option[List[LabeledItem]]] = atomic {
+    def get(): Future[Option[Page]] = atomic {
       PageTree.this.get()(_)
     }
 
-    def add(value: List[LabeledItem]): Future[Unit] = atomic {
+    def add(value: Page): Future[Unit] = atomic {
       PageTree.this.add(value)(_)
     }
 
@@ -286,22 +288,22 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
       PageTree.this.apxSize()(_)
     }
 
-    def nextBlock(cursor: Long): Future[(Long, KryoValue[List[LabeledItem]])] = atomic {
+    def nextBlock(cursor: Long): Future[(Long, KryoValue[Page])] = atomic {
       PageTree.this.nextBlock(cursor)(_)
     }
 
     def stream()(implicit classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = {
-      rawStream.flatMap(x⇒x.deserialize().getOrElse(List.empty))
+      rawStream.flatMap(x⇒x.deserialize().map(_.rows.map(_.asLabeledItem)).getOrElse(List.empty))
     }
 
     def rawStream()(implicit classTag: ClassTag[LabeledItem]) = {
-      Stream.iterate((0l, KryoValue.empty[List[LabeledItem]]))(t => sync.nextBlock(t._1)).takeWhile(_._1 > -2).map(_._2)
+      Stream.iterate((0l, KryoValue.empty[Page]))(t => sync.nextBlock(t._1)).takeWhile(_._1 > -2).map(_._2)
     }
 
     def sync = new SyncApi(10.seconds)
 
     class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-      def get(): Option[List[LabeledItem]] = sync {
+      def get(): Option[Page] = sync {
         AtomicApi.this.get()
       }
 
@@ -313,11 +315,11 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
         AtomicApi.this.apxSize()
       }
 
-      def nextBlock(cursor: Long): (Long, KryoValue[List[LabeledItem]]) = sync {
+      def nextBlock(cursor: Long): (Long, KryoValue[Page]) = sync {
         AtomicApi.this.nextBlock(cursor)
       }
 
-      def add(value: List[LabeledItem]): Unit = sync {
+      def add(value: Page): Unit = sync {
         AtomicApi.this.add(value)
       }
 
@@ -327,7 +329,7 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def get()(implicit ctx: STMTxnCtx): Option[List[LabeledItem]] = sync {
+    def get()(implicit ctx: STMTxnCtx): Option[Page] = sync {
       PageTree.this.get()
     }
 
@@ -341,11 +343,11 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
 
     def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = PageTree.this.stream()
 
-    def add(value: List[LabeledItem])(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Unit = sync {
+    def add(value: Page)(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Unit = sync {
       PageTree.this.add(value)
     }
 
-    def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): (Long, KryoValue[List[LabeledItem]]) = sync {
+    def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): (Long, KryoValue[Page]) = sync {
       PageTree.this.nextBlock(cursor)
     }
   }

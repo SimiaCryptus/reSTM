@@ -21,7 +21,7 @@ import java.io.FileInputStream
 import java.util.zip.GZIPInputStream
 
 import org.apache.commons.io.IOUtils
-import stm.collection.clustering.ClassificationTree._
+import stm.collection.clustering.ClassificationTreeItem
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq

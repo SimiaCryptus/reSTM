@@ -24,8 +24,7 @@ import javax.inject._
 import akka.actor.ActorSystem
 import play.api.mvc._
 import stm.STMPtr
-import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
-import stm.collection.clustering.{ClassificationStrategy, ClassificationTree, ClassificationTreeNode}
+import stm.collection.clustering._
 import stm.task.Task
 import storage.RestmImpl
 import storage.types.JacksonValue

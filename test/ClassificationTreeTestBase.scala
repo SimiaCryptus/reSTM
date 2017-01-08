@@ -26,8 +26,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.STMPtr
-import stm.collection.clustering.ClassificationTree._
-import stm.collection.clustering.{ClassificationTree, ClassificationTreeNode, DefaultClassificationStrategy, NoBranchStrategy}
+import stm.collection.clustering._
 import stm.task.{ExecutionStatusManager, StmDaemons, StmExecutionQueue}
 import storage.Restm._
 import storage._

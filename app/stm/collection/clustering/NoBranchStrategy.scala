@@ -20,7 +20,6 @@
 package stm.collection.clustering
 
 import stm.STMTxnCtx
-import stm.collection.clustering.ClassificationTree.LabeledItem
 
 class NoBranchStrategy extends ClassificationStrategy {
   override def getRule(values: Stream[LabeledItem]) = new RuleData(_ => true, "NoBranch Rule")

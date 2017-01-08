@@ -23,7 +23,6 @@ import java.util.concurrent.Executors
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm.STMTxnCtx
-import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
 import util.{LevenshteinDistance, Util}
 
 import scala.collection.immutable.Seq
@@ -41,7 +40,7 @@ case class DefaultClassificationStrategy(
                                           branchThreshold: Int = 8
                                         ) extends ClassificationStrategy {
   private implicit def _executionContext = DefaultClassificationStrategy.workerPool
-  def getRule(values: Stream[ClassificationTree.LabeledItem]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
+  def getRule(values: Stream[LabeledItem]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val valuesList = values.take(100).toList
     val fieldResults = valuesList.flatMap(_.value.attributes.keys).toSet.map((field: String) => Future {
       rules_Levenshtein(valuesList, field) ++ rules_SimpleScalar(valuesList, field)

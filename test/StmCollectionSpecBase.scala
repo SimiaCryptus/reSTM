@@ -24,8 +24,7 @@ import _root_.util.Util
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection._
-import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem}
-import stm.collection.clustering.PageTree
+import stm.collection.clustering.{ClassificationTreeItem, LabeledItem, Page, PageTree}
 import stm.task.TaskQueue
 import storage.Restm._
 import storage._
@@ -67,7 +66,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
             val bootstrap = {
               implicit val _e = executionContext
               randomUUIDs.take(bootstrapSize).map(List(_)).flatMap(x ⇒ {
-                collection.atomic().sync.add(x)
+                collection.atomic().sync.add(Page(x))
                 x
               }).toSet
             }
@@ -77,7 +76,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
                 implicit val _e = executionContext
                 Await.result(Future.sequence(
                   input.map(List(_)).map(x ⇒ {
-                    collection.atomic().add(x)
+                    collection.atomic().add(Page(x))
                   })
                 ), 30.seconds)
               }}
@@ -89,7 +88,7 @@ abstract class StmCollectionSpecBase extends WordSpec with BeforeAndAfterEach wi
             val result = {
               implicit val _e = executionContext
               insert()
-              verify(input, Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).flatMap(_.get).toSet)
+              verify(input, Stream.continually(collection.atomic().sync.get()).takeWhile(_.isDefined).flatMap(_.get.rows.map(_.asLabeledItem).toList).toSet)
               insert()
               verify(input, collection.atomic().stream().toSet)
             }

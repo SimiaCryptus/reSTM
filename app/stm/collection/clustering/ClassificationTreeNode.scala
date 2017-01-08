@@ -19,7 +19,7 @@
 
 package stm.collection.clustering
 
-import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem, NodeInfo}
+import stm.collection.clustering.ClassificationTree.NodeInfo
 import stm.task.Task.TaskSuccess
 import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}
@@ -74,10 +74,10 @@ case class ClassificationTreeNode
     }
   }
 
-  def add(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1)
+  def add(value: Page, self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1)
          (implicit ctx: STMTxnCtx): Future[Int] = {
     if (itemBuffer.isDefined) {
-      itemBuffer.get.add(value.toArray.toList)
+      itemBuffer.get.add(value)
         .flatMap(_ => autosplit(self, strategy, maxSplitDepth))
     } else {
       route(value, self, strategy, maxSplitDepth)
@@ -225,13 +225,13 @@ case class ClassificationTreeNode
     }
   }
 
-  def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
+  def route(value: Page, self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int)
                    (implicit ctx: STMTxnCtx): Future[Int] = {
-    val results: Map[Int, List[LabeledItem]] = split(value)
+    val results: Map[Int, Page] = split(value)
     insert(self, strategy, maxSplitDepth, results)
   }
 
-  def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, List[LabeledItem]])
+  def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, Page])
                     (implicit ctx: STMTxnCtx) = {
     require(pass.isDefined)
     require(fail.isDefined)
@@ -255,7 +255,7 @@ case class ClassificationTreeNode
     )).map(_.reduceOption(_ + _).getOrElse(0))
   }
 
-  def split(value: List[LabeledItem], deserializedRule: (ClassificationTreeItem) ⇒ Boolean = getRule): Map[Int, List[LabeledItem]] = {
+  def split(value: Page, deserializedRule: (ClassificationTreeItem) ⇒ Boolean = getRule): Map[Int, Page] = {
     def eval(item: ClassificationTreeItem): Int = {
       try {
         if (deserializedRule(item)) {
@@ -268,7 +268,11 @@ case class ClassificationTreeNode
           2
       }
     }
-    value.toParArray.groupBy(x => eval(x.value)).mapValues(_.toList).toList.toMap
+    value.rows
+      .toParArray // Make parallel
+      .groupBy(x => eval(x.asClassificationTreeItem)).mapValues(_.toList)
+      .toList.toMap // Make sequential
+      .mapValues(value.getAll(_))
   }
 
   private def getRule: (ClassificationTreeItem) ⇒ Boolean = {
@@ -286,16 +290,16 @@ case class ClassificationTreeNode
 
     def sync(duration: Duration) = new SyncApi(duration)
 
-    def add(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = atomic {
+    def add(value: Page, self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = atomic {
       ClassificationTreeNode.this.add(value, self, strategy, maxSplitDepth)(_)
     }
 
-    def route(value: List[LabeledItem], self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = {
-      val results: Map[Int, List[LabeledItem]] = split(value)
+    def route(value: Page, self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int = 1): Future[Int] = {
+      val results: Map[Int, Page] = split(value)
       insert(self, strategy, maxSplitDepth, results)
     }
 
-    def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, List[LabeledItem]]) = {
+    def insert(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int, results: Map[Int, Page]) = {
       require(pass.isDefined)
       require(fail.isDefined)
       require(exception.isDefined)
@@ -491,9 +495,9 @@ object ClassificationTreeNode {
         lockOpt.map((itemBuffer: PageTree) => {
           val node = currentData
           val routeTasks: Iterator[Future[Int]] = itemBuffer.atomic().rawStream().grouped(512)
-            .flatMap(_.map((data: KryoValue[List[LabeledItem]]) ⇒ Future {
-              data.deserialize().getOrElse(List.empty)
-            }.flatMap(block⇒{
+            .flatMap(_.map((data: KryoValue[Page]) ⇒ Future {
+              data.deserialize().orNull
+            }.flatMap((block: Page) ⇒{
               node.atomic().route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
             })))
           Future.sequence(routeTasks).map(_.sum).map(sum => {
@@ -522,7 +526,7 @@ object ClassificationTreeNode {
           self.read().flatMap((node: ClassificationTreeNode) => {
             val stream: Stream[LabeledItem] = node.itemBuffer.get.stream()
             Future.sequence(stream.grouped(512).map(_.toList).map(block => {
-              node.route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
+              node.route(Page(block), self, strategy, maxSplitDepth - 1).map(_ => block.size)
             })).map(_.sum).flatMap(phase2Transfered => {
               println(s"Finalizing $self after transferring $phase2Transfered items")
               self.write(node.copy(itemBuffer = None, splitBuffer = None)).map(_ => rowsTransfered + phase2Transfered)

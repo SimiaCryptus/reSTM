@@ -19,7 +19,7 @@
 
 package stm.collection.clustering
 
-import stm.collection.clustering.ClassificationTree.{ClassificationTreeItem, LabeledItem, NodeInfo}
+import stm.collection.clustering.ClassificationTree.NodeInfo
 import stm.task.Task.{TaskContinue, TaskResult, TaskSuccess}
 import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}
@@ -93,14 +93,6 @@ object ClassificationTree {
   def apply(id: String) =
     new ClassificationTree(new STMPtr[ClassificationTree.ClassificationTreeData](new PointerType(id)))
 
-  case class ClassificationTreeItem(attributes: Map[String, Any])
-
-  object ClassificationTreeItem {
-    lazy val empty = ClassificationTreeItem(Map.empty)
-  }
-
-  case class LabeledItem(label: String, value: ClassificationTreeItem)
-
   case class ClassificationTreeData
   (
     root: STMPtr[ClassificationTreeNode],
@@ -110,7 +102,7 @@ object ClassificationTree {
     def find(value: ClassificationTreeItem)(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] =
       root.read().flatMap(_.find(value).map(_.getOrElse(root)))
 
-    def add(value: List[LabeledItem])(implicit ctx: STMTxnCtx): Future[Unit] = {
+    def add(value: Page)(implicit ctx: STMTxnCtx): Future[Unit] = {
       root.read().flatMap(_.add(value, root, strategy).map(_ => Unit))
     }
 
@@ -142,14 +134,14 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
   def add(label: String, value: ClassificationTreeItem)(implicit ctx: STMTxnCtx): Future[Unit] = Util.monitorFuture("ClassificationTree.add") {
     dataPtr.readOpt().flatMap(prev => {
       prev.orElse(Option(ClassificationTree.newClassificationTreeData()))
-        .map(state => state.add(List(LabeledItem(label, value))).map(state -> _)).get
+        .map(state => state.add(Page(LabeledItem(label, value))).map(state -> _)).get
     }).flatMap(newRootData => dataPtr.write(newRootData._1).map(_ => newRootData._2))
   }
 
   def addAll(label: String, value: List[ClassificationTreeItem])(implicit ctx: STMTxnCtx): Future[Unit] = Util.monitorFuture("ClassificationTree.add") {
     dataPtr.readOpt().flatMap(prev => {
       prev.orElse(Option(ClassificationTree.newClassificationTreeData()))
-        .map(state => state.add(value.map(LabeledItem(label, _))).map(state -> _)).get
+        .map(state => state.add(Page(value.map(LabeledItem(label, _)))).map(state -> _)).get
     }).flatMap(newRootData => dataPtr.write(newRootData._1).map(_ => newRootData._2))
   }
 
