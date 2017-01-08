@@ -90,7 +90,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
                     promisedFuture.success(future)
                     future
                   }
-                }, (1 + Random.nextInt(1 + ((retryNumber * retryNumber) * 100))), TimeUnit.MICROSECONDS)
+                }, (1 + Random.nextInt(1 + ((retryNumber * retryNumber) * 5000))), TimeUnit.MICROSECONDS)
                 promisedFuture.future.flatMap((x: Future[R]) => x)
               })
             case e: Throwable =>

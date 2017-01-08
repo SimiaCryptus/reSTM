@@ -21,9 +21,9 @@ package stm.collection.clustering
 
 import stm._
 import stm.collection.clustering.PageTree.PageTreeNode
-import storage.Restm
 import storage.Restm.PointerType
 import storage.types.KryoValue
+import storage.{Restm, TransactionConflict}
 import util.Util
 
 import scala.concurrent.Future
@@ -209,10 +209,12 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
     rootPtr.readOpt().flatMap(rootOpt => {
       rootOpt.map(root => root.add(value, rootPtr))
         .getOrElse({
-          STMPtr.dynamic(KryoValue(value))
-            .map(new PageTreeNode(None, _))
-            .flatMap(
-              rootPtr.write)
+          rootPtr.lock().map(locked⇒{if(!locked) throw new TransactionConflict("Could not lock root node")})
+            .flatMap(_=>{
+              STMPtr.dynamic(KryoValue(value))
+                .map(new PageTreeNode(None, _))
+                .flatMap(rootPtr.write)
+            })
         })
     })
   }
