@@ -29,7 +29,6 @@ import stm.collection.clustering.ClassificationTree.ClassificationTreeItem
 import stm.collection.clustering.{ClassificationStrategy, DefaultClassificationStrategy, NoBranchStrategy}
 import stm.task.{StmDaemons, StmExecutionQueue, Task}
 import storage.Restm
-import storage.actors.ActorLog
 import storage.remote.RestmHttpClient
 import storage.types.JacksonValue
 import util.Util
@@ -147,7 +146,7 @@ class ClassificationServletSpec extends WordSpec with MustMatchers with OneServe
           implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
             new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
           try {
-            ActorLog.enabled = true
+            //ActorLog.enabled = true
             val timeout : Duration = 90.seconds
             Await.result(Http((url(baseUrl) / "sys" / "init").GET OK as.String), timeout)
             StmExecutionQueue.get().verbose = true

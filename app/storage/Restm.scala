@@ -23,7 +23,6 @@ import storage.Restm._
 import storage.types._
 
 import scala.concurrent.Future
-import scala.concurrent.duration._
 
 object Restm {
   type TimeStamp = TxnTime
@@ -53,8 +52,6 @@ trait Restm {
   @throws[TransactionConflict] def getPtr(id: PointerType): Future[Option[ValueType]]
 
   @throws[TransactionConflict] def getPtr(id: PointerType, time: TimeStamp): Future[Option[ValueType]]
-
-  def newTxn(priority: Duration = 0.seconds): Future[TimeStamp]
 
   def lock(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]]
 

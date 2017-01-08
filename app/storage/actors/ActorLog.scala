@@ -62,7 +62,7 @@ object ActorLog extends ActorQueue {
   private var startAt = now
 
   override def log(str: String): Future[Unit] = if (!enabled) Future.successful(Unit) else withActor {
-    if(byteCounter > 256*1024*1024 || (now - startAt) > 1.hour) {
+    if(byteCounter > 128*1024*1024 || (now - startAt) > 1.hour) {
       writer = null
     }
     if(null == writer) {

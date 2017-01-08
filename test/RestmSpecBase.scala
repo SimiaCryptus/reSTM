@@ -26,9 +26,10 @@ import storage.Restm
 import storage.Restm._
 import storage.actors.RestmActors
 import storage.remote.RestmHttpClient
+import storage.types.TxnTime
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 abstract class RestmSpecBase extends WordSpec with MustMatchers {
   def cluster: Restm
@@ -37,29 +38,29 @@ abstract class RestmSpecBase extends WordSpec with MustMatchers {
 
     "commit new data" in {
       val ptrId = new PointerType
-      val txnA = Await.result(cluster.newTxn(), 30.seconds)
-      require(txnA > new TimeStamp(0))
+      val txnA = Await.result(Future.successful(TxnTime.next()), 30.seconds)
+      require(txnA > new TimeStamp(0,0))
 
       Await.result(cluster.getPtr(ptrId), 30.seconds) mustBe None
       Await.result(cluster.lock(ptrId, txnA), 30.seconds) mustBe None
       Await.result(cluster.queueValue(ptrId, txnA, new ValueType("foo")), 30.seconds)
       Await.result(cluster.commit(txnA), 30.seconds)
 
-      val txnB = Await.result(cluster.newTxn(), 30.seconds)
+      val txnB = Await.result(Future.successful(TxnTime.next()), 30.seconds)
       Await.result(cluster.getPtr(ptrId, txnB), 30.seconds) mustBe Some(new ValueType("foo"))
     }
 
     "revert data" in {
       val ptrId = new PointerType
-      val txnA = Await.result(cluster.newTxn(), 30.seconds)
-      require(txnA > new TimeStamp(0))
+      val txnA = Await.result(Future.successful(TxnTime.next()), 30.seconds)
+      require(txnA > new TimeStamp(0,0))
 
       Await.result(cluster.getPtr(ptrId), 30.seconds) mustBe None
       Await.result(cluster.lock(ptrId, txnA), 30.seconds) mustBe None
       Await.result(cluster.queueValue(ptrId, txnA, new ValueType("foo")), 30.seconds)
       Await.result(cluster.reset(txnA), 30.seconds)
 
-      val txnB = Await.result(cluster.newTxn(), 30.seconds)
+      val txnB = Await.result(Future.successful(TxnTime.next()), 30.seconds)
       Await.result(cluster.getPtr(ptrId, txnB), 30.seconds) mustBe None
     }
   }
@@ -76,9 +77,9 @@ class LocalRestmSpec extends RestmSpecBase with BeforeAndAfterEach {
 
 class IntegrationSpec extends RestmSpecBase with OneServerPerTest {
 
-  val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
   private val pool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
+  val cluster = new RestmHttpClient(s"http://localhost:$port")(pool)
 }
 
 

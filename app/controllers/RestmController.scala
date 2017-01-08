@@ -31,6 +31,7 @@ import storage._
 import storage.actors.RestmActors
 import storage.cold.{ColdStorage, DynamoColdStorage, HeapColdStorage}
 import storage.remote.{RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
+import storage.types.TxnTime
 
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -107,9 +108,9 @@ class RestmController @Inject()(actorSystem: ActorSystem)(implicit exec: Executi
     }
   }
 
-  def newTxn(priority: Int): Action[AnyContent] = Action.async {
-    Util.monitorFuture("RestmController.newTxn") {
-      storageService.newTxn(priority.milliseconds).map(x => Ok(x.toString))
+  def newTxn(priority: Int): Action[AnyContent] = Action {
+    Util.monitorBlock("RestmController.newTxn") {
+      Ok(TxnTime.next(priority.milliseconds).toString)
     }
   }
 

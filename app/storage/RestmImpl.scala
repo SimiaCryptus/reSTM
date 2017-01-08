@@ -21,7 +21,6 @@ package storage
 
 import storage.Restm._
 import storage.actors.ActorLog
-import storage.types.TxnTime
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -32,7 +31,7 @@ object RestmImpl {
 
 class RestmImpl(val internal: RestmInternal)(implicit executionContext: ExecutionContext) extends Restm {
 
-  val txnTimeout = 7.seconds.toMillis
+  val txnTimeout = 7.seconds
 
   override def getPtr(id: PointerType): Future[Option[ValueType]] = internal._getValue(id).recoverWith({
     case e: TransactionConflict if e.conflitingTxn.age > txnTimeout =>
@@ -75,7 +74,7 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
 
   override def newPtr(time: TimeStamp, value: ValueType): Future[PointerType] = {
     def newPtrAttempt: Future[Option[PointerType]] = {
-      val id: PointerType = new PointerType()
+      val id: PointerType = new PointerType(time)
       internal._initValue(time, value, id).map(ok => Option(id).filter(_ => ok))
     }
 
@@ -83,10 +82,6 @@ class RestmImpl(val internal: RestmInternal)(implicit executionContext: Executio
       .getOrElse(recursiveNewPtr))
 
     recursiveNewPtr
-  }
-
-  override def newTxn(priority: Duration): Future[TimeStamp] = Future {
-    TxnTime.next(priority)
   }
 
   override def lock(id: PointerType, time: TimeStamp): Future[Option[TimeStamp]] = {

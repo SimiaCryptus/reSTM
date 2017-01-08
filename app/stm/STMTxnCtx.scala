@@ -22,6 +22,7 @@ package stm
 import storage.Restm
 import storage.Restm._
 import storage.actors.ActorLog
+import storage.types.TxnTime
 import util.Util
 import util.Util.{chainEx, monitorFuture}
 
@@ -31,9 +32,13 @@ import scala.concurrent.duration.{Duration, _}
 import scala.reflect.ClassTag
 
 class STMTxnCtx(val cluster: Restm, val priority: Duration, val txn: STMTxn[_]) {
+
+  val startTime = STMTxn.now
+  def age = STMTxn.now - startTime
+
   private implicit def executionContext = StmPool.executionContext
 
-  private[stm] lazy val txnId = cluster.newTxn(priority).map(id⇒{
+  private[stm] lazy val txnId = Future.successful(TxnTime.next(priority)).map(id⇒{
     ActorLog.log(s"Txn $id defined at ${txn.codeId} called by ${txn.caller}, op id ${txn.opId}")
     id
   })

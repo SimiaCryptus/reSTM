@@ -492,11 +492,12 @@ object ClassificationTreeNode {
       makeRule.flatMap(_ => {
         lockOpt.map((itemBuffer: BatchedTreeCollection[LabeledItem]) => {
           val node = currentData
-          val routeTasks: Iterator[Future[Int]] = itemBuffer.atomic().rawStream().grouped(100)
-            .map(_.flatMap(x ⇒ x.deserialize().getOrElse(List.empty)).toList)
-            .map((block: List[LabeledItem]) => {
+          val routeTasks: Iterator[Future[Int]] = itemBuffer.atomic().rawStream().grouped(512)
+            .flatMap(_.map((data: KryoValue[List[LabeledItem]]) ⇒ Future {
+              data.deserialize().getOrElse(List.empty)
+            }.flatMap(block⇒{
               node.atomic().route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
-            })
+            })))
           Future.sequence(routeTasks).map(_.sum).map(sum => {
             println(s"Routed $sum items for $self")
             Option(sum)

@@ -37,7 +37,6 @@ import scala.util.Random
 trait STMTxn[+R] extends STMTxnInstrumentation {
   private implicit def executionContext = StmPool.executionContext
 
-  private[this] val startTime = now
   private[this] var allowCompletion = true
   val opId = UUID.randomUUID().toString
 
@@ -60,19 +59,20 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
           val rawExecute: Future[R] = Future { txnLogic()(ctx) }.flatMap(x⇒x)
           rawExecute.flatMap(result => {
               if (allowCompletion) {
-                val totalTime = age
+                val totalTime = ctx.age
                 metrics.totalTimeMs.addAndGet(totalTime.toMicros)
-                if (totalTime > 5.seconds) {
-                  ctx.revert().map(_ => throw new TransactionConflict("Transaction took too long"))
+                val timeout = 5.seconds
+                if (totalTime > timeout) {
+                  ctx.revert().map(_ => throw new TransactionConflict("Transaction timed out at " + timeout))
                 } else {
                   metrics.numberSuccess.incrementAndGet()
                   ctx.commit().map(_ => {
-                    ActorLog.log(s"TXN END: Committing $ctx for operation $opId retry $retryNumber/$maxRetry - Code $codeId")
+                    ActorLog.log(s"TXN END: Committing $ctx for operation $opId in $totalTime retry $retryNumber/$maxRetry - Code $codeId")
                     result
                   })
                 }
               } else {
-                ActorLog.log(s"TXN END: Prevented committing $ctx for operation $opId retry $retryNumber/$maxRetry - Code $codeId")
+                ActorLog.log(s"TXN END: Prevented committing $ctx for operation $opId in ${ctx.age} retry $retryNumber/$maxRetry - Code $codeId")
                 Future.successful(result)
               }
             })
@@ -113,9 +113,6 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
     }
   }
 
-  private[this] def age = now - startTime
-
-  private[this] def now = System.nanoTime().nanoseconds
 
   def toString(e: Throwable): String = {
     val out: ByteArrayOutputStream = new ByteArrayOutputStream()
@@ -126,6 +123,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
 
 object STMTxn {
 
+  def now = System.nanoTime().nanoseconds
   private[STMTxn] lazy val retryPool = Executors.newScheduledThreadPool(4, new ThreadFactoryBuilder().setNameFormat("txn-retry-%d").build())
 
 }

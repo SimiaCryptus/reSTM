@@ -35,7 +35,7 @@ class RestmHttpClient(val baseUrl: String)(implicit executionContext: ExecutionC
 
   val utf8: Charset = Charset.forName("UTF-8")
 
-  override def newTxn(priority: Duration): Future[TimeStamp] = monitorFuture("RestmHttpClient.newTxn") {
+  def newTxn(priority: Duration): Future[TimeStamp] = monitorFuture("RestmHttpClient.newTxn") {
     Http((url(baseUrl) / "txn").addQueryParameter("priority", priority.toMillis.toString) OK as.String)
       .map(new TimeStamp(_))
   }

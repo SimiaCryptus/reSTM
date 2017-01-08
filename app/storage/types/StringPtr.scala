@@ -24,6 +24,7 @@ import java.util.UUID
 class StringPtr(val id: String) {
 
   def this() = this(UUID.randomUUID().toString)
+  def this(txn : TxnTime) = this(txn.toString + ":" + UUID.randomUUID().toString.take(4))
 
   override def toString: String = id.toString
 
