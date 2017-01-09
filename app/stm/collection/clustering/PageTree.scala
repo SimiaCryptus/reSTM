@@ -19,6 +19,8 @@
 
 package stm.collection.clustering
 
+import java.util.concurrent.TimeUnit
+
 import stm._
 import stm.collection.clustering.PageTree.PageTreeNode
 import storage.Restm.PointerType
@@ -211,7 +213,8 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
         .getOrElse({
           rootPtr.lock().map(locked⇒{if(!locked) throw new TransactionConflict("Could not lock root node")})
             .flatMap(_=>{
-              STMPtr.dynamic(KryoValue(value))
+              val kryoValue = KryoValue(value)
+              STMPtr.dynamic(kryoValue)
                 .map(new PageTreeNode(None, _))
                 .flatMap(rootPtr.write)
             })
@@ -256,16 +259,24 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
     rootPtr.readOpt().flatMap(_.map(_.apxSize).getOrElse(Future.successful(0)))
   }
 
-  def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Future[Long] = {
+  def size()(implicit ctx: STMTxnCtx): Future[Long] = {
     Future.successful(stream().size)
   }
 
-  def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = {
-    Stream.iterate((0l, KryoValue.empty[Page]))(t => sync.nextBlock(t._1))
-      .flatMap(x ⇒ x._2.deserialize().map(x._1 → _)).takeWhile(_._1 > -2).flatMap(_._2.rows.map(_.asLabeledItem))
+  def rowStream()(implicit ctx: STMTxnCtx): Stream[Page#PageRow] = {
+    pageStream().flatMap(_.rows)
   }
 
-  def sync = new SyncApi(30.seconds)
+  def pageStream()(implicit ctx: STMTxnCtx): Stream[Page] = {
+    Stream.iterate((0l, KryoValue.empty[Page]))(t => sync.nextBlock(t._1))
+      .flatMap(x ⇒ x._2.deserialize().map(x._1 → _)).takeWhile(_._1 >= -1).map(_._2)
+  }
+
+  def stream()(implicit ctx: STMTxnCtx): Stream[LabeledItem] = {
+    rowStream().map(_.asLabeledItem)
+  }
+
+  def sync = new SyncApi(new FiniteDuration(30,TimeUnit.SECONDS))
 
   //noinspection ScalaUnusedSymbol
   private def this() = this(new PointerType)
@@ -274,8 +285,8 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
 
     def sync(duration: Duration) = new SyncApi(duration)
 
-    def size()(implicit classTag: ClassTag[LabeledItem]): Future[Long] = atomic {
-      PageTree.this.size()(_, classTag)
+    def size(): Future[Long] = atomic {
+      PageTree.this.size()(_)
     }
 
     def get(): Future[Option[Page]] = atomic {
@@ -295,10 +306,18 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
     }
 
     def stream()(implicit classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = {
-      rawStream.flatMap(x⇒x.deserialize().map(_.rows.map(_.asLabeledItem)).getOrElse(List.empty))
+      rowStream.map(_.asLabeledItem)
     }
 
-    def rawStream()(implicit classTag: ClassTag[LabeledItem]) = {
+    def rowStream()(implicit classTag: ClassTag[LabeledItem]): Stream[Page#PageRow] = {
+      pageStream.flatMap(_.rows)
+    }
+
+    def pageStream()(implicit classTag: ClassTag[LabeledItem]): Stream[Page] = {
+      rawStream().flatMap(_.deserialize())
+    }
+
+    def rawStream()(implicit classTag: ClassTag[LabeledItem]): Stream[KryoValue[Page]] = {
       Stream.iterate((0l, KryoValue.empty[Page]))(t => sync.nextBlock(t._1)).takeWhile(_._1 > -2).map(_._2)
     }
 
@@ -339,17 +358,17 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
       PageTree.this.apxSize()
     }
 
-    def size()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Long = sync {
+    def size()(implicit ctx: STMTxnCtx): Long = sync {
       PageTree.this.size()
     }
 
-    def stream()(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Stream[LabeledItem] = PageTree.this.stream()
+    def stream()(implicit ctx: STMTxnCtx): Stream[LabeledItem] = PageTree.this.stream()
 
-    def add(value: Page)(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): Unit = sync {
+    def add(value: Page)(implicit ctx: STMTxnCtx): Unit = sync {
       PageTree.this.add(value)
     }
 
-    def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx, classTag: ClassTag[LabeledItem]): (Long, KryoValue[Page]) = sync {
+    def nextBlock(cursor: Long)(implicit ctx: STMTxnCtx): (Long, KryoValue[Page]) = sync {
       PageTree.this.nextBlock(cursor)
     }
   }

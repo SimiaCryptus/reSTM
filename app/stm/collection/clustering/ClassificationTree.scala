@@ -195,7 +195,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
     queue.add(ClassificationTree.applyStrategy(node, strategy))
   }
 
-  def stream(duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Future[Stream[LabeledItem]] = {
+  def stream(duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Future[Stream[Page#PageRow]] = {
     dataPtr.read().map(_.root).flatMap((rootPtr: STMPtr[ClassificationTreeNode]) => {
       rootPtr.read().map(root => {
         root.stream(rootPtr, duration)
@@ -316,7 +316,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
       ClassificationTree.this.getClusterStrategy()
     }
 
-    def stream(duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Stream[LabeledItem] = sync {
+    def stream(duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Stream[Page#PageRow] = sync {
       ClassificationTree.this.stream(duration)
     }
 

@@ -40,26 +40,27 @@ case class DefaultClassificationStrategy(
                                           branchThreshold: Int = 8
                                         ) extends ClassificationStrategy {
   private implicit def _executionContext = DefaultClassificationStrategy.workerPool
-  def getRule(values: Stream[LabeledItem]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
-    val valuesList = values.take(100).toList
-    val fieldResults = valuesList.flatMap(_.value.attributes.keys).toSet.map((field: String) => Future {
-      rules_Levenshtein(valuesList, field) ++ rules_SimpleScalar(valuesList, field)
+  def getRule(pages: Stream[Page]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
+    val sampledRows = pages.flatMap(_.rows).take(1000).toList
+    val fields = pages.flatMap(_.schema.keys).toSet
+    val fieldResults = fields.map((field: String) => Future {
+      rules_Levenshtein(sampledRows, field) ++ rules_SimpleScalar(sampledRows, field)
     })
     val rules = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
     if (rules.nonEmpty) rules.maxBy(_._2)._1
     else null
   }
 
-  private def rules_SimpleScalar(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
+  private def rules_SimpleScalar(values: List[Page#PageRow], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
     metricRules(field, values,
-      _.value.attributes.get(field).exists(_.isInstanceOf[Number]),
-      _.attributes(field).asInstanceOf[Number].doubleValue())
+      _.get(field).exists(_.isInstanceOf[Number]),
+      _(field).asInstanceOf[Number].doubleValue())
   }
 
-  private def metricRules(field: String, values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
+  private def metricRules(field: String, values: List[Page#PageRow], filter: (KeyValue[String,Any]) => Boolean, metric: (KeyValue[String,Any]) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
     val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
-    val valueSortMap: Seq[(String, Double)] = values.filter(filter).map(item => item.label -> metric(item.value))
-      .map(item => item._1 -> item._2.toDouble)
+    val valueSortMap: Seq[(String, Double)] = values.filter(filter)
+      .map((item: Page#PageRow) => item.label -> metric(item))
       .sortBy(_._2)
 
     val labelCounters: Map[String, mutable.Map[Double, Int]] = valueSortMap.groupBy(_._1)
@@ -76,7 +77,7 @@ case class DefaultClassificationStrategy(
         val doubleToInt: mutable.Map[Double, Int] = counters -- leftItems.keys
         key -> doubleToInt
       }).mapValues(_.toMap).toMap
-      val ruleFn: (ClassificationTreeItem) => Boolean = item => {
+      val ruleFn: (KeyValue[String,Any]) => Boolean = item => {
         metric(item) <= threshold
       }
       val ruleName = s"$field <= $threshold"
@@ -84,21 +85,25 @@ case class DefaultClassificationStrategy(
     })
   }
 
-  private def rules_Levenshtein(values: List[LabeledItem], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_Levenshtein") {
+  private def rules_Levenshtein(values: List[Page#PageRow], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_Levenshtein") {
     distanceRules(field, "LevenshteinDistance", values,
-      _.value.attributes.get(field).exists(_.isInstanceOf[String]),
-      _.attributes(field).toString(),
+      _.get(field).exists(_.isInstanceOf[String]),
+      _(field).toString(),
       (a: String, b: String) => LevenshteinDistance.getDefaultInstance.apply(a, b))
   }
 
-  private def distanceRules[T](field: String, metricName: String, values: List[LabeledItem], filter: (LabeledItem) => Boolean, metric: (ClassificationTreeItem) => T, distance: (T, T) => Int) = Util.monitorBlock("DefaultClassificationStrategy.distanceRules") {
-    val fileredItems: Seq[LabeledItem] = values.filter(filter)
-    fileredItems.flatMap(center => {
+  private def distanceRules[T](field: String, metricName: String, values: List[Page#PageRow],
+                               filter: (KeyValue[String,Any]) => Boolean,
+                               metric: (KeyValue[String,Any]) => T,
+                               distance: (T, T) => Int) = Util.monitorBlock("DefaultClassificationStrategy.distanceRules") {
+    val fileredItems: Seq[Page#PageRow] = values.filter(filter)
+    fileredItems.flatMap((center: Page#PageRow) => {
       val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
+      val centerMetric = metric(center)
       val valueSortMap: Seq[(String, Double)] = fileredItems.map(item => {
         item.label -> distance(
-          metric(center.value),
-          metric(item.value)
+          centerMetric,
+          metric(item)
         ).doubleValue()
       }).sortBy(_._2)
 
@@ -117,13 +122,13 @@ case class DefaultClassificationStrategy(
           key -> doubleToInt
         }).mapValues(_.toMap).toMap
 
-        val ruleFn: (ClassificationTreeItem) => Boolean = item => {
+        val ruleFn: (KeyValue[String,Any]) => Boolean = (item: KeyValue[String,Any]) => {
           distance(
-            metric(center.value),
+            centerMetric,
             metric(item)
           ) <= value.asInstanceOf[Number].doubleValue()
         }
-        val ruleName = s"$metricName from ${center.value} <= $value"
+        val ruleName = s"$metricName from ${center} <= $value"
         new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
       })
     })

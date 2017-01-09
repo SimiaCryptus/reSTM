@@ -21,11 +21,11 @@ package stm.collection.clustering
 
 import stm.STMTxnCtx
 
-case class RuleData(fn : (ClassificationTreeItem) => Boolean, name : String = "???")
+case class RuleData(fn : (KeyValue[String,Any]) => Boolean, name : String = "???")
 
 trait ClassificationStrategy {
 
-  def getRule(values: Stream[LabeledItem]): RuleData
+  def getRule(values: Stream[Page]): RuleData
 
   def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean
 

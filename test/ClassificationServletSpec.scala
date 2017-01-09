@@ -33,7 +33,7 @@ import storage.types.JacksonValue
 import util.Util
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{IndexedSeq, Seq}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 import scala.util.Random
@@ -50,7 +50,7 @@ object ClassificationHttpClientUtil {
     def insert(label: String, item: Seq[Any]): String = {
       val request = (url(baseUrl) / "cluster" / treeId).addQueryParameter("label", label)
       val requestBody = item.map(JacksonValue.simple(_).toString).mkString("\n")
-      println(s"PUT ${request.url} - Writing ${item.size} items")
+      println(s"PUT ${request.url} - Writing ${item.size} items - ${requestBody.length} bytes")
       Await.result(Http(request.PUT << requestBody OK as.String), timeout)
     }
 
@@ -96,24 +96,22 @@ object ClassificationHttpClientUtil {
     println(setStrategy(new NoBranchStrategy))
     println(info())
 
-    val grouped: List[List[ClassificationTreeItem]] = ForestCoverDataset.dataSet.take(items).grouped(2000).toList
-    val blocks: List[(String, List[ClassificationTreeItem])] = grouped.flatMap(items ⇒ ForestCoverDataset.asTrainingSet(items).toList)
-    val regrouped: List[(String, List[ClassificationTreeItem])] = blocks.flatMap(block⇒block._2.grouped(100).map(block._1→_))
-    val shuffled: List[(String, List[ClassificationTreeItem])] = Random.shuffle(regrouped)
+    val shuffled: List[(String, IndexedSeq[ForestCoverDataset.dataSet.PageRow])] = Random.shuffle(ForestCoverDataset.dataSet.rows)
+      .take(items).grouped(10000).flatMap(_.groupBy(_.label)).toList
     val itemSum = shuffled.grouped(4).map(_.toParArray.map(x ⇒ {
-      val (key: String, block: List[ClassificationTreeItem]) = x
-      insert(key, block.map(_.attributes))
+      val (key: String, block: IndexedSeq[ForestCoverDataset.dataSet.PageRow]) = x
+      block.grouped(50).foreach(b⇒insert(key, b.map(_.asMap)))
       block.size
     }).sum).sum
-    println(s"Uploaded $itemSum in ${blocks.size} blocks")
+    println(s"Uploaded $itemSum in ${shuffled.size} blocks")
 
     val taskInfo = split(new DefaultClassificationStrategy(2))
     println(taskInfo)
     val taskId = taskInfo.getAsJsonPrimitive("task").getAsString
     TaskUtil.awaitTask(new Task[AnyRef](new Restm.PointerType(taskId)), 100.minutes)
 
-    val correct = Random.shuffle(ForestCoverDataset.dataSet.slice(1000,5000)).take(10).map(testValue ⇒ {
-      val queryResult = query(testValue)
+    val correct = Random.shuffle(ForestCoverDataset.dataSet.rows.slice(1000,5000)).take(10).map(testValue ⇒ {
+      val queryResult = query(testValue.asClassificationTreeItem)
       println(queryResult)
       val counts = queryResult.getAsJsonObject("counts").entrySet().asScala
         .map(e => e.getKey → e.getValue.getAsInt).toList
@@ -121,7 +119,7 @@ object ClassificationHttpClientUtil {
       val leafId = queryResult.getAsJsonObject("path").getAsJsonPrimitive("treeId").getAsInt
       val countStr = counts.map(x=>x._1.toString+"→"+x._2.toString).mkString(",")
       val predictedClass = if(counts.isEmpty) "null" else counts.maxBy(_._2)._1
-      val actualClass = testValue.attributes("Cover_Type").toString
+      val actualClass = testValue.label
       if (actualClass == predictedClass) {
         println(s"Correct: $actualClass correctly predicted in leaf $leafId with label counts ($countStr)")
         1

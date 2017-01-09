@@ -212,16 +212,16 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
           StmExecutionQueue.get().registerDaemons(8)
           val collection = new ClassificationTree(new PointerType)
           collection.atomic().sync.setClusterStrategy(new NoBranchStrategy())
-          val testingSet = ForestCoverDataset.dataSet.take(100)
-          val trainingSet = ForestCoverDataset.dataSet.slice(100, items + 100)
+          val testingSet = ForestCoverDataset.dataSet.rows.take(100)
+          val trainingSet = ForestCoverDataset.dataSet.rows.slice(100, items + 100)
           require(testingSet.nonEmpty)
           require(trainingSet.nonEmpty)
 
           print(s"Populating tree at ${new Date()}")
-          val insertFutures = trainingSet.groupBy(_.attributes("Cover_Type")).map(t => Future {
-            val (cover_type: Any, stream: Seq[ClassificationTreeItem]) = t
-            stream.map(item => item.copy(attributes = item.attributes - "Cover_Type")).grouped(512).map(_.toList)
-              .foreach(block => {
+          val insertFutures = trainingSet.groupBy(_.label).map(t => Future {
+            val (cover_type: Any, stream: Seq[ForestCoverDataset.dataSet.PageRow]) = t
+            stream.map(item => item.asClassificationTreeItem).grouped(512).map(_.toList)
+              .foreach((block: List[ClassificationTreeItem]) => {
                 print(".")
                 Console.flush()
                 collection.atomic().sync(30.seconds).addAll(cover_type.toString, block)
@@ -239,8 +239,8 @@ abstract class ClassificationTreeTestBase extends WordSpec with MustMatchers wit
 
           println(s"Testing model at ${new Date()}")
           val correct = testingSet.map(item => {
-            val testValue = item.copy(attributes = item.attributes - "Cover_Type")
-            val coverType = item.attributes("Cover_Type")
+            val testValue = item.asClassificationTreeItem
+            val coverType = item.label
             val id: STMPtr[ClassificationTreeNode] = collection.atomic().sync(90.seconds).getClusterId(testValue)
             println()
             println(s"item routed to node " + JacksonValue.simple(id))

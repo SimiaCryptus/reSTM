@@ -18,13 +18,16 @@
  */
 
 import java.io.FileInputStream
+import java.nio.ByteBuffer
 import java.util.zip.GZIPInputStream
 
+import com.google.common.primitives.Longs
 import org.apache.commons.io.IOUtils
-import stm.collection.clustering.ClassificationTreeItem
+import stm.collection.clustering.Page.DoubleColumn
+import stm.collection.clustering.{ClassificationTreeItem, Page}
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{ListMap, Seq, TreeMap}
 import scala.util.Random
 
 object ForestCoverDataset {
@@ -43,22 +46,44 @@ object ForestCoverDataset {
     (1 to 40).map(i => s"Soil_Type_$i"), // (40 binary columns)          qualitative     0 (absence) or 1 (presence)  Soil Type designation
     List("Cover_Type") // (7 types)                    integer         1 to 7                       Forest Cover Type designation
   ).flatten.toArray
-  lazy val dataSet: List[ClassificationTreeItem] = {
+  lazy val dataSet: Page = {
     val inputStream = new GZIPInputStream(new FileInputStream("covtype.data.gz"))
     println("Reading covtype")
     val rawLines = IOUtils.readLines(inputStream, "UTF8").asScala.map(_.trim).filterNot(_.isEmpty).toList
     println("Shuffling data")
     val lines = Random.shuffle(rawLines).toArray
     println(s"Read ${lines.size} lines")
-    val items = lines
-      .map(_.split(",").map(Integer.parseInt).toArray)
-      .map((values: Array[Int]) => {
-        val combined = fields.zip(values).toMap
-        ClassificationTreeItem(combined)
-      }).filter(_.attributes.contains("Cover_Type")).toList
-
-    println(s"Loaded covtype ${items.size} items")
-    items
+    val items: ListMap[String, Array[Array[Byte]]] = ListMap(lines.map((line: String) ⇒{
+      line.split(",").map(Integer.parseInt(_).toDouble)
+    }).groupBy(_.last)
+      .mapValues(_.map(_.dropRight(1)).map(_.map(java.lang.Double.doubleToLongBits).flatMap(Longs.toByteArray)))
+      .map(t⇒t._1.toString → t._2)
+      .toList.sortBy(_._1):_*)
+    println(s"Parsed ${items.size} types")
+    val labelNames: Array[String] = items.map(_._1).toArray
+    val labels: Array[Int] = items.flatMap(t⇒{
+      val (key: String, block) = t;
+      val i = labelNames.indexOf(key)
+      (0 until block.length).map(_⇒i)
+    }).toArray
+    val schema = (0 until fields.length-1).map(i⇒new DoubleColumn(fields(i),i*8)).toArray[Page.BaseColumn[_]]
+    val buffer = ByteBuffer.allocate(500*1024*1024)
+    for(item ← items) {
+      for(row ← item._2) {
+        buffer.put(row)
+      }
+    }
+    val data: Array[Byte] = java.util.Arrays.copyOfRange(buffer.array(), 0, buffer.position())
+    val page = new Page(
+      schema = TreeMap(schema.map(x⇒x.name→x).sortBy(_._1):_*),
+      labelNames = labelNames,
+      labels = labels,
+      refs = Array.empty,
+      values = data
+    )
+    println(s"Page Example Datum: ${page.rows.head.asMap}")
+    println(s"Page Ready: ${data.length} bytes")
+    page
   }
   def asTrainingSet(dataSet: Seq[ClassificationTreeItem]): Map[String, List[ClassificationTreeItem]] = {
     val grouped = dataSet.map(item ⇒ {
