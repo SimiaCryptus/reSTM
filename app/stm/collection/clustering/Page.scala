@@ -176,9 +176,9 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
       keys.filter(_.isInstanceOf[RefColumn[_]]).map(_.asInstanceOf[RefColumn[_]])
     )
 
-    val newScalaCols: List[ValueColumn[_]] = scalarCols.scanLeft(None:Option[ValueColumn[_]])((l, x)⇒{
+    val newScalarCols: List[ValueColumn[AnyVal]] = scalarCols.scanLeft(None:Option[ValueColumn[AnyVal]])((l, x)⇒{
       require(x.isInstanceOf[DoubleColumn])
-      Option(new DoubleColumn(x.name, l.map(x⇒x.start+x.length).getOrElse(0)))
+      Option(new DoubleColumn(x.name, l.map(x⇒x.start+x.length).getOrElse(0)).asInstanceOf[ValueColumn[AnyVal]])
     }).flatten.toList
 
     val allRows: Seq[Page#PageRow] = rows ++ left.rows
@@ -188,9 +188,9 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
 
     val buffer = ByteBuffer.allocate(500*1024*1024)
     val longBuffer = buffer.asLongBuffer()
-    for(col ← newScalaCols) {
-      val thisCol = Page.this.schema.get(col.name)
-      for(row ← rows) {
+    val thisColTuples = newScalarCols.map(col⇒this.schema.get(col.name))
+    for(row ← rows) {
+      for(thisCol ← thisColTuples) {
         val value: Double = try {
           thisCol.map(_.get(row).asInstanceOf[Number].doubleValue()).getOrElse(Double.NaN)
         } catch {
@@ -198,8 +198,10 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
         }
         longBuffer.put(java.lang.Double.doubleToLongBits(value))
       }
-      val leftCol = left.schema.get(col.name)
-      for(row ← left.rows) {
+    }
+    val leftColTuples = newScalarCols.map(col⇒left.schema.get(col.name))
+    for(row ← left.rows) {
+      for(leftCol ← leftColTuples) {
         val value: Double = try {
           leftCol.map(_.get(row).asInstanceOf[Number].doubleValue()).getOrElse(Double.NaN)
         } catch {
@@ -212,8 +214,9 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
     val bytes: Array[Byte] = java.util.Arrays.copyOfRange(buffer.array(), 0, longBuffer.position() * 8)
     val labels: Array[String] = allRows.map(data⇒data.label).toArray
     val labelNames = labels.distinct.sorted
+    val map: List[(String, ValueColumn[AnyVal])] = newScalarCols.map((x: ValueColumn[AnyVal]) ⇒ (x.name,x))
     new Page(
-      schema = TreeMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
+      schema = SortedMap(map:_*),
       labelNames = labelNames,
       labels = labels.map(labelNames.indexOf(_)),
       refs = refVals,

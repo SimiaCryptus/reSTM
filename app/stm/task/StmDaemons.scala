@@ -45,7 +45,7 @@ object StmDaemons {
   val config: LinkedList[DaemonConfig] = LinkedList.static[DaemonConfig](new PointerType("StmDaemons/config"))
   private[this] val daemonThreads = new scala.collection.concurrent.TrieMap[String, Thread]
   private[this] var mainThread: Option[Thread] = None
-  private[this] lazy val pool = new ThreadPoolExecutor(8, 32, 5L, TimeUnit.SECONDS,
+  private[this] lazy val pool = new ThreadPoolExecutor(2, 8, 5L, TimeUnit.SECONDS,
     new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
     new ThreadFactoryBuilder().setNameFormat("daemon-pool-%d").build())
   private[task] implicit lazy val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)

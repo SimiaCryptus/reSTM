@@ -96,21 +96,21 @@ object ClassificationHttpClientUtil {
     println(setStrategy(new NoBranchStrategy))
     println(info())
 
-    val shuffled: List[(String, IndexedSeq[ForestCoverDataset.dataSet.PageRow])] = Random.shuffle(ForestCoverDataset.dataSet.rows)
-      .take(items).grouped(10000).flatMap(_.groupBy(_.label)).toList
-    val itemSum = shuffled.grouped(4).map(_.toParArray.map(x ⇒ {
+    val blocks: List[(String, IndexedSeq[ForestCoverDataset.dataSet.PageRow])] = Random.shuffle(ForestCoverDataset.dataSet.rows
+      .take(items).grouped(10000).flatMap(_.groupBy(_.label))).toList
+    val itemSum = blocks.grouped(4).map(_.toParArray.map(x ⇒ {
       val (key: String, block: IndexedSeq[ForestCoverDataset.dataSet.PageRow]) = x
       block.grouped(50).foreach(b⇒insert(key, b.map(_.asMap)))
       block.size
     }).sum).sum
-    println(s"Uploaded $itemSum in ${shuffled.size} blocks")
+    println(s"Uploaded $itemSum in ${blocks.size} blocks")
 
     val taskInfo = split(new DefaultClassificationStrategy(2))
     println(taskInfo)
     val taskId = taskInfo.getAsJsonPrimitive("task").getAsString
     TaskUtil.awaitTask(new Task[AnyRef](new Restm.PointerType(taskId)), 100.minutes)
 
-    val correct = Random.shuffle(ForestCoverDataset.dataSet.rows.slice(1000,5000)).take(10).map(testValue ⇒ {
+    val correct = ForestCoverDataset.dataSet.rows.slice(Math.min(items, ForestCoverDataset.dataSet.size-100),items+100).map(testValue ⇒ {
       val queryResult = query(testValue.asClassificationTreeItem)
       println(queryResult)
       val counts = queryResult.getAsJsonObject("counts").entrySet().asScala
@@ -148,7 +148,7 @@ class ClassificationServletSpec extends WordSpec with MustMatchers with OneServe
             Await.result(Http((url(baseUrl) / "sys" / "init").GET OK as.String), timeout)
             StmExecutionQueue.get().verbose = true
             Thread.sleep(1000) // Allow platform to start
-            ClassificationHttpClientUtil.test(baseUrl, items = 100000, timeout = timeout)
+            ClassificationHttpClientUtil.test(baseUrl, items = 10000, timeout = timeout)
             Await.result(Http((url(baseUrl) / "sys" / "shutdown").GET OK as.String), timeout)
             Await.result(StmDaemons.join(), 5.minutes)
             Thread.sleep(1000) // Allow rest of processes to complete

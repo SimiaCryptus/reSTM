@@ -20,6 +20,7 @@
 package stm.collection.clustering
 
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm.STMTxnCtx
@@ -37,8 +38,11 @@ object DefaultClassificationStrategy {
 }
 
 case class DefaultClassificationStrategy(
-                                          branchThreshold: Int = 8
+                                          branchThreshold: Int = 8,
+                                          smoothingFactor: Double = 0.05
                                         ) extends ClassificationStrategy {
+
+
   private implicit def _executionContext = DefaultClassificationStrategy.workerPool
   def getRule(pages: Stream[Page]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val sampledRows = pages.flatMap(_.rows).take(1000).toList
@@ -58,30 +62,28 @@ case class DefaultClassificationStrategy(
   }
 
   private def metricRules(field: String, values: List[Page#PageRow], filter: (KeyValue[String,Any]) => Boolean, metric: (KeyValue[String,Any]) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
-    val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
+    val exceptionCounts: Map[String, Int] = values.filterNot(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter)
       .map((item: Page#PageRow) => item.label -> metric(item))
       .sortBy(_._2)
-
-    val labelCounters: Map[String, mutable.Map[Double, Int]] = valueSortMap.groupBy(_._1)
-      .mapValues(_.toList.groupBy(_._2).mapValues(_.size))
-      .mapValues(x => new mutable.HashMap() ++ x)
-    val valueCounters = new mutable.HashMap[String, mutable.Map[Double, Int]]()
-    valueSortMap.distinct.map(item => {
-      val (label, threshold: Double) = item
-      valueCounters.getOrElseUpdate(label, new mutable.HashMap()).put(threshold, labelCounters(label)(threshold))
-
-      val compliment: Map[String, Map[Double, Int]] = valueCounters.map(e => {
-        val (key, leftItems) = e
-        val counters: mutable.Map[Double, Int] = labelCounters(key).clone()
-        val doubleToInt: mutable.Map[Double, Int] = counters -- leftItems.keys
+    val labelCounts: Map[String, Int] = valueSortMap.groupBy(_._1).mapValues(_.size)
+    val valueCounters = new mutable.HashMap[String, AtomicInteger]()
+    valueSortMap.groupBy(_._2).mapValues(_.groupBy(_._1).mapValues(_.size)).map(item => {
+      val (threshold: Double, label: Map[String, Int]) = item
+      label.foreach(t⇒{
+        val (label,count) = t
+        valueCounters.getOrElseUpdate(label, new AtomicInteger(0)).addAndGet(count)
+      })
+      val compliment: Map[String, Int] = labelCounts.keys.map(key⇒{
+        val leftItems = valueCounters.get(key).map(_.get()).getOrElse(0)
+        val doubleToInt: Int = labelCounts(key) - leftItems
         key -> doubleToInt
-      }).mapValues(_.toMap).toMap
+      }).toMap
       val ruleFn: (KeyValue[String,Any]) => Boolean = item => {
-        metric(item) <= threshold
+        metric(item) >= threshold
       }
-      val ruleName = s"$field <= $threshold"
-      new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
+      val ruleName = s"$field < $threshold"
+      new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get()).toMap, compliment, exceptionCounts, ruleName)
     })
   }
 
@@ -98,7 +100,7 @@ case class DefaultClassificationStrategy(
                                distance: (T, T) => Int) = Util.monitorBlock("DefaultClassificationStrategy.distanceRules") {
     val fileredItems: Seq[Page#PageRow] = values.filter(filter)
     fileredItems.flatMap((center: Page#PageRow) => {
-      val exceptionCounts: Map[String, Int] = values.filter(filter).groupBy(_.label).mapValues(_.size)
+      val exceptionCounts: Map[String, Int] = values.filterNot(filter).groupBy(_.label).mapValues(_.size)
       val centerMetric = metric(center)
       val valueSortMap: Seq[(String, Double)] = fileredItems.map(item => {
         item.label -> distance(
@@ -107,48 +109,54 @@ case class DefaultClassificationStrategy(
         ).doubleValue()
       }).sortBy(_._2)
 
-      val labelCounters: Map[String, mutable.Map[Double, Int]] = valueSortMap.groupBy(_._1)
-        .mapValues(_.toList.groupBy(_._2).mapValues(_.size))
-        .mapValues(x => new mutable.HashMap() ++ x)
-      val valueCounters = new mutable.HashMap[String, mutable.Map[Double, Int]]()
-      valueSortMap.distinct.map(item => {
-        val (label, value: Double) = item
-        valueCounters.getOrElseUpdate(label, new mutable.HashMap()).put(value, labelCounters(label)(value))
-
-        val compliment: Map[String, Map[Double, Int]] = valueCounters.map(e => {
-          val (key, leftItems) = e
-          val counters: mutable.Map[Double, Int] = labelCounters(key).clone()
-          val doubleToInt: mutable.Map[Double, Int] = counters -- leftItems.keys
+      val labelCounts: Map[String, Int] = valueSortMap.groupBy(_._1).mapValues(_.size)
+      val valueCounters = new mutable.HashMap[String, AtomicInteger]()
+      valueSortMap.groupBy(_._2).mapValues(_.groupBy(_._1).mapValues(_.size)).map(item => {
+        val (threshold: Double, label: Map[String, Int]) = item
+        label.foreach(t⇒{
+          val (label,count) = t
+          valueCounters.getOrElseUpdate(label, new AtomicInteger(0)).addAndGet(count)
+        })
+        val compliment: Map[String, Int] = labelCounts.keys.map(key⇒{
+          val leftItems = valueCounters.get(key).map(_.get()).getOrElse(0)
+          val doubleToInt: Int = labelCounts(key) - leftItems
           key -> doubleToInt
-        }).mapValues(_.toMap).toMap
+        }).toMap
 
         val ruleFn: (KeyValue[String,Any]) => Boolean = (item: KeyValue[String,Any]) => {
           distance(
             centerMetric,
             metric(item)
-          ) <= value.asInstanceOf[Number].doubleValue()
+          ) >= threshold.asInstanceOf[Number].doubleValue()
         }
-        val ruleName = s"$metricName from ${center} <= $value"
-        new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.toMap).toMap, compliment, exceptionCounts)
+        val ruleName = s"$metricName from ${center} < $threshold"
+        new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get).toMap, compliment, exceptionCounts, ruleName)
       })
     })
   }
 
-  def fitness(left: Map[String, Map[Double, Int]], right: Map[String, Map[Double, Int]], exceptions: Map[String, Int]): Double = Util.monitorBlock("DefaultClassificationStrategy.fitness") {
-    val result = {
-      (left.keys ++ right.keys).toSet.map((label: String) => {
-        val leftOpt = left.getOrElse(label, Map.empty)
-        val rightOpt = right.getOrElse(label, Map.empty)
-        val total = leftOpt.values.sum + rightOpt.values.sum
-        List(leftOpt, rightOpt).map(map => {
-          val sum = map.values.sum.toDouble
-          val factor = sum / total
-          factor * Math.log(1 - factor) // * map.values.map(x=>x*x).sum
+  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String): Double = Util.monitorBlock("DefaultClassificationStrategy.fitness") {
+    val labelCounts: Map[String, Int] = (left.toList++right.toList++exceptions.toList).groupBy(_._1).mapValues(_.map(_._2).sum)
+    val totalCount: Int = labelCounts.values.sum
+    val leftCount: Int = left.values.sum
+    val rightCount: Int = right.values.sum
+    val exCount: Int = exceptions.values.sum
+    val smoothingFactor = this.smoothingFactor * totalCount
+    if(leftCount == 0 || rightCount == 0) Double.NegativeInfinity else {
+      val result = 1 * {
+        labelCounts.keys.map((label: String) => {
+          labelCounts(label) * leftCount * Math.log(smoothingFactor+left.getOrElse(label, 0))
+        }).sum +
+        labelCounts.keys.map((label: String) => {
+          labelCounts(label) * rightCount * Math.log(smoothingFactor+right.getOrElse(label, 0))
+        }).sum +
+        labelCounts.keys.map((label: String) => {
+          labelCounts(label) * exCount * Math.log(smoothingFactor+exceptions.getOrElse(label, 0))
         }).sum
-      }).sum
+      }
+      //println(s"(left=$left,right=$right,ex=$exceptions) = $result ($ruleName)")
+      result
     }
-    //println(s"(left=$left,right=$right,ex=$exceptions) = $result")
-    result
   }
 
   def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = {

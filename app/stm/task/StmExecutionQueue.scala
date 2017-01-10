@@ -30,7 +30,7 @@ import storage.Restm
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.util.Try
+import scala.util.{Failure, Success}
 
 
 object StmExecutionQueue {
@@ -56,10 +56,14 @@ object StmExecutionQueue {
     default = null
   }
 
-  private[StmExecutionQueue] lazy val pool = new ThreadPoolExecutor(8, 32, 5L, TimeUnit.SECONDS,
+  private[StmExecutionQueue] lazy val pool = new ThreadPoolExecutor(2, 16, 5L, TimeUnit.SECONDS,
     new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
     new ThreadFactoryBuilder().setNameFormat("worker-pool-%d").build())
+  private[StmExecutionQueue] lazy val taskpool = new ThreadPoolExecutor(1, 32, 5L, TimeUnit.SECONDS,
+    new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
+    new ThreadFactoryBuilder().setNameFormat("task-pool-%d").build())
   private[StmExecutionQueue] lazy val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
+  private[StmExecutionQueue] lazy val taskExecutionContext: ExecutionContext = ExecutionContext.fromExecutor(taskpool)
 }
 
 class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
@@ -130,24 +134,26 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
         val function: (Restm, ExecutionContext) ⇒ TaskResult[_] = tuple._2
         val task = tuple._1.asInstanceOf[Task[AnyRef]]
         if (verbose) println(s"Starting task ${task.id} at ${new Date()}")
-        val result = monitorBlock("StmExecutionQueue.runTask") {
-          def attempt(retries: Int): TaskResult[_] = {
-            try {
-              function(cluster, StmExecutionQueue.executionContext)
-            } catch {
-              case _: Throwable if retries > 0 => attempt(retries - 1)
-            }
-          }
-          Try { try {
+        val result = monitorFuture("StmExecutionQueue.runTask") {
+          def attempt(retries: Int): Future[TaskResult[_]] = Future {
+            function(cluster, StmExecutionQueue.executionContext)
+          }(StmExecutionQueue.taskExecutionContext).recoverWith({
+            case _: Throwable if retries > 0 => attempt(retries - 1)
+          })(StmExecutionQueue.taskExecutionContext)
+          try {
             attempt(3)
           } catch {
-            case e: Throwable =>
-              e.printStackTrace()
-              throw e
-          } }
-        }.asInstanceOf[Try[TaskResult[AnyRef]]]
+            case e : Throwable ⇒ Future.failed(e)
+          }
+        }(StmExecutionQueue.taskExecutionContext).asInstanceOf[Future[TaskResult[AnyRef]]]
         monitorFuture("StmExecutionQueue.completeTask") {
-          task.atomic()(cluster).complete(result)
+          result
+            .flatMap(result⇒task.atomic()(cluster).complete(Success(result)))(StmExecutionQueue.taskExecutionContext)
+              .recoverWith({
+                case e : Throwable ⇒
+                  task.atomic()(cluster).complete(Failure(e))
+                  Future.failed(e)
+              })(StmExecutionQueue.taskExecutionContext)
         }(StmDaemons.executionContext).map(_ => {
           if (verbose) println(s"Completed task ${task.id} at ${new Date()}")
           ExecutionStatusManager.end(executorId, task)
@@ -155,7 +161,6 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
         })(StmDaemons.executionContext)
       }).getOrElse(Future.successful(false))
     })(StmDaemons.executionContext)
-
   }
 
   private def getTask(executorName: String = ExecutionStatusManager.getName)

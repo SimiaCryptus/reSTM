@@ -70,7 +70,7 @@ object PageTree {
 
     def apxSize(implicit ctx: STMTxnCtx): Future[Long] = {
       val child = if (Random.nextBoolean()) left.orElse(right) else right.orElse(left)
-      child.map(_.read().flatMap(_.apxSize).map(_ * 2)).getOrElse(value.read().map(_.deserialize()).map(_.size))
+      child.map(_.read().flatMap(_.apxSize).map(_ * 2 + 1)).getOrElse(value.read().map(_.deserialize()).map(_.size))
     }
 
     def get(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Page] = {

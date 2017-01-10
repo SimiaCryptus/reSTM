@@ -40,7 +40,7 @@ object RestmActors {
 class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmInternal {
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(
     // Executors.newCachedThreadPool(
-    Executors.newFixedThreadPool(8,
+    Executors.newFixedThreadPool(4,
       new ThreadFactoryBuilder().setNameFormat("storage-actor-pool-%d").build()))
   lazy val freezeThread: Thread = {
     val thread: Thread = new Thread(new Runnable {

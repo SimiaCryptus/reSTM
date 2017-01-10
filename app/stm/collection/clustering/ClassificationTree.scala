@@ -19,8 +19,11 @@
 
 package stm.collection.clustering
 
+import java.util.concurrent.Executors
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm.collection.clustering.ClassificationTree.NodeInfo
-import stm.task.Task.{TaskContinue, TaskResult, TaskSuccess}
+import stm.task.Task.{TaskContinue, TaskFunction, TaskResult, TaskSuccess}
 import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}
 import storage.Restm
@@ -29,16 +32,18 @@ import util.Util
 
 import scala.collection.immutable.Iterable
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor, Future}
 
 
 object ClassificationTree {
   private implicit def executionContext = StmPool.executionContext
+  val executionContext2: ExecutionContextExecutor = ExecutionContext.fromExecutor(
+    Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("ctree-pool-%d").build()))
 
   def newClassificationTreeNode(parent: Option[STMPtr[ClassificationTreeNode]] = None)(implicit ctx: STMTxnCtx) =
     new ClassificationTreeNode(parent, itemBuffer = Option(PageTree()))
 
-  def applyStrategy(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy): (Restm, ExecutionContext) => TaskResult[Int] =
+  def applyStrategy(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy): TaskFunction[Int] =
     (cluster, executionContext: ExecutionContext) => {
       implicit val _executionContext = executionContext
       val taskQueue = StmExecutionQueue.get()
@@ -113,7 +118,7 @@ object ClassificationTree {
   case class NodeInfo
   (
     node: STMPtr[ClassificationTreeNode],
-    treeId: Long,
+    treeId: BigInt,
     rule: String,
     parent: Option[NodeInfo] = None
   )
@@ -163,9 +168,9 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
     })
   }
 
-  def getClusterByTreeId(value: Int)(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = Util.monitorFuture("ClassificationTree.getClusterByTreeId") {
+  def getClusterByTreeId(value: String)(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = Util.monitorFuture("ClassificationTree.getClusterByTreeId") {
     dataPtr.read().map(_.root).flatMap(root => {
-      root.read().flatMap(_.getByTreeId(value, root))
+      root.read().flatMap(_.getByTreeId(BigInt(value), root))
     })
   }
 
@@ -235,7 +240,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
       ClassificationTree.this.getClusterPath(value)(_)
     }
 
-    def getClusterByTreeId(value: Int): Future[STMPtr[ClassificationTreeNode]] = atomic {
+    def getClusterByTreeId(value: String): Future[STMPtr[ClassificationTreeNode]] = atomic {
       ClassificationTree.this.getClusterByTreeId(value)(_)
     }
 
@@ -288,7 +293,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
         AtomicApi.this.getClusterPath(value)
       }
 
-      def getClusterByTreeId(value: Int): STMPtr[ClassificationTreeNode] = sync {
+      def getClusterByTreeId(value: String): STMPtr[ClassificationTreeNode] = sync {
         AtomicApi.this.getClusterByTreeId(value)
       }
 
@@ -336,7 +341,7 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
       ClassificationTree.this.getClusterPath(value)
     }
 
-    def getClusterByTreeId(value: Int)(implicit ctx: STMTxnCtx): STMPtr[ClassificationTreeNode] = sync {
+    def getClusterByTreeId(value: String)(implicit ctx: STMTxnCtx): STMPtr[ClassificationTreeNode] = sync {
       ClassificationTree.this.getClusterByTreeId(value)
     }
 

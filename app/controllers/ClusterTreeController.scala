@@ -129,7 +129,7 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
     }
   }
 
-  def info(treeId: String, clusterId: Int): Action[AnyContent] = Action.async { _ =>
+  def info(treeId: String, clusterId: String): Action[AnyContent] = Action.async { _ =>
     monitorFuture("ClusterTreeController.info") {
       val tree = ClassificationTree(treeId).atomic()
       tree.getClusterByTreeId(clusterId).flatMap((ptr: STMPtr[ClassificationTreeNode]) => {
@@ -143,7 +143,7 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
     }
   }
 
-  def list(treeId: String, clusterId: Int, cursor: Int = 0, maxItems: Int = 100): Action[AnyContent] = Action.async { _ =>
+  def list(treeId: String, clusterId: String, cursor: Int = 0, maxItems: Int = 100): Action[AnyContent] = Action.async { _ =>
     monitorFuture("ClusterTreeController.list") {
       ClassificationTree(treeId).atomic().getClusterByTreeId(clusterId)
         .flatMap((nodePtr: STMPtr[ClassificationTreeNode]) => {
@@ -156,7 +156,7 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
     }
   }
 
-  def split(treeId: String, clusterId: Int): Action[AnyContent] = Action.async { request =>
+  def split(treeId: String, clusterId: String): Action[AnyContent] = Action.async { request =>
     monitorFuture("ClusterTreeController.split") {
       val tree = ClassificationTree(treeId).atomic()
       tree.getClusterByTreeId(clusterId).flatMap((ptr: STMPtr[ClassificationTreeNode]) => {

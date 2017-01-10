@@ -129,17 +129,17 @@ case class ClassificationTreeNode
     }
   }
 
-  def getByTreeId(cursor: Long, self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = {
+  def getByTreeId(cursor: BigInt, self: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[STMPtr[ClassificationTreeNode]] = {
     require(0 <= cursor)
     if (1 == cursor) {
       Future.successful(self)
     } else {
       var depth = 0
-      var lastCounter = 1l
-      var counter = 2l
+      var lastCounter = BigInt(1l)
+      var counter = BigInt(2l)
       while (counter <= cursor) {
         depth = depth + 1
-        val levelSize = Math.pow(3, depth).toLong
+        val levelSize = BigInt(3).pow(depth)
         lastCounter = counter
         counter = counter + levelSize
       }
@@ -149,7 +149,7 @@ case class ClassificationTreeNode
     }
   }
 
-  def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[Long] = {
+  def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[BigInt] = {
     getTreeId_Minus1(self, root).map(_ + 1).flatMap(id⇒{
       root.read().flatMap(rootValue⇒{rootValue.getByTreeId(id, root)})
         .map((verifyNode: STMPtr[ClassificationTreeNode]) ⇒{
@@ -159,14 +159,14 @@ case class ClassificationTreeNode
     })
   }
 
-  def getTreeId_Minus1(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[Long] = {
+  def getTreeId_Minus1(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[BigInt] = {
     parent.filterNot(_ => self == root)
       .map(parentPtr => parentPtr.read().flatMap(parentNode => {
         parentNode.getTreeId_Minus1(parent.get, root).map(parentId => {
           val bit: Int = parentNode.getTreeBit(self)
           parentId * 3 + bit + 1
         })
-      })).getOrElse(Future.successful(0l))
+      })).getOrElse(Future.successful(BigInt(0l)))
       .map(id => {
         if (id < 0) throw new RuntimeException("Node is too deep to calculate id")
         id
@@ -178,12 +178,12 @@ case class ClassificationTreeNode
   }
 
   def pageStream(self: STMPtr[ClassificationTreeNode], duration: Duration = 30.seconds)(implicit ctx: STMTxnCtx): Stream[Page] = {
-    Stream.iterate((0l, Stream.empty[Page]))(t => sync(duration = duration).nextBlock(t._1, self, self)).takeWhile(_._1 > -2).flatMap(_._2)
+    Stream.iterate((BigInt(0l), Stream.empty[Page]))(t => sync(duration = duration).nextBlock(t._1, self, self)).takeWhile(_._1 > -2).flatMap(_._2)
   }
 
   def sync = new SyncApi(10.seconds)
 
-  def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[(Long, Stream[Page])] = {
+  def nextBlock(cursor: BigInt, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])(implicit ctx: STMTxnCtx): Future[(BigInt, Stream[Page])] = {
     if (cursor < 0) {
       Future.successful((cursor - 1) -> Stream.empty)
     } else {
@@ -195,7 +195,7 @@ case class ClassificationTreeNode
       cursorPtr.flatMap(nodePtr => {
         nodePtr.read().flatMap(node => {
           val members: Stream[Page] = node.itemBuffer.map(_.pageStream()).getOrElse(Stream.empty)
-          val nextId: Future[Long] = node.nextNode(nodePtr, root).flatMap(_.map((y: STMPtr[ClassificationTreeNode]) =>
+          val nextId: Future[BigInt] = node.nextNode(nodePtr, root).flatMap(_.map((y: STMPtr[ClassificationTreeNode]) =>
             y.read().flatMap(_.getTreeId(y, root))).getOrElse(Future.successful(-1)))
           nextId.map(nextId => {
             nextId -> members
@@ -327,7 +327,7 @@ case class ClassificationTreeNode
       )).map(_.reduceOption(_ + _).getOrElse(0))
     }
 
-    def nextBlock(cursor: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[(Long, Stream[LabeledItem])] = {
+    def nextBlock(cursor: BigInt, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[(BigInt, Stream[LabeledItem])] = {
       if (cursor < 0) {
         Future.successful((cursor - 1) -> Stream.empty)
       } else {
@@ -339,7 +339,7 @@ case class ClassificationTreeNode
         cursorPtr.flatMap(nodePtr => {
           nodePtr.atomic.read.flatMap((node: ClassificationTreeNode) => {
             val members: Future[Stream[LabeledItem]] = node.atomic().getMembers(nodePtr)
-            val nextId: Future[Long] = node.atomic().nextNode(nodePtr, root).flatMap(_.map((y: STMPtr[ClassificationTreeNode]) =>
+            val nextId: Future[BigInt] = node.atomic().nextNode(nodePtr, root).flatMap(_.map((y: STMPtr[ClassificationTreeNode]) =>
               y.atomic.read.flatMap(_.atomic().getTreeId(y, root))).getOrElse(Future.successful(-1)))
             members.flatMap(members => nextId.map(nextId => {
               nextId -> members
@@ -357,11 +357,11 @@ case class ClassificationTreeNode
       ClassificationTreeNode.this.nextNode(self, root)(_)
     }
 
-    def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[Long] = atomic {
+    def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Future[BigInt] = atomic {
       ClassificationTreeNode.this.getTreeId(self, root)(_)
     }
 
-    def getByTreeId(cursor: Long, self: STMPtr[ClassificationTreeNode]): Future[STMPtr[ClassificationTreeNode]] = atomic {
+    def getByTreeId(cursor: BigInt, self: STMPtr[ClassificationTreeNode]): Future[STMPtr[ClassificationTreeNode]] = atomic {
       ClassificationTreeNode.this.getByTreeId(cursor, self)(_)
     }
 
@@ -370,7 +370,7 @@ case class ClassificationTreeNode
     }
 
     def stream(self: STMPtr[ClassificationTreeNode]): Future[Stream[LabeledItem]] = Future.successful {
-      val cursorStream: Stream[(Long, Stream[LabeledItem])] = Stream.iterate((0l, Stream.empty[LabeledItem]))(t => sync.nextBlock(t._1, self, self))
+      val cursorStream: Stream[(BigInt, Stream[LabeledItem])] = Stream.iterate((BigInt(0l), Stream.empty[LabeledItem]))(t => sync.nextBlock(t._1, self, self))
       val itemStream: Stream[LabeledItem] = cursorStream.takeWhile(_._1 > -2).flatMap(_._2)
       itemStream
     }
@@ -390,11 +390,11 @@ case class ClassificationTreeNode
         NodeAtomicApi.this.nextNode(self, root)
       }
 
-      def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): Long = sync {
+      def getTreeId(self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): BigInt = sync {
         NodeAtomicApi.this.getTreeId(self, root)
       }
 
-      def nextBlock(value: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): (Long, Stream[LabeledItem]) = sync {
+      def nextBlock(value: BigInt, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode]): (BigInt, Stream[LabeledItem]) = sync {
         NodeAtomicApi.this.nextBlock(value, self, root)
       }
 
@@ -410,8 +410,8 @@ case class ClassificationTreeNode
   }
 
   class SyncApi(duration: Duration) extends SyncApiBase(duration) {
-    def nextBlock(value: Long, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])
-                 (implicit ctx: STMTxnCtx): (Long, Stream[Page]) =
+    def nextBlock(value: BigInt, self: STMPtr[ClassificationTreeNode], root: STMPtr[ClassificationTreeNode])
+                 (implicit ctx: STMTxnCtx): (BigInt, Stream[Page]) =
       sync {
         ClassificationTreeNode.this.nextBlock(value, self, root)
       }

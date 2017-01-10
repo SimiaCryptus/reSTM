@@ -44,6 +44,17 @@ object Util {
     else result
   }
 
+
+  def toDigits(number: BigInt, radix: Int): List[Int] = {
+    if (number == 0) {
+      List.empty
+    } else {
+      val bit = number.mod(radix).toInt
+      val remainder = (number - bit) /  radix
+      toDigits(remainder, radix) ++ List(bit)
+    }
+  }
+
   def toDigits(number: Long, radix: Int): List[Int] = {
     if (number == 0) {
       List.empty
