@@ -36,7 +36,7 @@ object ExecutionStatusManager {
   def end(executorName: String, task: Task[AnyRef]): ScheduledFuture[_] = {
     val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String, String]())
     executorRecord.put(task.id, "Complete")
-    println(s"Task completed: $task on $executorName")
+    //println(s"Task completed: $task on $executorName")
     pool.schedule(new Runnable {
       override def run(): Unit = {
         executorRecord.remove(task.id)
@@ -48,7 +48,7 @@ object ExecutionStatusManager {
   def start(executorName: String, task: Task[AnyRef]): Unit = {
     val executorRecord = currentStatus.getOrElseUpdate(executorName, new TrieMap[String, String]())
     executorRecord.put(task.id, "Started")
-    println(s"Task started: $task on $executorName")
+    //println(s"Task started: $task on $executorName")
   }
 
   def check(executorId: String, taskId: String): Boolean = {

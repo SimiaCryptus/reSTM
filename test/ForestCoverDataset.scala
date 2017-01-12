@@ -27,7 +27,7 @@ import stm.collection.clustering.Page.DoubleColumn
 import stm.collection.clustering.{ClassificationTreeItem, Page}
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable.{ListMap, Seq, TreeMap}
+import scala.collection.immutable.{ListMap, Seq}
 import scala.util.Random
 
 object ForestCoverDataset {
@@ -48,18 +48,16 @@ object ForestCoverDataset {
   ).flatten.toArray
   lazy val dataSet: Page = {
     val inputStream = new GZIPInputStream(new FileInputStream("covtype.data.gz"))
-    println("Reading covtype")
-    val rawLines = IOUtils.readLines(inputStream, "UTF8").asScala.map(_.trim).filterNot(_.isEmpty).toList
-    println("Shuffling data")
-    val lines = Random.shuffle(rawLines).toArray
-    println(s"Read ${lines.size} lines")
+    //println("Reading covtype")
+    val lines = Random.shuffle(IOUtils.readLines(inputStream, "UTF8").asScala.map(_.trim).filterNot(_.isEmpty)).toArray
+    //println(s"Read ${lines.size} lines")
     val items: ListMap[String, Array[Array[Byte]]] = ListMap(lines.map((line: String) ⇒{
       line.split(",").map(Integer.parseInt(_).toDouble)
     }).groupBy(_.last)
       .mapValues(_.map(_.dropRight(1)).map(_.map(java.lang.Double.doubleToLongBits).flatMap(Longs.toByteArray)))
       .map(t⇒t._1.toString → t._2)
       .toList.sortBy(_._1):_*)
-    println(s"Parsed ${items.size} types")
+    //println(s"Parsed ${items.size} types")
     val labelNames: Array[String] = items.map(_._1).toArray
     val labels: Array[Int] = items.flatMap(t⇒{
       val (key: String, block) = t;
@@ -75,14 +73,14 @@ object ForestCoverDataset {
     }
     val data: Array[Byte] = java.util.Arrays.copyOfRange(buffer.array(), 0, buffer.position())
     val page = new Page(
-      schema = TreeMap(schema.map(x⇒x.name→x).sortBy(_._1):_*),
+      schema = ListMap(schema.map(x⇒x.name→x).sortBy(_._1):_*),
       labelNames = labelNames,
       labels = labels,
       refs = Array.empty,
       values = data
     )
-    println(s"Page Example Datum: ${page.rows.head.asMap}")
-    println(s"Page Ready: ${data.length} bytes")
+    //println(s"Page Example Datum: ${page.rows.head.asMap}")
+    //println(s"Page Ready: ${data.length} bytes")
     page
   }
   def asTrainingSet(dataSet: Seq[ClassificationTreeItem]): Map[String, List[ClassificationTreeItem]] = {

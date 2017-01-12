@@ -38,21 +38,28 @@ object DefaultClassificationStrategy {
 }
 
 case class DefaultClassificationStrategy(
-                                          branchThreshold: Int = 8,
-                                          smoothingFactor: Double = 0.05
+                                          branchThreshold: Int = 20,
+                                          smoothingFactor: Double = 1.0,
+                                          factor_0 : Double = 0.1,
+                                          factor_1 : Double = -1.0,
+                                          factor_2 : Double = 1.0
                                         ) extends ClassificationStrategy {
 
 
   private implicit def _executionContext = DefaultClassificationStrategy.workerPool
   def getRule(pages: Stream[Page]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val sampledRows = pages.flatMap(_.rows).take(1000).toList
-    val fields = pages.flatMap(_.schema.keys).toSet
+    val fields: Set[String] = pages.flatMap(_.schema.keys).toSet
     val fieldResults = fields.map((field: String) => Future {
       rules_Levenshtein(sampledRows, field) ++ rules_SimpleScalar(sampledRows, field)
     })
-    val rules = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
-    if (rules.nonEmpty) rules.maxBy(_._2)._1
-    else null
+    val rules: Set[(RuleData, Double)] = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
+      .filterNot(_._2.isNaN).filterNot(_._2.isInfinite)
+    if (rules.nonEmpty) {
+      val rule = rules.maxBy(_._2)
+      println(s"Rule created: ${rule._1.name} with fitness ${rule._2}")
+      rule._1
+    } else null
   }
 
   private def rules_SimpleScalar(values: List[Page#PageRow], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
@@ -65,10 +72,9 @@ case class DefaultClassificationStrategy(
     val exceptionCounts: Map[String, Int] = values.filterNot(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter)
       .map((item: Page#PageRow) => item.label -> metric(item))
-      .sortBy(_._2)
     val labelCounts: Map[String, Int] = valueSortMap.groupBy(_._1).mapValues(_.size)
     val valueCounters = new mutable.HashMap[String, AtomicInteger]()
-    valueSortMap.groupBy(_._2).mapValues(_.groupBy(_._1).mapValues(_.size)).map(item => {
+    valueSortMap.groupBy(_._2).mapValues(_.groupBy(_._1).mapValues(_.size)).toList.sortBy(_._1).map(item => {
       val (threshold: Double, label: Map[String, Int]) = item
       label.foreach(t⇒{
         val (label,count) = t
@@ -80,9 +86,9 @@ case class DefaultClassificationStrategy(
         key -> doubleToInt
       }).toMap
       val ruleFn: (KeyValue[String,Any]) => Boolean = item => {
-        metric(item) >= threshold
+        metric(item) > threshold
       }
-      val ruleName = s"$field < $threshold"
+      val ruleName = s"$field > $threshold"
       new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get()).toMap, compliment, exceptionCounts, ruleName)
     })
   }
@@ -127,9 +133,9 @@ case class DefaultClassificationStrategy(
           distance(
             centerMetric,
             metric(item)
-          ) >= threshold.asInstanceOf[Number].doubleValue()
+          ) <= threshold.asInstanceOf[Number].doubleValue()
         }
-        val ruleName = s"$metricName from ${center} < $threshold"
+        val ruleName = s"$metricName from ${center} <= $threshold"
         new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get).toMap, compliment, exceptionCounts, ruleName)
       })
     })
@@ -137,29 +143,78 @@ case class DefaultClassificationStrategy(
 
   def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String): Double = Util.monitorBlock("DefaultClassificationStrategy.fitness") {
     val labelCounts: Map[String, Int] = (left.toList++right.toList++exceptions.toList).groupBy(_._1).mapValues(_.map(_._2).sum)
-    val totalCount: Int = labelCounts.values.sum
+    val totalCount: Double = labelCounts.values.sum.toDouble
     val leftCount: Int = left.values.sum
     val rightCount: Int = right.values.sum
     val exCount: Int = exceptions.values.sum
-    val smoothingFactor = this.smoothingFactor * totalCount
+    val smoothingFactor: Double = this.smoothingFactor / totalCount
     if(leftCount == 0 || rightCount == 0) Double.NegativeInfinity else {
-      val result = 1 * {
+      val cross_entropy_1: Double = -1 * {
         labelCounts.keys.map((label: String) => {
-          labelCounts(label) * leftCount * Math.log(smoothingFactor+left.getOrElse(label, 0))
+          // This cross entropy is with respect to the pre-and-post-distributions, not between labels
+          val x: Double = (left.getOrElse(label, 0)) / totalCount
+          val y: Double = labelCounts(label) * leftCount / (totalCount*totalCount)
+          //y * Math.log(smoothingFactor + x)
+          x * Math.log(smoothingFactor + y)
+        }).sum +
+          labelCounts.keys.map((label: String) => {
+            val x: Double = (right.getOrElse(label, 0)) / totalCount
+            val y: Double = labelCounts(label) * rightCount / (totalCount*totalCount)
+            x * Math.log(smoothingFactor + y)
+          }).sum +
+          labelCounts.keys.map((label: String) => {
+            val x: Double = (exceptions.getOrElse(label, 0)) / totalCount
+            val y: Double = labelCounts(label) * exCount / (totalCount*totalCount)
+            x * Math.log(smoothingFactor + y)
+          }).sum
+      }
+      val cross_entropy_2: Double = -1 * {
+        labelCounts.keys.map((label: String) => {
+          // This cross entropy is with respect to the pre-and-post-distributions, not between labels
+          val x: Double = (left.getOrElse(label, 0)) / totalCount
+          val y: Double = labelCounts(label) * leftCount / (totalCount*totalCount)
+          y * Math.log(smoothingFactor + x)
+        }).sum +
+          labelCounts.keys.map((label: String) => {
+            val x: Double = (right.getOrElse(label, 0)) / totalCount
+            val y: Double = labelCounts(label) * rightCount / (totalCount*totalCount)
+            y * Math.log(smoothingFactor + x)
+          }).sum +
+          labelCounts.keys.map((label: String) => {
+            val x: Double = (exceptions.getOrElse(label, 0)) / totalCount
+            val y: Double = labelCounts(label) * exCount / (totalCount*totalCount)
+            y * Math.log(smoothingFactor + x)
+          }).sum
+      }
+      val self_entropy: Double = -1 * {
+        labelCounts.keys.map((label: String) => {
+          val x = (left.getOrElse(label, 0)) / totalCount
+          x * Math.log(smoothingFactor + x)
         }).sum +
         labelCounts.keys.map((label: String) => {
-          labelCounts(label) * rightCount * Math.log(smoothingFactor+right.getOrElse(label, 0))
+          val x = (right.getOrElse(label, 0)) / totalCount
+          x * Math.log(smoothingFactor + x)
         }).sum +
         labelCounts.keys.map((label: String) => {
-          labelCounts(label) * exCount * Math.log(smoothingFactor+exceptions.getOrElse(label, 0))
+          val x = (exceptions.getOrElse(label, 0)) / totalCount
+          x * Math.log(smoothingFactor + x)
         }).sum
       }
-      //println(s"(left=$left,right=$right,ex=$exceptions) = $result ($ruleName)")
+      val result: Double = factor_2 * cross_entropy_2 + factor_1 * cross_entropy_1 + factor_0 * self_entropy
+      //println(s"(left=$left,right=$right,ex=$exceptions) = $cross_entropy + $self_entropy = $result ($ruleName)")
       result
     }
   }
 
   def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = {
-    buffer.sync(30.seconds).apxSize() > branchThreshold //|| buffer.sync.size() > branchThreshold
+    val apxSize = buffer.sync(30.seconds).apxSize()
+    lazy val realSize = {
+      val size = buffer.sync.size()
+      //println(s"Apx $apxSize resolved to $size exact size")
+      size
+    }
+    val decision = apxSize > (2.0 * branchThreshold) || (apxSize > (0.5 * branchThreshold) && realSize > branchThreshold)
+    //println(s"Apx $apxSize split? $decision")
+    decision
   }
 }

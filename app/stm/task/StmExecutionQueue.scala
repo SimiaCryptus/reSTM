@@ -20,7 +20,7 @@
 package stm.task
 
 import java.util.Date
-import java.util.concurrent.{LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
+import java.util.concurrent.{Executors, LinkedBlockingQueue, ThreadPoolExecutor, TimeUnit}
 
 import _root_.util.Util._
 import com.google.common.util.concurrent.ThreadFactoryBuilder
@@ -59,8 +59,7 @@ object StmExecutionQueue {
   private[StmExecutionQueue] lazy val pool = new ThreadPoolExecutor(2, 16, 5L, TimeUnit.SECONDS,
     new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
     new ThreadFactoryBuilder().setNameFormat("worker-pool-%d").build())
-  private[StmExecutionQueue] lazy val taskpool = new ThreadPoolExecutor(1, 32, 5L, TimeUnit.SECONDS,
-    new LinkedBlockingQueue[Runnable], //new SynchronousQueue[Runnable],
+  private[StmExecutionQueue] lazy val taskpool = Executors.newCachedThreadPool(
     new ThreadFactoryBuilder().setNameFormat("task-pool-%d").build())
   private[StmExecutionQueue] lazy val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
   private[StmExecutionQueue] lazy val taskExecutionContext: ExecutionContext = ExecutionContext.fromExecutor(taskpool)

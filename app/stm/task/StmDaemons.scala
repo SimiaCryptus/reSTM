@@ -87,7 +87,7 @@ object StmDaemons {
         })
         thread.start()
         thread.setName("StmDaemons-" + item.name)
-        println(s"Starting $thread")
+        //println(s"Starting $thread")
         thread
       })
     })

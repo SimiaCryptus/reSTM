@@ -427,11 +427,11 @@ object ClassificationTreeNode {
 
   def splitTaskFn(self: STMPtr[ClassificationTreeNode], strategy: ClassificationStrategy, maxSplitDepth: Int): (Restm, ExecutionContext) => TaskSuccess[String] =
     (c: Restm, e: ExecutionContext) => {
-      println(s"Starting split task for $self")
+      //println(s"Starting split task for $self")
       try {
         val future = ClassificationTreeNode.split(self, strategy, maxSplitDepth)(c).map(_ => TaskSuccess("OK"))(e)
         val result = Await.result(future, 10.minutes)
-        println(s"Completed split task for $self - $result")
+        //println(s"Completed split task for $self - $result")
         result
       } catch {
         case e ⇒ e.printStackTrace();throw e
@@ -446,7 +446,7 @@ object ClassificationTreeNode {
 
     val firstBuffer: Future[Option[PageTree]] = new STMTxn[Option[PageTree]] {
       override def txnLogic()(implicit ctx: STMTxnCtx): Future[Option[PageTree]] = {
-        println(s"Obtaining split lock for $self")
+        //println(s"Obtaining split lock for $self")
         self.read().flatMap(node => {
           if (node.splitBuffer.isDefined) {
             println(s"Split lock failed for $self")
@@ -460,7 +460,7 @@ object ClassificationTreeNode {
               ).map(_ => prevRecieveBuffer).map(Option(_))
             })
           } else {
-            println(s"Node already split - $self")
+            //println(s"Node already split - $self")
             Future.successful(None)
           }
         })
@@ -470,7 +470,7 @@ object ClassificationTreeNode {
     firstBuffer.flatMap(_.map(firstBuffer ⇒ {
       def transferBuffers() = new STMTxn[PageTree] {
         override def txnLogic()(implicit ctx: STMTxnCtx): Future[PageTree] = {
-          println(s"Swapping queues for $self")
+          //println(s"Swapping queues for $self")
           self.read().flatMap(node => {
             val collection = node.itemBuffer.get
             self.write(node.copy(
@@ -482,9 +482,10 @@ object ClassificationTreeNode {
       }.txnRun(cluster)
 
       val makeRule: Future[Option[Int]] = {
-        println(s"Deriving rule for $self")
+        //println(s"Deriving rule for $self")
         val newRule = strategy.getRule(firstBuffer.atomic().pageStream())
-        println(s"Deriving rule complete for $self")
+        //ClassificationTreeNode.this.getTreeId(self, root)
+        //println(s"Deriving rule complete for ${self}")
         if (null != newRule) {
           createChildren(self).flatMap(t => {
             require(!t.contains(null))
@@ -505,7 +506,7 @@ object ClassificationTreeNode {
           makeRule.flatMap(_ => {
             val node = currentData
             try {
-              println(s"Routing items")
+              //println(s"Routing items")
               val pageStream: Stream[Page] = pageTree.atomic().pageStream()
               val pageAccumulator = pageStream.scanLeft((None:Option[Page],Page.empty))((prev: (Option[Page], Page), page: Page)⇒{
                 if(prev._2.size < pageSize) {
@@ -515,7 +516,7 @@ object ClassificationTreeNode {
                 }
               })
               val pages = pageAccumulator.map(_._1).filter(_.isDefined).map(_.get)
-              println(s"Routing pages")
+              //println(s"Routing pages")
               def routePage(block: Page): Future[Int] = {
                 node.atomic().route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
               }
@@ -524,7 +525,7 @@ object ClassificationTreeNode {
               Future.sequence(routeTasks.toList).flatMap(results => {
                 finalRoute.map(finalPage ⇒ {
                   val sum = results.sum + finalPage
-                  println(s"Routed $sum items for $self: ${results++List(finalPage)}")
+                  //println(s"Routed $sum items for $self: ${results++List(finalPage)}")
                   sum
                 })
               })
@@ -549,7 +550,7 @@ object ClassificationTreeNode {
           override def txnLogic()(implicit ctx: STMTxnCtx): Future[Int] = {
             self.read().flatMap((node: ClassificationTreeNode) => {
               try {
-                println(s"Splitting (sync) on $self")
+                //println(s"Splitting (sync) on $self")
                 val pages: Stream[Page] = node.itemBuffer.map(pageTree⇒{
                   val pageStream: Stream[Page] = pageTree.atomic().pageStream()
                   val pageAccumulator = pageStream.scanLeft((None:Option[Page],Page.empty))((prev: (Option[Page], Page), page: Page)⇒{
@@ -561,13 +562,13 @@ object ClassificationTreeNode {
                   })
                   pageAccumulator.map(_._1).filter(_.isDefined).map(_.get) ++ Stream(pageAccumulator.last._2)
                 }).getOrElse(Stream.empty)
-                println(s"Final transfer for $self = ${pages.size} pages")
+                //println(s"Final transfer for $self = ${pages.size} pages")
                 val routeTasks = pages.map((block: Page) ⇒ {
                   node.route(block, self, strategy, maxSplitDepth - 1).map(_ => block.size)
                 }).toList
-                println(s"Waiting for insert for $self of ${pages.size} pages")
+                //println(s"Waiting for insert for $self of ${pages.size} pages")
                 Future.sequence(routeTasks).map(_.sum).flatMap(phase2Transfered => {
-                  println(s"Finalizing $self after transferring $phase2Transfered items")
+                  //println(s"Finalizing $self after transferring $phase2Transfered items")
                   self.write(node.copy(itemBuffer = None, splitBuffer = None)).map(_ => rowsTransfered + phase2Transfered)
                 })
               } catch {

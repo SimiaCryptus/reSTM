@@ -62,7 +62,7 @@ trait STMTxn[+R] extends STMTxnInstrumentation {
                 val totalTime = ctx.age
                 metrics.totalTimeMs.addAndGet(totalTime.toMicros)
                 val timeout = 5.seconds
-                if (totalTime > timeout) {
+                if (!ctx.isReadOnly && totalTime > timeout) {
                   ctx.revert().map(_ => throw new TransactionConflict("Transaction timed out at " + timeout))
                 } else {
                   metrics.numberSuccess.incrementAndGet()

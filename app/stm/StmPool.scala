@@ -26,6 +26,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import scala.concurrent.ExecutionContext
 
 object StmPool {
-  private[stm] lazy val pool = Executors.newFixedThreadPool(8, new ThreadFactoryBuilder().setNameFormat("stm-pool-%d").build())
+  private[stm] lazy val pool = Executors.newFixedThreadPool(16, new ThreadFactoryBuilder().setNameFormat("stm-pool-%d").build())
   private[stm] lazy val executionContext: ExecutionContext = ExecutionContext.fromExecutor(pool)
 }

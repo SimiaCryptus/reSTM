@@ -26,7 +26,7 @@ import dispatch._
 import org.scalatest.{MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
 import stm.collection.clustering.{ClassificationStrategy, ClassificationTreeItem, DefaultClassificationStrategy, NoBranchStrategy}
-import stm.task.{StmDaemons, StmExecutionQueue, Task}
+import stm.task.{StmDaemons, Task}
 import storage.Restm
 import storage.remote.RestmHttpClient
 import storage.types.JacksonValue
@@ -39,8 +39,6 @@ import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
 import scala.util.Random
 
 object ClassificationHttpClientUtil {
-
-  def shuffle[T](list: List[T]) = list.map(_→Random.nextDouble()).sortBy(_._2).map(_._1)
 
   def test(baseUrl: String, items:Int = Integer.MAX_VALUE, timeout : Duration = 90.seconds)
           (implicit executionContext: ExecutionContextExecutor, cluster: RestmHttpClient) = {
@@ -96,27 +94,29 @@ object ClassificationHttpClientUtil {
     println(setStrategy(new NoBranchStrategy))
     println(info())
 
-    val blocks: List[(String, IndexedSeq[ForestCoverDataset.dataSet.PageRow])] = Random.shuffle(ForestCoverDataset.dataSet.rows
-      .take(items).grouped(10000).flatMap(_.groupBy(_.label))).toList
+    val blocks: List[(String, IndexedSeq[ForestCoverDataset.dataSet.PageRow])] = Random.shuffle(
+      Random.shuffle(ForestCoverDataset.dataSet.rows).take(items).groupBy(_.label).toList.flatMap(block ⇒ block._2.grouped(50).map(block._1 → _))).toList
+    println(s"Data label distribution: " + blocks.groupBy(_._1).mapValues(_.map(_._2.size).sum))
+
     val itemSum = blocks.grouped(4).map(_.toParArray.map(x ⇒ {
       val (key: String, block: IndexedSeq[ForestCoverDataset.dataSet.PageRow]) = x
-      block.grouped(50).foreach(b⇒insert(key, b.map(_.asMap)))
+      insert(key, block.map(_.asMap))
       block.size
     }).sum).sum
     println(s"Uploaded $itemSum in ${blocks.size} blocks")
 
-    val taskInfo = split(new DefaultClassificationStrategy(2))
+    val taskInfo = split(new DefaultClassificationStrategy())
     println(taskInfo)
     val taskId = taskInfo.getAsJsonPrimitive("task").getAsString
     TaskUtil.awaitTask(new Task[AnyRef](new Restm.PointerType(taskId)), 100.minutes)
 
-    val correct = ForestCoverDataset.dataSet.rows.slice(Math.min(items, ForestCoverDataset.dataSet.size-100),items+100).map(testValue ⇒ {
+    val correct = Random.shuffle(ForestCoverDataset.dataSet.rows).take(100).map(testValue ⇒ {
       val queryResult = query(testValue.asClassificationTreeItem)
       println(queryResult)
       val counts = queryResult.getAsJsonObject("counts").entrySet().asScala
         .map(e => e.getKey → e.getValue.getAsInt).toList
         .sortBy(_._2).reverse
-      val leafId = queryResult.getAsJsonObject("path").getAsJsonPrimitive("treeId").getAsInt
+      val leafId = queryResult.getAsJsonObject("path").getAsJsonPrimitive("treeId").getAsString
       val countStr = counts.map(x=>x._1.toString+"→"+x._2.toString).mkString(",")
       val predictedClass = if(counts.isEmpty) "null" else counts.maxBy(_._2)._1
       val actualClass = testValue.label
@@ -138,15 +138,15 @@ class ClassificationServletSpec extends WordSpec with MustMatchers with OneServe
       "Single Node Servlet" should {
         "provide demo cluster tree" in {
           val baseUrl = s"http://localhost:$port"
-          implicit val cluster: RestmHttpClient = new RestmHttpClient(baseUrl)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+          implicit val cluster: RestmHttpClient = new RestmHttpClient(baseUrl)(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4,
             new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build())))
-          implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+          implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4,
             new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
           try {
             //ActorLog.enabled = true
             val timeout : Duration = 90.seconds
             Await.result(Http((url(baseUrl) / "sys" / "init").GET OK as.String), timeout)
-            StmExecutionQueue.get().verbose = true
+            //StmExecutionQueue.get().verbose = true
             Thread.sleep(1000) // Allow platform to start
             ClassificationHttpClientUtil.test(baseUrl, items = 10000, timeout = timeout)
             Await.result(Http((url(baseUrl) / "sys" / "shutdown").GET OK as.String), timeout)

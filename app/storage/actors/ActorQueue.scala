@@ -73,10 +73,12 @@ trait ActorQueue {
   protected def messageNumber: Int = processedMessages
 
   private[this] def queueBatch[T](implicit exeCtx: ExecutionContext): Future[Unit] = {
-    Future {
+    if (guard.get() == false) Future {
       if (!queue.isEmpty && !guard.getAndSet(true)) {
         try {
-          for (task <- Stream.continually(queue.poll()).takeWhile(null != _).take(100)) {
+          val stream = Stream.continually(queue.poll()).takeWhile(null != _)
+            //.take(100)
+          for (task <- stream) {
             task()
           }
         } finally {
@@ -84,7 +86,7 @@ trait ActorQueue {
         }
         if (!queue.isEmpty) queueBatch
       }
-    }
+    } else Future.successful(Unit)
   }
 
 }

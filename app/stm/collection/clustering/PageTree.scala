@@ -50,6 +50,7 @@ object PageTree {
   (
     parent: Option[STMPtr[PageTreeNode]],
     value: STMPtr[KryoValue[Page]],
+    size: Int,
     left: Option[STMPtr[PageTreeNode]] = None,
     right: Option[STMPtr[PageTreeNode]] = None
   ) {
@@ -67,10 +68,16 @@ object PageTree {
       })
     }
 
-
-    def apxSize(implicit ctx: STMTxnCtx): Future[Long] = {
+    def apxSize()(implicit ctx: STMTxnCtx): Future[Long] = {
       val child = if (Random.nextBoolean()) left.orElse(right) else right.orElse(left)
-      child.map(_.read().flatMap(_.apxSize).map(_ * 2 + 1)).getOrElse(value.read().map(_.deserialize()).map(_.size))
+      child.map(_.read().flatMap(_.apxSize()).map((apxChildSize: Long) ⇒ apxChildSize * 2 + size)).getOrElse(Future.successful(size.toLong))
+    }
+
+    def treeSize()(implicit ctx: STMTxnCtx): Future[Long] = {
+      Future.sequence(List(
+        left.map(_.read().flatMap(_.treeSize())).getOrElse(Future.successful(0l)),
+        right.map(_.read().flatMap(_.treeSize())).getOrElse(Future.successful(0l))
+      )).map(_.sum + size)
     }
 
     def get(self: STMPtr[PageTreeNode])(implicit ctx: STMTxnCtx): Future[Page] = {
@@ -93,7 +100,7 @@ object PageTree {
           leftPtr.read.flatMap(_.add(newValue, leftPtr))
         }).getOrElse({
           STMPtr.dynamic(KryoValue(newValue))
-            .flatMap(ptr => STMPtr.dynamic(PageTreeNode(Some(self), ptr)))
+            .flatMap(ptr => STMPtr.dynamic(PageTreeNode(Some(self), ptr, newValue.size)))
             .flatMap(x => self.write(this.copy(left = Option(x))))
         })
       } else {
@@ -101,7 +108,7 @@ object PageTree {
           rightPtr.read.flatMap(_.add(newValue, rightPtr))
         }).getOrElse({
           STMPtr.dynamic(KryoValue(newValue))
-            .flatMap(ptr => STMPtr.dynamic(PageTreeNode(Some(self), ptr)))
+            .flatMap(ptr => STMPtr.dynamic(PageTreeNode(Some(self), ptr, newValue.size)))
             .flatMap(x => self.write(this.copy(right = Option(x))))
         })
       }
@@ -215,7 +222,7 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
             .flatMap(_=>{
               val kryoValue = KryoValue(value)
               STMPtr.dynamic(kryoValue)
-                .map(new PageTreeNode(None, _))
+                .map(new PageTreeNode(None, _, value.size))
                 .flatMap(rootPtr.write)
             })
         })
@@ -256,11 +263,11 @@ class PageTree(val rootPtr: STMPtr[PageTreeNode]) {
   }
 
   def apxSize()(implicit ctx: STMTxnCtx): Future[Long] = {
-    rootPtr.readOpt().flatMap(_.map(_.apxSize).getOrElse(Future.successful(0)))
+    rootPtr.readOpt().flatMap(_.map(_.apxSize()).getOrElse(Future.successful(0)))
   }
 
   def size()(implicit ctx: STMTxnCtx): Future[Long] = {
-    Future.successful(stream().size)
+    rootPtr.readOpt().flatMap(_.map(_.treeSize()).getOrElse(Future.successful(0)))
   }
 
   def rowStream()(implicit ctx: STMTxnCtx): Stream[Page#PageRow] = {

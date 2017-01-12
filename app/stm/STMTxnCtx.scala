@@ -32,6 +32,8 @@ import scala.concurrent.duration.{Duration, _}
 import scala.reflect.ClassTag
 
 class STMTxnCtx(val cluster: Restm, val priority: Duration, val txn: STMTxn[_]) {
+  def isReadOnly = writeCache.isEmpty
+
 
   val startTime = STMTxn.now
   def age = STMTxn.now - startTime

@@ -36,7 +36,7 @@ import scala.concurrent.ExecutionContext
 
 @Singleton
 class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends Controller {
-  private[this] val workers = getConfig("workers").map(Integer.parseInt).getOrElse(8)
+  private[this] val workers = getConfig("workers").map(Integer.parseInt).getOrElse(16)
 
   def shutdown(): Action[AnyContent] = Action.async {
     Util.monitorFuture("SystemController.shutdown") {

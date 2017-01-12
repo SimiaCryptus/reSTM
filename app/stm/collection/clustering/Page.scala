@@ -24,11 +24,10 @@ import java.nio.ByteBuffer
 import com.google.common.primitives.Longs
 import stm.collection.clustering.Page.{BaseColumn, DoubleColumn, RefColumn, ValueColumn}
 
-import scala.collection.SortedMap
-import scala.collection.immutable.{Seq, TreeMap}
+import scala.collection.immutable.{ListMap, Seq}
 
 object Page {
-  val empty = new Page(schema = SortedMap.empty, labelNames = Array.empty,
+  val empty = new Page(schema = ListMap.empty, labelNames = Array.empty,
     values = Array.empty, refs = Array.empty, Array.empty)
 
   def apply(data : LabeledItem*) : Page = {
@@ -72,7 +71,7 @@ object Page {
     val labels: Array[String] = data.map(data⇒data.label).toArray
     val labelNames = labels.distinct.sorted
     new Page(
-      schema = TreeMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
+      schema = ListMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
       labelNames = labelNames,
       labels = labels.map(labelNames.indexOf(_)),
       refs = refVals,
@@ -95,7 +94,7 @@ object Page {
     val labels: List[String] = data.map(data⇒data.label)
     val labelNames = labels.distinct.sorted
     new Page(
-      schema = TreeMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
+      schema = ListMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
       labelNames = labelNames.toArray,
       labels = labels.map(labelNames.indexOf(_)).toArray,
       refs = refVals.toArray,
@@ -117,7 +116,7 @@ object Page {
     val labels: List[String] = data.map(data⇒data.get(labelColumn).map(_.toString).orNull)
     val labelNames = labels.distinct.sorted
     new Page(
-      schema = TreeMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
+      schema = ListMap((refCols ++ scalarCols).toArray.map(x⇒x.name→x).sortBy(_._1):_*),
       labelNames = labelNames.toArray,
       labels = labels.map(labelNames.indexOf(_)).toArray,
       refs = refVals.toArray,
@@ -144,11 +143,14 @@ object Page {
   }
 }
 
-class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
+class Page(val schema: ListMap[String,Page.BaseColumn[_]],
            val labelNames: Array[String],
            val values: Array[Byte],
            val refs: Array[AnyRef],
            val labels: Array[Int]) {
+
+  def labelCounts = labels.groupBy(x⇒x).mapValues(_.size).map(t⇒labelNames(t._1) → t._2)
+  val size = labels.length
 
   private def valCols = schema.values.map(x⇒{
     if(classOf[ValueColumn[_]].isAssignableFrom(x.getClass)) {
@@ -157,7 +159,6 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
   })
   private val rowValueSize : Int = valCols.sum
   private val rowRefSize : Int = schema.count({ case x:RefColumn[_] ⇒ true; case _ ⇒ false })
-  val size = labels.length
   def apply(n : Int) = new PageRow(n)
   def rows = (0 until size).map(new PageRow(_))
 
@@ -215,14 +216,18 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
     val labels: Array[String] = allRows.map(data⇒data.label).toArray
     val labelNames = labels.distinct.sorted
     val map: List[(String, ValueColumn[AnyVal])] = newScalarCols.map((x: ValueColumn[AnyVal]) ⇒ (x.name,x))
-    new Page(
-      schema = SortedMap(map:_*),
+    val result = new Page(
+      schema = ListMap(map: _*),
       labelNames = labelNames,
       labels = labels.map(labelNames.indexOf(_)),
       refs = refVals,
       values = bytes
     )
+    //println(s"$this + $left => $result")
+    result
   }
+
+
 
   def getAll(rows: List[this.PageRow]) = {
     val indexes = rows.map(_.row).distinct.sorted.toArray
@@ -248,6 +253,8 @@ class Page(val schema: SortedMap[String,Page.BaseColumn[_]],
     def asClassificationTreeItem = new ClassificationTreeItem(asMap)
     def asLabeledItem = new LabeledItem(label, asClassificationTreeItem)
   }
+
+  override def toString = s"Page($size rows, ${schema.size} fields, labels = $labelCounts)"
 }
 
 trait KeyValue[F,T] {
