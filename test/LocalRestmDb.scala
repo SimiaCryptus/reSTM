@@ -31,7 +31,7 @@ object LocalRestmDb {
     implicit val executor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
       new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
     new RestmImpl {
-      override def internal: RestmInternal = new RestmActors()
+      override val internal: RestmInternal = new RestmActors()
     }
   }
 }

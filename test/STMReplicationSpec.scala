@@ -55,7 +55,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
 
   def addItems(nodes: Seq[RestmInternal], items: Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext): Seq[String] = {
     implicit val cluster = new RestmImpl {
-      override def internal: RestmInternal = new RestmInternalStaticListReplicator(nodes)
+      override val internal: RestmInternal = new RestmInternalStaticListReplicator(nodes)
     }
     for (item <- items) {
       try {
@@ -71,7 +71,7 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
 
   def deleteItems(nodes: Seq[RestmInternal], items: Seq[String])(implicit executor: ExecutionContext): Seq[String] = {
     implicit val cluster = new RestmImpl {
-      override def internal: RestmInternal = new RestmInternalStaticListReplicator(nodes)
+      override val internal: RestmInternal = new RestmInternalStaticListReplicator(nodes)
     }
     for (item <- items) {
       try {

@@ -30,7 +30,7 @@ object RestmImpl {
 }
 
 abstract class RestmImpl(implicit executionContext: ExecutionContext) extends Restm {
-  def internal: RestmInternal
+  val internal: RestmInternal
 
   val txnTimeout = 7.seconds
 

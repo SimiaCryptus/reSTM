@@ -77,7 +77,7 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
 
   def addItems(items: List[String] = randomUUIDs.take(5).toList)(implicit coldStorage: ColdStorage, executor: ExecutionContext): List[String] = {
     val internal: RestmActors = new RestmActors(coldStorage)
-    implicit val cluster = new RestmImpl { override def internal: RestmInternal = internal }
+    implicit val cluster = new RestmImpl { override val internal: RestmInternal = internal }
     for (item <- items) {
       collection.atomic.sync.contains(item) mustBe false
       collection.atomic.sync.add(item)
@@ -89,7 +89,7 @@ class ColdStorageIntegrationSpec extends WordSpec with MustMatchers {
 
   def deleteItems(items: List[String])(implicit coldStorage: ColdStorage, executor: ExecutionContext): List[String] = {
     val internal: RestmActors = new RestmActors(coldStorage)
-    implicit val cluster = new RestmImpl { override def internal: RestmInternal = internal }
+    implicit val cluster = new RestmImpl { override val internal: RestmInternal = internal }
     for (item <- items) {
       collection.atomic.sync.contains(item) mustBe true
       collection.atomic.sync.remove(item) mustBe true

@@ -38,6 +38,9 @@ object RestmActors {
 }
 
 class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmInternal {
+
+  println("Init actor system")
+
   implicit val executionContext: ExecutionContextExecutor = ExecutionContext.fromExecutor(
     // Executors.newCachedThreadPool(
     Executors.newFixedThreadPool(4,

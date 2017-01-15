@@ -25,7 +25,7 @@ import _root_.util.Config._
 import storage._
 import storage.actors.RestmActors
 import storage.cold.{BdbColdStorage, ColdStorage, DynamoColdStorage, HeapColdStorage}
-import storage.remote.{RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
+import storage.remote.{RestmInternalReplicator, RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
@@ -33,24 +33,37 @@ import scala.concurrent.ExecutionContext
 class ClusterRestmImpl(implicit executionContext: ExecutionContext) extends RestmImpl {
 
   val peers = new mutable.HashSet[String]()
+  val replicationFactor: Int = getConfig("replicationFactor").map(Integer.parseInt).getOrElse(1)
+  val peerPort: Int = getConfig("peerPort").map(Integer.parseInt).getOrElse(898)
+  def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
+
   val table: Option[String] = getConfig("dynamoTable")
   val filestore: Option[String] = getConfig("bdbFile")
   val bdbName: String = getConfig("bdbName").getOrElse("db")
-  val peerPort: Int = getConfig("peerPort").map(Integer.parseInt).getOrElse(898)
-  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)
-  private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
   private[this] val coldStorage: ColdStorage =
     table.map(new DynamoColdStorage(_))
         .orElse(filestore.map(path⇒new BdbColdStorage(path=path, dbname = bdbName)))
       .getOrElse(new HeapColdStorage)
-  def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
+
+  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)
+  private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
+
+  private def getShards(names: List[String]): List[RestmInternal] = {
+    names.map(name ⇒ {
+      if (name == localName) local
+      else new RestmInternalRestmHttpClient(s"http://$name:$peerPort")
+    })
+  }
 
   val internal: RestmInternal = new RestmInternalStaticListRouter {
-    override def shards: List[RestmInternal] = {
-      peerList.map(name => {
-        if (name == localName) local
-        else new RestmInternalRestmHttpClient(s"http://$name:$peerPort")
-      })
+    override def shards = {
+      if(replicationFactor <= 1) getShards(peerList)
+      else peerList.grouped(replicationFactor).map(peerList⇒{
+        new RestmInternalReplicator {
+          override def inner(): Seq[RestmInternal] = getShards(peerList)
+          override implicit def executionContext: ExecutionContext = ClusterRestmImpl.this.executionContext
+        }
+      }).toList
     }
   }
 }
