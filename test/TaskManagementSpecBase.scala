@@ -20,7 +20,7 @@
 import java.util.concurrent.Executors
 import java.util.{Date, UUID}
 
-import _root_.util.Util
+import _root_.util.{TaskUtil, Util}
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
 import stm.collection.{LinkedList, TreeCollection}

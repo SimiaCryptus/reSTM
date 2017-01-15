@@ -20,7 +20,6 @@
 import java.util.Date
 import java.util.concurrent.{ExecutorService, Executors, TimeUnit}
 
-import TaskUtil._
 import _root_.util.{ForestCoverDataset, Util}
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
@@ -34,6 +33,7 @@ import storage._
 import storage.actors.RestmActors
 import storage.remote.{RestmCluster, RestmHttpClient}
 import storage.types.JacksonValue
+import util.TaskUtil._
 
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._

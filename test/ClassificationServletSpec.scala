@@ -26,7 +26,7 @@ import org.scalatestplus.play.OneServerPerTest
 import stm.task.StmDaemons
 import storage.remote.RestmHttpClient
 import storage.types.JacksonValue
-import util.Util
+import util.{DTTestUtil, Util}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, ExecutionContextExecutor}
