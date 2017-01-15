@@ -23,8 +23,8 @@ import java.util.zip.GZIPInputStream
 
 import com.google.common.primitives.Longs
 import org.apache.commons.io.IOUtils
-import stm.collection.clustering.Page.DoubleColumn
-import stm.collection.clustering.{ClassificationTreeItem, Page}
+import stm.clustering.Page.DoubleColumn
+import stm.clustering.{ClassificationTreeItem, Page}
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.{ListMap, Seq}

@@ -54,7 +54,9 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
   def randomUUIDs: Stream[String] = Stream.continually(UUID.randomUUID().toString.take(8))
 
   def addItems(nodes: Seq[RestmInternal], items: Seq[String] = randomUUIDs.take(5).toList)(implicit executor: ExecutionContext): Seq[String] = {
-    implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))
+    implicit val cluster = new RestmImpl {
+      override def internal: RestmInternal = new RestmInternalStaticListReplicator(nodes)
+    }
     for (item <- items) {
       try {
         collection.atomic.sync.contains(item) mustBe false
@@ -68,7 +70,9 @@ class STMReplicationSpec extends WordSpec with MustMatchers {
   }
 
   def deleteItems(nodes: Seq[RestmInternal], items: Seq[String])(implicit executor: ExecutionContext): Seq[String] = {
-    implicit val cluster = new RestmImpl(new RestmInternalStaticListReplicator(nodes))
+    implicit val cluster = new RestmImpl {
+      override def internal: RestmInternal = new RestmInternalStaticListReplicator(nodes)
+    }
     for (item <- items) {
       try {
         collection.atomic.sync.contains(item) mustBe true

@@ -17,12 +17,30 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm.clustering.strategy
 
+import java.util.concurrent.Executors
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import stm.STMTxnCtx
+import stm.clustering.{KeyValue, Page, PageTree}
 
-class NoBranchStrategy extends ClassificationStrategy {
-  override def getRule(values: Stream[Page]) = new RuleData(_ => true, "NoBranch Rule")
+import scala.concurrent.ExecutionContext
 
-  override def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = false
+case class RuleData(fn : (KeyValue[String,Any]) => Boolean, name : String = "???")
+
+object ClassificationStrategy {
+  val workerPool: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("rule-pool-%d").build()))
+
 }
+
+trait ClassificationStrategy {
+
+  def getRule(values: Stream[Page]): RuleData
+
+  def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean
+
+}
+
+

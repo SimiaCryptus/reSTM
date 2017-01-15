@@ -140,9 +140,11 @@ class ServletStmSpec extends StmSpecBase with OneServerPerSuite {
 }
 
 class ActorServletStmSpec extends StmSpecBase with OneServerPerSuite {
-  val cluster = new RestmImpl(new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx))(newExeCtx)
-  private val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+  private implicit val newExeCtx: ExecutionContextExecutor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
     new ThreadFactoryBuilder().setNameFormat("restm-pool-%d").build()))
+  val cluster = new RestmImpl {
+    override def internal: RestmInternal = new RestmInternalRestmHttpClient(s"http://localhost:$port")(newExeCtx)
+  }
 }
 
 object StmSpecBase {

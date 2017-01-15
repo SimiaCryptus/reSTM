@@ -19,47 +19,29 @@
 
 package controllers
 
-import java.net.InetAddress
+import java.util.concurrent.Executors
 import javax.inject._
 
-import _root_.util.Config._
 import _root_.util.Util
 import akka.actor.ActorSystem
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import play.api.mvc._
 import storage.Restm._
 import storage._
-import storage.actors.RestmActors
-import storage.cold.{ColdStorage, DynamoColdStorage, HeapColdStorage}
-import storage.remote.{RestmInternalRestmHttpClient, RestmInternalStaticListRouter}
 import storage.types.TxnTime
 
-import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 object RestmController {
-  private[this] lazy val dynamo: Option[DynamoColdStorage] = table.map(new DynamoColdStorage(_))
-  private[this] lazy val local: RestmActors = new RestmActors(coldStorage)
-  val peers = new mutable.HashSet[String]()
-  val table: Option[String] = getConfig("dynamoTable")
-  val peerPort: Int = getConfig("peerPort").map(Integer.parseInt).getOrElse(898)
-  private[this] val localName: String = InetAddress.getLocalHost.getHostAddress
-  private[this] val coldStorage: ColdStorage = dynamo.getOrElse(new HeapColdStorage)
 
-  def storageService(implicit exec: ExecutionContext) = new RestmImpl(new RestmInternalStaticListRouter {
-    override def shards: List[RestmInternal] = {
-      peerList.map(name => {
-        if (name == localName) local
-        else new RestmInternalRestmHttpClient(s"http://$name:$peerPort")
-      })
-    }
-  })
-
-  def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
-
+  val storageService = new ClusterRestmImpl()(ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
+    new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build())))
 }
 
 import controllers.RestmController._
+
+
 
 
 @Singleton

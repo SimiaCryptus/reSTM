@@ -17,21 +17,13 @@
  * under the License.
  */
 
-import java.util.concurrent.Executors
+package stm.clustering.strategy
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder
-import storage.actors.RestmActors
-import storage.{RestmImpl, RestmInternal}
-
-import scala.concurrent.ExecutionContext
-
-
-object LocalRestmDb {
-  def apply() = {
-    implicit val executor = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-      new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-    new RestmImpl {
-      override def internal: RestmInternal = new RestmActors()
-    }
-  }
-}
+class DefaultClassificationStrategy(
+                                     branchThreshold: Int = 20,
+                                     smoothingFactor: Double = 1.0,
+                                     factor_0 : Double = 0.1,
+                                     factor_1 : Double = -1.0,
+                                     factor_2 : Double = 1.0
+                                   )
+  extends SimpleEntropyClassificationStrategy(branchThreshold,smoothingFactor, factor_0, factor_1, factor_2)

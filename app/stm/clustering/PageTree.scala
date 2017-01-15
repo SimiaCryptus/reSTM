@@ -17,12 +17,12 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm.clustering
 
 import java.util.concurrent.TimeUnit
 
 import stm._
-import stm.collection.clustering.PageTree.PageTreeNode
+import stm.clustering.PageTree.PageTreeNode
 import storage.Restm.PointerType
 import storage.types.KryoValue
 import storage.{Restm, TransactionConflict}

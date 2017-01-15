@@ -17,18 +17,13 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm.clustering.strategy
 
 import stm.STMTxnCtx
+import stm.clustering.{Page, PageTree}
 
-case class RuleData(fn : (KeyValue[String,Any]) => Boolean, name : String = "???")
+class NoBranchStrategy extends ClassificationStrategy {
+  override def getRule(values: Stream[Page]) = new RuleData(_ => true, "NoBranch Rule")
 
-trait ClassificationStrategy {
-
-  def getRule(values: Stream[Page]): RuleData
-
-  def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean
-
+  override def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = false
 }
-
-

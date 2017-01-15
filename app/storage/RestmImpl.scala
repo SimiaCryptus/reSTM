@@ -29,7 +29,8 @@ object RestmImpl {
   var failChainedCalls = false
 }
 
-class RestmImpl(val internal: RestmInternal)(implicit executionContext: ExecutionContext) extends Restm {
+abstract class RestmImpl(implicit executionContext: ExecutionContext) extends Restm {
+  def internal: RestmInternal
 
   val txnTimeout = 7.seconds
 

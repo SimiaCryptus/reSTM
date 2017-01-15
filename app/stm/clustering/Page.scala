@@ -17,12 +17,12 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm.clustering
 
 import java.nio.ByteBuffer
 
 import com.google.common.primitives.Longs
-import stm.collection.clustering.Page.{BaseColumn, DoubleColumn, RefColumn, ValueColumn}
+import stm.clustering.Page.{BaseColumn, DoubleColumn, RefColumn, ValueColumn}
 
 import scala.collection.immutable.{ListMap, Seq}
 

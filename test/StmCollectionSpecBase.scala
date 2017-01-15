@@ -23,8 +23,8 @@ import java.util.concurrent.{ExecutorService, Executors, TimeUnit}
 import _root_.util.Util
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
+import stm.clustering.{ClassificationTreeItem, LabeledItem, Page, PageTree}
 import stm.collection._
-import stm.collection.clustering.{ClassificationTreeItem, LabeledItem, Page, PageTree}
 import stm.task.TaskQueue
 import storage.Restm._
 import storage._

@@ -23,7 +23,6 @@ import javax.inject._
 
 import _root_.util.Util
 import akka.actor.ActorSystem
-import controllers.RestmController._
 import play.api.mvc._
 
 import scala.concurrent.ExecutionContext
@@ -34,21 +33,21 @@ class ClusterController @Inject()(actorSystem: ActorSystem)(implicit exec: Execu
 
   def listPeers() = Action { _ =>
     Util.monitorBlock("ClusterController.listPeers") {
-      Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
+      Ok(RestmController.storageService.peerList.reduceOption(_ + "\n" + _).getOrElse(""))
     }
   }
 
   def addPeer(peer: String) = Action { _ =>
     Util.monitorBlock("ClusterController.addPeer") {
-      peers += peer
-      Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
+      RestmController.storageService.peers += peer
+      Ok(RestmController.storageService.peerList.reduceOption(_ + "\n" + _).getOrElse(""))
     }
   }
 
   def delPeer(peer: String) = Action { _ =>
     Util.monitorBlock("ClusterController.delPeer") {
-      peers -= peer
-      Ok(peerList.reduceOption(_ + "\n" + _).getOrElse(""))
+      RestmController.storageService.peers -= peer
+      Ok(RestmController.storageService.peerList.reduceOption(_ + "\n" + _).getOrElse(""))
     }
   }
 }

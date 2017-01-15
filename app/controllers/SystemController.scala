@@ -62,10 +62,10 @@ class SystemController @Inject()(actorSystem: ActorSystem)(implicit exec: Execut
   def about() = Action {
     Util.monitorBlock("SystemController.about") {
       Ok(JacksonValue.simple(Map(
-        "peers" -> peers,
+        "peers" -> RestmController.storageService.peers,
         "workers" -> workers,
-        "table" -> table,
-        "peerPort" -> peerPort
+        "table" -> RestmController.storageService.table,
+        "peerPort" -> RestmController.storageService.peerPort
       )).pretty).as("application/json")
     }
   }

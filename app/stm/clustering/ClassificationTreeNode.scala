@@ -17,9 +17,10 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm.clustering
 
-import stm.collection.clustering.ClassificationTree.NodeInfo
+import stm.clustering.ClassificationTree.NodeInfo
+import stm.clustering.strategy.{ClassificationStrategy, RuleData}
 import stm.task.Task.TaskSuccess
 import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}

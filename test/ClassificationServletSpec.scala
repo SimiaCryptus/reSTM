@@ -25,7 +25,8 @@ import com.google.gson.{Gson, GsonBuilder, JsonObject}
 import dispatch._
 import org.scalatest.{MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
-import stm.collection.clustering.{ClassificationStrategy, ClassificationTreeItem, DefaultClassificationStrategy, NoBranchStrategy}
+import stm.clustering.ClassificationTreeItem
+import stm.clustering.strategy.{ClassificationStrategy, DefaultClassificationStrategy, NoBranchStrategy}
 import stm.task.{StmDaemons, Task}
 import storage.Restm
 import storage.remote.RestmHttpClient

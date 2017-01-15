@@ -17,12 +17,13 @@
  * under the License.
  */
 
-package stm.collection.clustering
+package stm.clustering
 
 import java.util.concurrent.Executors
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import stm.collection.clustering.ClassificationTree.NodeInfo
+import stm.clustering.ClassificationTree.NodeInfo
+import stm.clustering.strategy.{ClassificationStrategy, DefaultClassificationStrategy}
 import stm.task.Task.{TaskContinue, TaskFunction, TaskResult, TaskSuccess}
 import stm.task.{StmExecutionQueue, Task}
 import stm.{STMPtr, _}
