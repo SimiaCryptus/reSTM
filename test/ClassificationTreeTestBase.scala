@@ -21,7 +21,7 @@ import java.util.Date
 import java.util.concurrent.{ExecutorService, Executors, TimeUnit}
 
 import TaskUtil._
-import _root_.util.Util
+import _root_.util.{ForestCoverDataset, Util}
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.OneServerPerTest
