@@ -11,6 +11,7 @@ It uses a layered architecture and distributed design; Data is managed via a sof
 Although this solution will generally be less performant than a more specialized alternative due to its highly granular nature and enforced isolation, it may provide a competitive platform due to flexibility and ease of use in implementing nearly any algorithm or data structure while also delivering a scalable service.
 
 Some features of this platform:
+
 1. Provides scalable, transactional cluster memory access with perfect isolation
 1. Non-blocking design uses no master server and no global locks, with essentially no scalability bottlenecks other than contention for logical pointers
 1. Data can be replicated and offloaded as appropriate using a supplemental external database such as dynamo or an on-disk bdb.
@@ -20,6 +21,7 @@ Some features of this platform:
 Although this project is intended to be research-grade code to illustrate an idea, I have attempted to implement most of the essentials for a "production" system within this platform, including:
 
 The ability to setup a high-scale fault-tolerant cluster, with data both partitioned and replicated
+
 1. Visibility into nodes including activity logs and performance metrics
 1. Ability to gracefully shut down nodes for servicing, avoiding data loss.
 1. Halfway decent documentation (sic)
