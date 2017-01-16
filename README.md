@@ -42,70 +42,69 @@ We will now review a brief tour of what it takes to start,test, and shutdown the
 
 First clone the application from github:
 
-	```git clone https://github.com/acharneski/reSTM.git
-	cd reSTM```
+	git clone https://github.com/acharneski/reSTM.git
+	cd reSTM
 	
 
 This is packaged as a Play application, and as such there are many features of the build system that are of interest. For example you can launch a web-based UI:
 
-	```chmod +x ./bin/activator
- ./bin/activator ui```
+	chmod +x ./bin/activator
+ 	./bin/activator ui
 
 Which allows you to build, run, and test the application and even view and edit source code. For more information about the many features of this toolkit, check out the documentation. I mainly use this UI for rebuilding the application’s auto-generated files while developing; for example, when I modify the routes.txt file. 
 
 The basic command to compile and run the server in non-development mode is:
 
-	```./bin/activator dist
+	./bin/activator dist
 	cd target/universal
 	unzip play-scala-1.0-SNAPSHOT.zip
-	./play-scala-1.0-SNAPSHOT/bin/play-scala \
-  -Dplay.crypto.secret=abcdefghijk &```
+	./play-scala-1.0-SNAPSHOT/bin/play-scala -Dplay.crypto.secret=abcdefghijk &
 
 This will launch the service on port 9000 with all the default settings. You can check the health of the system by requesting the metrics page:
 
-	```curl http://localhost:9000/sys/metrics
-{
-  "code": {
-    "SystemController": {
-      "SystemController.metrics": {
-        "success": 0,
-        "failed": 0,
-        "invocations": 1,
-        "avgTime": "NaN",
-        "totalTime": 0.0
-      }
-    }
-  },
-  "scalars": {},
-  "txns": {}
-}```
+	curl http://localhost:9000/sys/metrics
+	{
+	  "code": {
+	    "SystemController": {
+	      "SystemController.metrics": {
+		"success": 0,
+		"failed": 0,
+		"invocations": 1,
+		"avgTime": "NaN",
+		"totalTime": 0.0
+	      }
+	    }
+	  },
+	  "scalars": {},
+	  "txns": {}
+	}
 
 Since we haven’t run anything yet, it will be fairly empty, but it normally contains detailed information about the timing and counts of each transaction call and many critical methods.
 
 Just starting the server does not fully initialize the service. Namely, the storage service needs to be configured, and then the execution service needs to be started. This is done by requesting the system init endpoint:
 
-	```curl http://localhost:9000/sys/init
-Init actor system```
+	curl http://localhost:9000/sys/init
+	Init actor system
 
 This bootstraps the daemon and execution management services.
 
 Now let's do something with the service. A simple yet comprehensive test is the demo sort task, which creates a random collection of random strings and then sorts them using the task execution service. Since this task incorporates many parts of the platform, it serves as a good test. First, simply make a request to the demo endpoint:
 
-	```curl http://localhost:9000/demo/sort?n=10000 
-<html><body><a href="/task/result/69312247132:0:09ec">Task 69312247132:0:09ec started</a></body></html>```
+	curl http://localhost:9000/demo/sort?n=10000 
+	<html><body><a href="/task/result/69312247132:0:09ec">Task 69312247132:0:09ec started</a></body></html>
 
 This will return the ID of a newly created task, in this case “69312247132:0:09ec”. You can monitor this task as it completes execution by requesting its status endpoint:
 
-	```curl http://localhost:9000/task/info/69312247132:0:09ec```
+	curl http://localhost:9000/task/info/69312247132:0:09ec
 
 This should show that the task has expanded into a tree of sub-tasks, with each leaf being an executing or queued task. As this completes, it will grow into a larger tree as the tasks expand, and then it will collapse as the results are reduced. Once complete, the result can be fetched from the task’s result endpoint:
 
-	```curl http://localhost:9000/task/result/69312247132:0:09ec```
+	curl http://localhost:9000/task/result/69312247132:0:09ec
 
 (This method will block until the result is available, if called before the result is ready.)
 
 Eventually, you will want to do an orderly shutdown of the service. This can be done by requesting the system shutdown endpoint:
 
-	```curl http://localhost:9000/sys/shutdown```
+	curl http://localhost:9000/sys/shutdown
 
 This will block while all tasks are completed, all values are written to cold storage, all transactions are terminated, and all (non-blocking) requests are complete. The server will not accept new requests, start new tasks, or allow new pointer locks while shutting down. After shutdown, the process can be terminated and the host restarted as needed.
