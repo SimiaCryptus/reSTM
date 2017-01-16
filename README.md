@@ -1,14 +1,12 @@
 # What is reSTM?
 
-To be brief, it is a distributed software transactional memory platform implemented using a rest-friendly HTTP protocol and written in Scala. It is currently a prototype packaged as a Play application. 
+reSTM is a distributed software transactional memory platform implemented using a rest-friendly HTTP protocol and written in Scala. It is currently a prototype packaged as a Play application. 
 
 For more information, see the [manual](https://docs.google.com/document/d/1NrdFnJWqWfGVvwKLG-WNrsNLir7hp6XkRl5LJFq5sFE/edit?usp=sharing)
 
-With the NoSQL movement came a plethora of specialized database technologies, and recent development in the Big Data field have brought a corresponding zoo of cluster computing technology, such as Hadoop, Spark, Storm, and others. Although we've gained a great set of tools for solving specific problems at scale, they are all very specific to particular tasks. The generality and straightforward transactional logic of SQL databases is becoming less common. For the past couple months, I've been experimenting with some ideas to recapture this generalized transactional framework in the realm of big data. This system allows an entire server cluster to coordinate data and execution at high scales of volume and concurrency while providing perfect transaction isolation. 
-
 It uses a layered architecture and distributed design; Data is managed via a software transactional memory api which stores pointer values using multi version concurrency control (MVCC), and transaction isolation is enforced by a system of read/write locks on individual pointers. The state of memory pointer values and data transactions are stored as a system of stateful actors. Additional software layers on top of the storage platform provide data structures, algorithms, and facilities to manage and distribute task execution.
 
-Although this solution will generally be less performant than a more specialized alternative due to its highly granular nature and enforced isolation, it may provide a competitive platform due to flexibility and ease of use in implementing nearly any algorithm or data structure while also delivering a scalable service.
+Although this solution will generally be less performant than a more specialized alternatives such as Hadoop due to its highly granular nature and enforced isolation, it may provide a competitive platform due to flexibility and ease of use in implementing nearly any algorithm or data structure while also delivering a scalable service.
 
 Some features of this platform:
 
@@ -34,7 +32,9 @@ One big point of scalability that has not been addressed (but can be implemented
 
 Another reason for caution is simply that reSTM is, at this point, the work of a single engineer with far too much free time on his hands. You get what you pay for, etc. For example, the collection library has been to this point very much ad-hoc and very little attention has been paid to freeing memory (see above). I have developed only the classes and capabilities that made sense for the other things I wanted to build, namely an interesting proof-of-concept demo and limited experimentation.
 
-Other than that, this code is released to you under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.  You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+Other than that, this code is released to you under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.  
+
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the License for the specific language governing permissions and limitations under the License.
 
