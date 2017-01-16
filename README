@@ -1,45 +1,111 @@
-I am excited to announce reSTM, a database layer based on software transactional memory, allowing client-side business logic to operate generically against a database with transactional guarantees. Additionally, the memory access protocol is designed as a JSON REST service, encouraging transparency and interoperability. I believe this approach can fill an under-addressed need in modern software technologies, with its scalable NoSQL approach to transactional data. Basically, the vision is to build Hibernate for NoSQL.
+# What is reSTM?
 
-First, let us briefly review background concepts. Software Transactional Memory (or STM) is a concept that has often been explored (e.g. AtomizeJS, Multiverse, and JVSTM) but is rarely is seen in production. These implementations are often customizations to the language, virtual machine, or other underlying layer to achieve a "magic" way to solve concurrency issues within a single machine. By contrast, the focus of this project is to enable transactional data storage over a network, and as such is implemented as a standard networking layer. In order to achieve this goal, we have implemented a 2-phase commit protocol over a JSON/REST interface. This is in contrast to other NoSQL databases which loosen criteria such as ACID compliance to achieve other desired properties such as availability. This trade off is known as the CAP theorem. Often times a side-effect of the NoSQL movement has been that the software design of the middle tier must accommodate the database's nuances. Although the end product of a scalable solution is achieved, the business logic is mixed with details of how the data is stored. Previous approaches using ORM frameworks such as Hibernate combined with a standardized SQL interface to adapt business logic to a universal storage layer may have had scalability problems, but still provide some properties that are often hard to achieve in the NoSQL world, such as this storage layer agnosticism. Another important technology to be aware of is the actor pattern, as the implementation of these services are based on actors.
+To be brief, it is a distributed software transactional memory platform implemented using a rest-friendly HTTP protocol and written in Scala. It is currently a prototype packaged as a Play application. 
 
-As previously mentioned, this project is intended to fill the gap left by ORM+RDBMS solutions such as Hibernate. It achieves this using a layered structure, which currently contains the following: The Storage Actor Layer implements transaction and memory actors, state full entities which enable data storage and resolution of race conditions. The Storage Protocol Layer is stateless and translates between the 2PL api and the actor api, often facilitating inter-actor communication. The Client STM Layer uses the storage layer to implement a durable STM system based on transaction processing logic and a pointer api. The project itself is a simple Scala Play application, exposing a stateful web service which can be configured to operate as a cluster for a distributed database. In general this project is not intended to be the fastest solution for a data service, and it is also not designed for partition tolerance. It is intrinsically slower than many competitors because of the transactional strictness, and the number of requests required for a single operation due to the fine-grained nature of the protocol. Instead, the goal is a platform the provides strict ACID compliance to nearly arbitrary business logic at scale. This product also provides opportunities for other features, such as cheap database snapshots and a detailed transaction log.
+For more information, see the [manual](https://docs.google.com/document/d/1NrdFnJWqWfGVvwKLG-WNrsNLir7hp6XkRl5LJFq5sFE/edit?usp=sharing)
 
-This project as been designed with a few key principles: First, it needs to be scalable; each component can be replicated and horizontally partitioned easily. It also should be as fast as possible, avoiding blocking operations. It encourages interoperability and transparency by using JSON and REST standards. It is as simple as possible, weighing in at under 1.5k lines of code. It is well tested, with more than 85% test coverage. Strictness is never compromised to avoid data corruption. In general, the project uses physical spacetime as a conceptual model to emulate: Memory is a position whose state (value) changes over time. Transactions are instantaneous memory change events that intersect with several positions while having a well-defined temporal position that determines the commit order. We model changes over time more as a script we are writing - we accumulate the full over-time picture rather than storing the transient state of our application directly.
+With the NoSQL movement came a plethora of specialized database technologies, and recent development in the Big Data field have brought a corresponding zoo of cluster computing technology, such as Hadoop, Spark, Storm, and others. Although we've gained a great set of tools for solving specific problems at scale, they are all very specific to particular tasks. The generality and straightforward transactional logic of SQL databases is becoming less common. For the past couple months, I've been experimenting with some ideas to recapture this generalized transactional framework in the realm of big data. This system allows an entire server cluster to coordinate data and execution at high scales of volume and concurrency while providing perfect transaction isolation. 
 
-Without further ado, let's look at some code!
+It uses a layered architecture and distributed design; Data is managed via a software transactional memory api which stores pointer values using multi version concurrency control (MVCC), and transaction isolation is enforced by a system of read/write locks on individual pointers. The state of memory pointer values and data transactions are stored as a system of stateful actors. Additional software layers on top of the storage platform provide data structures, algorithms, and facilities to manage and distribute task execution.
 
-The first thing to cover is the fundamental actors used for state management. The actors are MemActor and TxnActor, which handle memory and transaction metadata, respectively. They are actors in the sense that 1) they are unique and addressable via a name or id, and 2) each actor has private state and processes messages sequentially, eliminating multi threading concerns. This basic actor functionality is provided by ActorQueue.
+Although this solution will generally be less performant than a more specialized alternative due to its highly granular nature and enforced isolation, it may provide a competitive platform due to flexibility and ease of use in implementing nearly any algorithm or data structure while also delivering a scalable service.
 
-The macro layer builds upon the agent layer to provide a concise and integrated 2PL data access layer. The internal, or actor, api can be viewed in RestmInternal. The implementation of the mapping is in RestmImpl.scala.
+Some features of this platform:
+1. Provides scalable, transactional cluster memory access with perfect isolation
+1. Non-blocking design uses no master server and no global locks, with essentially no scalability bottlenecks other than contention for logical pointers
+1. Data can be replicated and offloaded as appropriate using a supplemental external database such as dynamo or an on-disk bdb.
+1. It can manage the execution of arbitrary lists and graphs of tasks distributed among the cluster, allowing the management and reduction of virtually unlimited subtasks.
+1. The protocol is a REST API, using standard HTTP and JSON serialization. It is potentially usable by clients in other languages, and the raw memory can be browsed using a web browser.
 
-RestmController provides network access to the external interface and inter-node communications, mapped to by the defined routes. These routes are then accessed by RestmProxy and InternalRestmProxy, which provide client and inter-node communications, respectively.
+Although this project is intended to be research-grade code to illustrate an idea, I have attempted to implement most of the essentials for a "production" system within this platform, including:
 
-To build on a single service node, we use a very basic protocol to maintain a list of nodes in the cluster on each server. The code to setup a cluster is not provided, but would involve deploying the service to a number of servers, and then telling each node about each other node. The cluster can then distribute data across the cluster according to the hash codes of of id values when servicing the internal (agent) layer. The current implementation does not replicate data, and it does not provide for fail-over or elasticity.
+The ability to setup a high-scale fault-tolerant cluster, with data both partitioned and replicated
+1. Visibility into nodes including activity logs and performance metrics
+1. Ability to gracefully shut down nodes for servicing, avoiding data loss.
+1. Halfway decent documentation (sic)
 
-Finally, we build upon that storage service layer with an STM implementation. The basic idea is to use "pointers", placeholders that identify a memory location by id value and provide mechanisms to read, lock, and write values, including serialization and deserialization. Transactions can often fail due to lock conflicts, and so are retried as needed. A basic implementation for append-only sorted lists is provided in BinaryTreeNode, used by the STM unit test family. Both synchronous and asynchronous pointer operations have been provided.
+#Caveat Emptor
 
-This is the project thus far - though young and minimal, I think it is a good "core" from which many independent research and development projects could take off from. Some ideas:
+Hopefully, the reader is excited to try out this tool. It does provide an interesting and promising solution to common problems in service development. However, there are some issues I have not addressed that would be needed in a real, sustainable, operable solution. Speaking as a professional engineer of commercial and enterprise software services, don’t use this on Prod! I’ve tried to keep the bar high enough that I could someday present it as an option for solving problems in my professional realm, so that it is at least “within sight” of production, so with these caveats aside, there is no reason I can think of that would prevent this computing model from becoming a viable solution for a wide range of problems.
 
-* Overall performance should be monitored and optimized. Standard benchmarks should be established. 
- 
-* Transaction ids are currently determined by the millisecond system clock without coordination with peer servers in a cluster. This presents a risk of duplicate transaction ids. This could be improved by a number of alternate implementations for TimeStamp, e.g. Vector Clocks 
+One big point of scalability that has not been addressed (but can be implemented) is memory reclamation, and thus it is practically inevitable that the cold store (heap, BDB/disk, Dynamo/cloud) will grow indefinitely with continued use. Basically, not everything is ever deleted. The lack of this feature is one major reason I would not claim this service is “production” grade.
 
-* This system could easily produce and recover with transaction logs. The idea is that whenever a transaction is committed, a record will be written to an external source (durable disk storage, and external event queue, etc) representing all details of the transaction. This record can then be used to recover data, replicate data, or examine as an audit trail, among other uses. 
+Another reason for caution is simply that reSTM is, at this point, the work of a single engineer with far too much free time on his hands. You get what you pay for, etc. For example, the collection library has been to this point very much ad-hoc and very little attention has been paid to freeing memory (see above). I have developed only the classes and capabilities that made sense for the other things I wanted to build, namely an interesting proof-of-concept demo and limited experimentation.
 
-* Actors, when modified, could enter a queue and be written to a more persistent storage layer. This storage layer could then be used to resurrect "frozen" actors and optimize machine memory usage. Suitable storage layers might be a berkeley db or a dynamo table. 
+Other than that, this code is released to you under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.  You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
-* A protocol could be established to obtain system-wide dedicated "snapshot" time stamps, time-stamps for which no issued transaction id is simultaneous with. These time-stamps can then be used for high-volume read operations, preventing read-lock activity from conflicting with write transactions. 
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the License for the specific language governing permissions and limitations under the License.
 
-* Currently a memory value is represented by a single actor, and the routing table is based on a static configuration. A system could be setup to manage actor replication and fail-over as well as elastic partitioning, re-balancing, and similar tasks. 
+# Getting Started
 
-* This system tracks data changes over time, but does not account for how the database will manage capacity or reclaim space. As specified, it is an append-only database. A delete operation could be added, or a policy where overwritten or unaccessed data older than a specific age is reclaimed. Specific processes could be introduced to "crawl" data and make sure the entire data set is alive, effectively implementing mark-and-sweep garbage collection. 
+We will now review a brief tour of what it takes to start,test, and shutdown the application, starting from a standard plain Linux environment with Java 8 and Git installed. (I start from a fresh amazon ec2 image)
 
-* An auxiliary data storage layer could be implemented to store static data which is not updatable. The api would be similar to a tiny url service, providing short static aliases that can be expanded to larger blobs of data. This layer could lighten the load on the dynamic memory layer, though it complicates the api and other concerns such as data reclamation. 
+First clone the application from github:
 
-* Since this data layer is based on an idea of appending to a history and not deleting data, we could also implement a protocol for making "copy-on-write" forks of the entire database.
+	```git clone https://github.com/acharneski/reSTM.git
+	cd reSTM```
+	
 
-* Especially when considering values stored over time, many stored blobs are similar and this can be exploited using shared dictionary compression to optimize storage of serialized values.
+This is packaged as a Play application, and as such there are many features of the build system that are of interest. For example you can launch a web-based UI:
 
-* Last, but certainly not least: Client libraries that make use of the STM system to provide useful components, such as a standard library of functional collection classes. 
+	```chmod +x ./bin/activator
+ ./bin/activator ui```
 
-* Anyway, I hope you find this project interesting, and if you'd like to build upon it please let me know!
+Which allows you to build, run, and test the application and even view and edit source code. For more information about the many features of this toolkit, check out the documentation. I mainly use this UI for rebuilding the application’s auto-generated files while developing; for example, when I modify the routes.txt file. 
+
+The basic command to compile and run the server in non-development mode is:
+
+	```./bin/activator dist
+	cd target/universal
+	unzip play-scala-1.0-SNAPSHOT.zip
+	./play-scala-1.0-SNAPSHOT/bin/play-scala \
+  -Dplay.crypto.secret=abcdefghijk &```
+
+This will launch the service on port 9000 with all the default settings. You can check the health of the system by requesting the metrics page:
+
+	```curl http://localhost:9000/sys/metrics
+{
+  "code": {
+    "SystemController": {
+      "SystemController.metrics": {
+        "success": 0,
+        "failed": 0,
+        "invocations": 1,
+        "avgTime": "NaN",
+        "totalTime": 0.0
+      }
+    }
+  },
+  "scalars": {},
+  "txns": {}
+}```
+
+Since we haven’t run anything yet, it will be fairly empty, but it normally contains detailed information about the timing and counts of each transaction call and many critical methods.
+
+Just starting the server does not fully initialize the service. Namely, the storage service needs to be configured, and then the execution service needs to be started. This is done by requesting the system init endpoint:
+
+	```curl http://localhost:9000/sys/init
+Init actor system```
+
+This bootstraps the daemon and execution management services.
+
+Now let's do something with the service. A simple yet comprehensive test is the demo sort task, which creates a random collection of random strings and then sorts them using the task execution service. Since this task incorporates many parts of the platform, it serves as a good test. First, simply make a request to the demo endpoint:
+
+	```curl http://localhost:9000/demo/sort?n=10000 
+<html><body><a href="/task/result/69312247132:0:09ec">Task 69312247132:0:09ec started</a></body></html>```
+
+This will return the ID of a newly created task, in this case “69312247132:0:09ec”. You can monitor this task as it completes execution by requesting its status endpoint:
+
+	```curl http://localhost:9000/task/info/69312247132:0:09ec```
+
+This should show that the task has expanded into a tree of sub-tasks, with each leaf being an executing or queued task. As this completes, it will grow into a larger tree as the tasks expand, and then it will collapse as the results are reduced. Once complete, the result can be fetched from the task’s result endpoint:
+
+	curl http://localhost:9000/task/result/69312247132:0:09ec```
+
+(This method will block until the result is available, if called before the result is ready.)
+
+Eventually, you will want to do an orderly shutdown of the service. This can be done by requesting the system shutdown endpoint:
+
+	```curl http://localhost:9000/sys/shutdown```
+
+This will block while all tasks are completed, all values are written to cold storage, all transactions are terminated, and all (non-blocking) requests are complete. The server will not accept new requests, start new tasks, or allow new pointer locks while shutting down. After shutdown, the process can be terminated and the host restarted as needed.
