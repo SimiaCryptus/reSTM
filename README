@@ -100,7 +100,7 @@ This will return the ID of a newly created task, in this case “69312247132:0:0
 
 This should show that the task has expanded into a tree of sub-tasks, with each leaf being an executing or queued task. As this completes, it will grow into a larger tree as the tasks expand, and then it will collapse as the results are reduced. Once complete, the result can be fetched from the task’s result endpoint:
 
-	curl http://localhost:9000/task/result/69312247132:0:09ec```
+	```curl http://localhost:9000/task/result/69312247132:0:09ec```
 
 (This method will block until the result is available, if called before the result is ready.)
 
