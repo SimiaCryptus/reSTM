@@ -14,3 +14,4 @@ target
 /testDb
 /bin
 /covtype.data.txt
+covtype.data.gz
