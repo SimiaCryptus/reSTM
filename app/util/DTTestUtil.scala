@@ -63,7 +63,9 @@ object DTTestUtil {
     val itemLimit = Option(args).filter(_.length > 1).map(_ (1)).map(Integer.parseInt).getOrElse(Integer.MAX_VALUE)
     implicit val executionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4,
       new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
-    new DTTestUtil(args(0)).startTreeTask(itemLimit)
+    val baseUrl = args(0)
+    implicit val restm = new RestmHttpClient(baseUrl)
+    new DTTestUtil(baseUrl).test(itemLimit)
   }
 
 }

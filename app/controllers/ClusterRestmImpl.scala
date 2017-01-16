@@ -34,7 +34,7 @@ class ClusterRestmImpl(implicit executionContext: ExecutionContext) extends Rest
 
   val peers = new mutable.HashSet[String]()
   val replicationFactor: Int = getConfig("replicationFactor").map(Integer.parseInt).getOrElse(1)
-  val peerPort: Int = getConfig("peerPort").map(Integer.parseInt).getOrElse(898)
+  val peerPort: Int = getConfig("peerPort").map(Integer.parseInt).getOrElse(9000)
   def peerList: List[String] = (peers.toList ++ Set(localName)).sorted
 
   val table: Option[String] = getConfig("dynamoTable")
