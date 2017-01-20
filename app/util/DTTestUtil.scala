@@ -46,7 +46,7 @@ import com.google.gson.{Gson, GsonBuilder, JsonObject}
 import dispatch._
 import stm.clustering.ClassificationTreeItem
 import stm.clustering.strategy.{ClassificationStrategy, DefaultClassificationStrategy, NoBranchStrategy}
-import stm.task.Task
+import stm.task.{StmExecutionQueue, Task}
 import storage.Restm
 import storage.remote.RestmHttpClient
 import storage.types.JacksonValue
@@ -65,6 +65,7 @@ object DTTestUtil {
       new ThreadFactoryBuilder().setNameFormat("test-pool-%d").build()))
     val baseUrl = args(0)
     implicit val restm = new RestmHttpClient(baseUrl)
+    StmExecutionQueue.init()
     new DTTestUtil(baseUrl).test(itemLimit)
   }
 
