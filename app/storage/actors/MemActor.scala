@@ -51,7 +51,7 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
 
   private def objId = Integer.toHexString(System.identityHashCode(MemActor.this))
 
-  def collectGarbage(): Future[Int] = Util.monitorFuture("MemActor.gc") {
+  def collectGarbage(): Future[Int] = {
     withActor {
       history.synchronized {
         val head = history.maxBy(_.time)
@@ -145,7 +145,7 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
     }
   }
 
-  def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = Util.monitorFuture("MemActor.writeLock") {
+  def writeLock(time: TimeStamp): Future[Option[TimeStamp]] = {
     {
       withActor {
         rwlock.synchronized {
@@ -241,7 +241,7 @@ class MemActor(name: PointerType, var lastRead: Option[TimeStamp] = None)(implic
     }
   }
 
-  def writeCommit(time: TimeStamp): Future[Unit] = Util.monitorFuture("MemActor.writeCommit") {
+  def writeCommit(time: TimeStamp): Future[Unit] = {
     {
       withActor {
         require(writeLock.contains(time), "Lock mismatch")

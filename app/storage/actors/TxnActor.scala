@@ -35,7 +35,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
 
   private def objId = Integer.toHexString(System.identityHashCode(TxnActor.this))
 
-  def addLock(id: PointerType): Future[String] = Util.monitorFuture("TxnActor.addLock") {
+  def addLock(id: PointerType): Future[String] = {
     {
       withActor {
         if (state == "OPEN") locks += id
@@ -50,7 +50,7 @@ class TxnActor(name: String)(implicit exeCtx: ExecutionContext) extends ActorQue
 
   def logMsg(msg: String): Unit = log(s"$this $msg")
 
-  def setState(s: String): Future[Set[PointerType]] = Util.monitorFuture("TxnActor.setState") {
+  def setState(s: String): Future[Set[PointerType]] = {
     {
       withActor {
         if (state != s) {

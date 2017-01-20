@@ -151,7 +151,7 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
 
   }
 
-  protected def getPtrActor(id: PointerType, time: Option[TimeStamp]): Future[MemActor] = monitorBlock("Restm.getPtr") {
+  protected def getPtrActor(id: PointerType, time: Option[TimeStamp]): Future[MemActor] = {
     ptrs1.getOrElseUpdate(id,
       ptrs2.synchronized {
         ptrs2.getOrElseUpdate(id,
@@ -208,8 +208,8 @@ class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmI
     getTxnActor(time).setState("COMMIT")
   }
 
-  protected def getTxnActor(id: TimeStamp): TxnActor = monitorBlock("Restm.getTxn") {
-    txns.getOrElseUpdate(id, monitorBlock("Restm.newTxn") {
+  protected def getTxnActor(id: TimeStamp): TxnActor = {
+    txns.getOrElseUpdate(id, {
       new TxnActor(id.toString)
     })
   }

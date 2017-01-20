@@ -40,7 +40,7 @@ object StmExecutionQueue {
   def init()(implicit cluster: Restm): Future[StmExecutionQueue] = {
     new STMTxn[StmExecutionQueue] {
       override def txnLogic()(implicit ctx: STMTxnCtx): Future[StmExecutionQueue] = {
-        TaskQueue.create[Task[_]](5).map(new StmExecutionQueue(_))(StmDaemons.executionContext)
+        TaskQueue.init[Task[_]](5, "StmExecutionQueue").map(new StmExecutionQueue(_))(StmDaemons.executionContext)
       }
     }.txnRun(cluster).map(x => {
       default = x;

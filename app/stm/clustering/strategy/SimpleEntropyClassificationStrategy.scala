@@ -19,8 +19,6 @@
 
 package stm.clustering.strategy
 
-import util.Util
-
 
 class SimpleEntropyClassificationStrategy(
                                         branchThreshold: Int = 20,
@@ -30,7 +28,7 @@ class SimpleEntropyClassificationStrategy(
                                         factor_2 : Double = 1.0
                                       ) extends MetricClassificationStrategyBase(branchThreshold,smoothingFactor) {
 
-  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String): Double = Util.monitorBlock("DefaultClassificationStrategy.fitness") {
+  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String): Double = {
     val labelCounts: Map[String, Int] = (left.toList++right.toList++exceptions.toList).groupBy(_._1).mapValues(_.map(_._2).sum)
     val totalCount: Double = labelCounts.values.sum.toDouble
     val leftCount: Int = left.values.sum
