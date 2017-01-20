@@ -21,12 +21,12 @@ package storage.actors
 
 import java.util.concurrent.{Executors, ScheduledExecutorService, TimeUnit}
 
-import _root_.util.Util
 import _root_.util.Util._
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import storage.Restm._
 import storage.RestmInternal
 import storage.cold.{ColdStorage, HeapColdStorage}
+import _root_.util.{Config, Util}
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent._
@@ -34,7 +34,7 @@ import scala.concurrent.duration._
 import scala.util.Success
 
 object RestmActors {
-  var IDLE_PTR_TIME = 600
+  var IDLE_PTR_TIME = Config.getConfig("memIdleSec").map(Integer.parseInt).getOrElse(60)
 }
 
 class RestmActors(coldStorage: ColdStorage = new HeapColdStorage) extends RestmInternal {

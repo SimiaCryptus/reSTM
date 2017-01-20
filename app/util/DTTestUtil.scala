@@ -66,11 +66,11 @@ object DTTestUtil {
     val baseUrl = args(0)
     implicit val restm = new RestmHttpClient(baseUrl)
     StmExecutionQueue.init()
-    new DTTestUtil(baseUrl).test(itemLimit)
+    new DTTestUtil(baseUrl, items=itemLimit).test()
   }
 
 }
-class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds) {
+class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds, items:Int = Integer.MAX_VALUE) {
 
 
   val treeId = UUID.randomUUID().toString.split("-").head
@@ -120,15 +120,16 @@ class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds) {
     Await.result(Http(request.GET OK as.String), timeout)
   }
 
-  def test(items:Int = Integer.MAX_VALUE)
+  def test()
           (implicit executionContext: ExecutionContextExecutor , cluster: RestmHttpClient) = {
     val taskId: String = startTreeTask(items)
     TaskUtil.awaitTask(new Task[AnyRef](new Restm.PointerType(taskId)), 100.minutes)
     verifyModel()
   }
 
+
   private def verifyModel()(implicit executionContext: ExecutionContextExecutor) = {
-    val correct = Random.shuffle(ForestCoverDataset.dataSet.rows).take(100).map(testValue ⇒ {
+    val correct = ForestCoverDataset.load(100).rows.map(testValue ⇒ {
       val queryResult = query(testValue.asClassificationTreeItem)
       println(queryResult)
       val counts = queryResult.getAsJsonObject("counts").entrySet().asScala
@@ -154,12 +155,13 @@ class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds) {
     println(setStrategy(new NoBranchStrategy))
     println(info())
 
-    val blocks: List[(String, IndexedSeq[ForestCoverDataset.dataSet.PageRow])] = Random.shuffle(
-      Random.shuffle(ForestCoverDataset.dataSet.rows).take(items).groupBy(_.label).toList.flatMap(block ⇒ block._2.grouped(50).map(block._1 → _))).toList
+    val forestData = ForestCoverDataset.load(items)
+    val blocks: List[(String, IndexedSeq[forestData.PageRow])] = Random.shuffle(
+      Random.shuffle(forestData.rows).take(items).groupBy(_.label).toList.flatMap(block ⇒ block._2.grouped(50).map(block._1 → _))).toList
     println(s"Data label distribution: " + blocks.groupBy(_._1).mapValues(_.map(_._2.size).sum))
 
     val itemSum = blocks.grouped(4).map(_.toParArray.map(x ⇒ {
-      val (key: String, block: IndexedSeq[ForestCoverDataset.dataSet.PageRow]) = x
+      val (key: String, block: IndexedSeq[forestData.PageRow]) = x
       insert(key, block.map(_.asMap))
       block.size
     }).sum).sum
