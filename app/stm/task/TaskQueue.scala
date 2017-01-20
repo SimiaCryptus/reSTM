@@ -49,8 +49,8 @@ object TaskQueue {
   def init[T <: Identifiable](size: Int, id: String)(implicit ctx: STMTxnCtx): Future[TaskQueue[T]] = {
     val ptr = new STMPtr[MultiQueueData[T]](new PointerType(id))
     ptr.readOpt().flatMap(readOpt⇒{
-      if(!readOpt.isDefined) {
-        createInnerData[T](size).flatMap(x ⇒ ptr.write(x).map(_⇒ptr)).map(x⇒new TaskQueue[T](x))
+      if(!readOpt.isDefined || readOpt.get.queues.size != size) {
+        createInnerData[T](size).flatMap(ptr.write(_)).map(_⇒new TaskQueue[T](ptr))
       } else {
         Future.successful(new TaskQueue[T](ptr))
       }

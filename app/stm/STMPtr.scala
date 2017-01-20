@@ -70,7 +70,7 @@ class STMPtr[T <: AnyRef](val id: PointerType) {
     ctx.lockOptional(id)
   }
 
-  def read()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.get)
+  def read()(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[T] = Util.chainEx(s"not defined: $id") { ctx.readOpt[T](id).map(_.get) }
 
   def read(default: => T)(implicit ctx: STMTxnCtx, classTag: ClassTag[T]): Future[T] = ctx.readOpt[T](id).map(_.getOrElse(default))
 
