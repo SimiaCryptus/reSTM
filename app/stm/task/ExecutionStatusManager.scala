@@ -52,7 +52,7 @@ object ExecutionStatusManager {
   }
 
   def check(executorId: String, taskId: String): Boolean = {
-    currentStatus(executorId).contains(taskId)
+    currentStatus.get(executorId).exists(_.contains(taskId))
   }
 
   def currentlyRunning(): Int = currentStatus.filterNot(!_._2.exists(_._2 == "Started")).size
