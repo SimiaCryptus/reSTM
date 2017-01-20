@@ -45,10 +45,7 @@ object ScalarArray {
       STMPtr.dynamic(ScalarArray.ScalarData(ptrs.toList)).map(new ScalarArray(_))
     })
 
-  case class ScalarData
-  (
-    values: List[STMPtr[java.lang.Double]] = List.empty
-  ) {
+  case class ScalarData(values: List[STMPtr[java.lang.Double]] = List.empty) {
 
     def add(value: Double, rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx): Future[Unit] = {
       val shuffledLists = values.map(_ -> Random.nextDouble()).sortBy(_._2).map(_._1)
@@ -59,7 +56,8 @@ object ScalarArray {
           val tail: Seq[STMPtr[java.lang.Double]] = list.tail
           head.lock().flatMap(locked => {
             if (locked) {
-              head.read().map(_ + value).flatMap(head.write(_))
+              val read: Future[Double] = head.readOpt().map(x ⇒ x.getOrElse(0.0))
+              read.map(_ + value).flatMap(head.write(_))
             } else {
               add(tail)
             }
@@ -71,10 +69,11 @@ object ScalarArray {
     }
 
     def get(rootPtr: STMPtr[ScalarData])(implicit ctx: STMTxnCtx): Future[scala.Double] = {
-      Future.sequence(values.map(_.read()))
-        .map((sequence: List[java.lang.Double]) => {
-          sequence.map(_.toDouble).reduceOption(_ + _).getOrElse(0.0)
-        })
+      Future.sequence(values.map({
+        _.readOpt().map(_.getOrElse(0.0)).asInstanceOf[Future[Double]]
+      })).map((sequence: List[java.lang.Double]) => {
+        sequence.map(_.toDouble).reduceOption(_ + _).getOrElse(0.0)
+      })
     }
 
   }
