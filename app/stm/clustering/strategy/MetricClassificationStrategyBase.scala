@@ -22,7 +22,7 @@ package stm.clustering.strategy
 import java.util.concurrent.atomic.AtomicInteger
 
 import stm.STMTxnCtx
-import stm.clustering._
+import stm.clustering.{KeyValue, _}
 import util.Util
 
 import scala.collection.immutable.Seq
@@ -30,35 +30,52 @@ import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
+
+object MetricClassificationStrategyBase {
+
+  private def ruleFn(metric: (KeyValue[String, Any]) ⇒ Double, threshold: Double) = {
+    (item: KeyValue[String, Any]) => {
+      metric(item) > threshold
+    }
+  }
+
+  private def metricFn(field: String) = {
+    (x:KeyValue[String,Any]) ⇒ x(field).asInstanceOf[Number].doubleValue()
+  }
+
+}
+
 abstract case class MetricClassificationStrategyBase(
-                                          branchThreshold: Int = 20,
-                                          smoothingFactor: Double = 1.0
+                                                      val branchThreshold: Int,
+                                                      val smoothingFactor: Double,
+                                                      val minEntropy : Double,
+                                                      val forceDepth : Int,
+                                                      val maxDepth : Int
                                         ) extends ClassificationStrategy {
 
 
   private implicit def _executionContext = ClassificationStrategy.workerPool
-  def getRule(pages: Stream[Page]) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
+  def getRule(pages: Stream[Page], depth: Int) = Util.monitorBlock("DefaultClassificationStrategy.getRule") {
     val sampledRows = pages.flatMap(_.rows).take(1000).toList
     val fields: Set[String] = pages.flatMap(_.schema.keys).toSet
     val fieldResults = fields.map((field: String) => Future {
-      rules_SimpleScalar(sampledRows, field)
+      metricRules(field, sampledRows,
+        _.get(field).exists(_.isInstanceOf[Number]),
+        MetricClassificationStrategyBase.metricFn(field), depth)
     })
-    val rules: Set[(RuleData, Double)] = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
-      .filterNot(_._2.isNaN).filterNot(_._2.isInfinite)
-    if (rules.nonEmpty) {
-      val rule = rules.maxBy(_._2)
-      println(s"Rule created: ${rule._1.name} with fitness ${rule._2}")
+    val rules: Set[(RuleData, PartitionFitness)] = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
+      .filterNot(_._2.fitness.isNaN).filterNot(_._2.fitness.isInfinite)
+    val rule = rules.maxBy(_._2)
+    if (maxDepth > depth && (forceDepth > depth || rules.filter(_._2.fitness > minEntropy).nonEmpty)) {
+      println(s"Rule created: ${rule._1.name} at depth $depth with fitness ${rule._2}")
       rule._1
-    } else null
+    } else {
+      println(s"Rule supressed: ${rule._1.name} at depth $depth with fitness ${rule._2}")
+      null
+    }
   }
 
-  private def rules_SimpleScalar(values: List[Page#PageRow], field: String) = Util.monitorBlock("DefaultClassificationStrategy.rules_SimpleScalar") {
-    metricRules(field, values,
-      _.get(field).exists(_.isInstanceOf[Number]),
-      _(field).asInstanceOf[Number].doubleValue())
-  }
-
-  private def metricRules(field: String, values: List[Page#PageRow], filter: (KeyValue[String,Any]) => Boolean, metric: (KeyValue[String,Any]) => Double) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
+  private def metricRules(field: String, values: List[Page#PageRow], filter: (KeyValue[String,Any]) => Boolean, metric: (KeyValue[String,Any]) => Double, depth: Int) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
     val exceptionCounts: Map[String, Int] = values.filterNot(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter)
       .map((item: Page#PageRow) => item.label -> metric(item))
@@ -75,15 +92,13 @@ abstract case class MetricClassificationStrategyBase(
         val doubleToInt: Int = labelCounts(key) - leftItems
         key -> doubleToInt
       }).toMap
-      val ruleFn: (KeyValue[String,Any]) => Boolean = item => {
-        metric(item) > threshold
-      }
+      val ruleFn: (KeyValue[String,Any]) => Boolean = MetricClassificationStrategyBase.ruleFn(metric, threshold)
       val ruleName = s"$field > $threshold"
-      new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get()).toMap, compliment, exceptionCounts, ruleName)
+      new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get()).toMap, compliment, exceptionCounts, ruleName, depth)
     })
   }
 
-  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String): Double
+  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String, depth: Int): PartitionFitness
 
   def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = {
     val apxSize = buffer.sync(30.seconds).apxSize()

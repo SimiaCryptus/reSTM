@@ -23,7 +23,7 @@ import stm.STMTxnCtx
 import stm.clustering.{Page, PageTree}
 
 class NoBranchStrategy extends ClassificationStrategy {
-  override def getRule(values: Stream[Page]) = new RuleData(_ => true, "NoBranch Rule")
+  override def getRule(values: Stream[Page], depth: Int) = new RuleData(_ => true, "NoBranch Rule")
 
   override def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean = false
 }

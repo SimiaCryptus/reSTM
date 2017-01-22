@@ -19,7 +19,6 @@
 
 package storage.types
 
-import java.io.ByteArrayOutputStream
 import java.util.Base64
 
 import com.esotericsoftware.kryo.Kryo
@@ -32,18 +31,18 @@ import scala.reflect._
 object KryoValue {
   def empty[T <: AnyRef] : KryoValue[T] = new KryoValue[T](null:String)
 
-  private def lZ4Factory = LZ4Factory.safeInstance()
+  private def lZ4Factory = LZ4Factory.fastestInstance()
 
   private val kryo: ThreadLocal[Kryo] = new ThreadLocal[Kryo] {
     override def initialValue(): Kryo = (new ScalaKryoInstantiator).setRegistrationRequired(false).newKryo()
   }
-  private val fastCompressor: ThreadLocal[LZ4Compressor] = new ThreadLocal[LZ4Compressor] {
+  private val compressor: ThreadLocal[LZ4Compressor] = new ThreadLocal[LZ4Compressor] {
     override def initialValue(): LZ4Compressor = lZ4Factory.fastCompressor()
   }
-  private val safeDecompressor: ThreadLocal[LZ4SafeDecompressor] = new ThreadLocal[LZ4SafeDecompressor] {
-    override def initialValue(): LZ4SafeDecompressor = lZ4Factory.safeDecompressor()
+  private val decompressor = new ThreadLocal[LZ4SafeDecompressor] {
+    override def initialValue() = lZ4Factory.safeDecompressor()
   }
-  private val decompressionBuffer: ThreadLocal[Array[Byte]] = new ThreadLocal[Array[Byte]] {
+  private val buffer: ThreadLocal[Array[Byte]] = new ThreadLocal[Array[Byte]] {
     override def initialValue(): Array[Byte] = new Array[Byte](8*1024*1024)
   }
 
@@ -54,12 +53,10 @@ object KryoValue {
 
   def serialize(value: AnyRef): Array[Byte] = // Util.monitorBlock("KryoValue.serialize")
   {
-    val byteArrayOutputStream: ByteArrayOutputStream = new ByteArrayOutputStream
-    val output = new Output(byteArrayOutputStream)
+    val output = new Output(buffer.get())
     kryo.get().writeClassAndObject(output, value)
     output.close()
-    val rawBytes = byteArrayOutputStream.toByteArray
-    fastCompressor.get().compress(rawBytes)
+    compressor.get().compress(output.getBuffer, 0, output.position())
   }
 
   def deserialize[T <: AnyRef](data: String)(implicit classTag: ClassTag[T]): Option[T] = {
@@ -73,10 +70,8 @@ object KryoValue {
   def deserialize[T <: AnyRef : ClassTag](data: Array[Byte]): Option[T] = // Util.monitorBlock("KryoValue.deserialize")
   {
     Option(data)
-      .map(x => {
-        safeDecompressor.get().decompress(x, decompressionBuffer.get())
-      })
-      .map(new Input(decompressionBuffer.get, 0, _))
+      .map(decompressor.get().decompress(_, buffer.get()))
+      .map(new Input(buffer.get, 0, _))
       .map(kryo.get().readClassAndObject(_))
       .map(_.asInstanceOf[T])
   }

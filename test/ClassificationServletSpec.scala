@@ -48,7 +48,7 @@ class ClassificationServletSpec extends WordSpec with MustMatchers with OneServe
             Await.result(Http((url(baseUrl) / "sys" / "init").GET OK as.String), timeout)
             //StmExecutionQueue.get().verbose = true
             Thread.sleep(1000) // Allow platform to start
-            new DTTestUtil(baseUrl, timeout = timeout).test(items = 10000)
+            new DTTestUtil(baseUrl, timeout = timeout, items = 20000).test()
             Await.result(Http((url(baseUrl) / "sys" / "shutdown").GET OK as.String), timeout)
             Await.result(StmDaemons.join(), 5.minutes)
             Thread.sleep(1000) // Allow rest of processes to complete

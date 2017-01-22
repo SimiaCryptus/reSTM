@@ -101,7 +101,7 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
           val future = runTask(cluster)
           val result = Await.result(future, 10.minutes)
           if (!result) {
-            Thread.sleep(Math.min(1 + (now - lastExecuted).toMillis * 2, 500))
+            Thread.sleep(Math.max(Math.min((now - lastExecuted).toMillis * 2, 500), 1))
           } else {
             lastExecuted = now
           }

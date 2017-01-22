@@ -20,23 +20,26 @@
 package stm.clustering.strategy
 
 
-class SimpleEntropyClassificationStrategy(
-                                        branchThreshold: Int = 20,
-                                        smoothingFactor: Double = 1.0,
-                                        factor_0 : Double = 0.1,
-                                        factor_1 : Double = -1.0,
-                                        factor_2 : Double = 1.0
-                                      ) extends MetricClassificationStrategyBase(branchThreshold,smoothingFactor) {
 
-  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String): Double = {
+
+
+abstract class EntropyClassificationStrategyBase(
+                                        branchThreshold: Int,
+                                        smoothingFactor: Double,
+                                        minEntropy : Double,
+                                        forceDepth : Int,
+                                        maxDepth : Int
+                                      ) extends MetricClassificationStrategyBase(branchThreshold, smoothingFactor, minEntropy, forceDepth, maxDepth) {
+
+  def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String, depth: Int): PartitionFitness = {
     val labelCounts: Map[String, Int] = (left.toList++right.toList++exceptions.toList).groupBy(_._1).mapValues(_.map(_._2).sum)
     val totalCount: Double = labelCounts.values.sum.toDouble
     val leftCount: Int = left.values.sum
     val rightCount: Int = right.values.sum
     val exCount: Int = exceptions.values.sum
     val smoothingFactor: Double = this.smoothingFactor / totalCount
-    if(leftCount == 0 || rightCount == 0) Double.NegativeInfinity else {
-      val cross_entropy_1: Double = -1 * {
+    if(leftCount == 0 || rightCount == 0) PartitionFitness.NegativeInfinity else {
+      val cross_entropy_1: Double = 1 * {
         labelCounts.keys.map((label: String) => {
           // This cross entropy is with respect to the pre-and-post-distributions, not between labels
           val x: Double = (left.getOrElse(label, 0)) / totalCount
@@ -55,16 +58,16 @@ class SimpleEntropyClassificationStrategy(
             x * Math.log(smoothingFactor + y)
           }).sum
       }
-      val cross_entropy_2: Double = -1 * {
+      val cross_entropy_2: Double = 1 * {
         labelCounts.keys.map((label: String) => {
           // This cross entropy is with respect to the pre-and-post-distributions, not between labels
           val x: Double = (left.getOrElse(label, 0)) / totalCount
-          val y: Double = labelCounts(label) * leftCount / (totalCount*totalCount)
+          val y: Double = labelCounts(label) * leftCount / (totalCount * totalCount)
           y * Math.log(smoothingFactor + x)
         }).sum +
           labelCounts.keys.map((label: String) => {
             val x: Double = (right.getOrElse(label, 0)) / totalCount
-            val y: Double = labelCounts(label) * rightCount / (totalCount*totalCount)
+            val y: Double = (labelCounts(label) * rightCount).toDouble / (totalCount*totalCount)
             y * Math.log(smoothingFactor + x)
           }).sum +
           labelCounts.keys.map((label: String) => {
@@ -73,7 +76,7 @@ class SimpleEntropyClassificationStrategy(
             y * Math.log(smoothingFactor + x)
           }).sum
       }
-      val self_entropy: Double = -1 * {
+      val self_entropy: Double = 1 * {
         labelCounts.keys.map((label: String) => {
           val x = (left.getOrElse(label, 0)) / totalCount
           x * Math.log(smoothingFactor + x)
@@ -87,10 +90,22 @@ class SimpleEntropyClassificationStrategy(
             x * Math.log(smoothingFactor + x)
           }).sum
       }
-      val result: Double = factor_2 * cross_entropy_2 + factor_1 * cross_entropy_1 + factor_0 * self_entropy
-      //println(s"(left=$left,right=$right,ex=$exceptions) = $cross_entropy + $self_entropy = $result ($ruleName)")
-      result
+      val marginal_entropy: Double = 1 * { {
+          val x = (left.values.sum) / totalCount
+          x * Math.log(smoothingFactor + x)
+        } + {
+          val x = (right.values.sum) / totalCount
+          x * Math.log(smoothingFactor + x)
+        } + {
+          val x = (exceptions.values.sum) / totalCount
+          x * Math.log(smoothingFactor + x)
+        }
+      }
+      val result: Double = mix(self_entropy, cross_entropy_1, cross_entropy_2, marginal_entropy)
+      //println(s"(left=$left,right=$right,ex=$exceptions) = $cross_entropy_1 + $cross_entropy_2 + $self_entropy = $result ($ruleName)")
+      PartitionFitness(result, f"[$result%1.3f, [$cross_entropy_1%1.3f,$cross_entropy_2%1.3f,$self_entropy%1.3f,$marginal_entropy%1.3f], {L=$left,R=$right,X=$exceptions}]")
     }
   }
 
+  def mix(self_entropy: Double, cross_entropy_1: Double, cross_entropy_2: Double, marginal_entropy: Double): Double
 }

@@ -160,11 +160,13 @@ class ClusterTreeController @Inject()(actorSystem: ActorSystem)(implicit exec: E
   def split(treeId: String, clusterId: String): Action[AnyContent] = Action.async { request =>
     monitorFuture("ClusterTreeController.split") {
       val tree = ClassificationTree(treeId).atomic()
-      tree.getClusterByTreeId(clusterId).flatMap((ptr: STMPtr[ClassificationTreeNode]) => {
-        val strategy = request.body.asText.flatMap(body => new JacksonValue(body).deserialize[ClassificationStrategy]())
-        strategy.map(Future.successful).getOrElse(tree.getClusterStrategy).flatMap(strategy => {
-          tree.splitCluster(ptr, strategy).map((result: Task[Int]) => {
-            Ok(JacksonValue.simple(Map("task"→result.id)).pretty).as("application/json")
+      tree.getRoot().flatMap(root⇒{
+        tree.getClusterByTreeId(clusterId).flatMap((ptr: STMPtr[ClassificationTreeNode]) => {
+          val strategy = request.body.asText.flatMap(body => new JacksonValue(body).deserialize[ClassificationStrategy]())
+          strategy.map(Future.successful).getOrElse(tree.getClusterStrategy).flatMap(strategy => {
+            tree.splitCluster(ptr, root, strategy).map((result: Task[Int]) => {
+              Ok(JacksonValue.simple(Map("task"→result.id)).pretty).as("application/json")
+            })
           })
         })
       })

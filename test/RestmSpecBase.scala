@@ -39,7 +39,7 @@ abstract class RestmSpecBase extends WordSpec with MustMatchers {
     "commit new data" in {
       val ptrId = new PointerType
       val txnA = Await.result(Future.successful(TxnTime.next()), 30.seconds)
-      require(txnA > new TimeStamp(0,0))
+      require(txnA > new TimeStamp(0l,0l,0))
 
       Await.result(cluster.getPtr(ptrId), 30.seconds) mustBe None
       Await.result(cluster.lock(ptrId, txnA), 30.seconds) mustBe None
@@ -53,7 +53,7 @@ abstract class RestmSpecBase extends WordSpec with MustMatchers {
     "revert data" in {
       val ptrId = new PointerType
       val txnA = Await.result(Future.successful(TxnTime.next()), 30.seconds)
-      require(txnA > new TimeStamp(0,0))
+      require(txnA > new TimeStamp(0l,0l,0))
 
       Await.result(cluster.getPtr(ptrId), 30.seconds) mustBe None
       Await.result(cluster.lock(ptrId, txnA), 30.seconds) mustBe None

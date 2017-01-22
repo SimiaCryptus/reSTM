@@ -120,8 +120,7 @@ class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds, items:Int = I
     Await.result(Http(request.GET OK as.String), timeout)
   }
 
-  def test()
-          (implicit executionContext: ExecutionContextExecutor , cluster: RestmHttpClient) = {
+  def test()(implicit executionContext: ExecutionContextExecutor , cluster: RestmHttpClient) = {
     val taskId: String = startTreeTask(items)
     TaskUtil.awaitTask(new Task[AnyRef](new Restm.PointerType(taskId)), 100.minutes)
     verifyModel()
@@ -129,24 +128,28 @@ class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds, items:Int = I
 
 
   private def verifyModel()(implicit executionContext: ExecutionContextExecutor) = {
-    val correct = ForestCoverDataset.load(100).rows.map(testValue ⇒ {
-      val queryResult = query(testValue.asClassificationTreeItem)
-      println(queryResult)
-      val counts = queryResult.getAsJsonObject("counts").entrySet().asScala
-        .map(e => e.getKey → e.getValue.getAsInt).toList
-        .sortBy(_._2).reverse
-      val leafId = queryResult.getAsJsonObject("path").getAsJsonPrimitive("treeId").getAsString
-      val countStr = counts.map(x => x._1.toString + "→" + x._2.toString).mkString(",")
-      val predictedClass = if (counts.isEmpty) "null" else counts.maxBy(_._2)._1
-      val actualClass = testValue.label
-      if (actualClass == predictedClass) {
-        println(s"Correct: $actualClass correctly predicted in leaf $leafId with label counts ($countStr)")
-        1
-      } else {
-        println(s"Incorrect: $actualClass was not the most common in leaf $leafId with label counts ($countStr)")
-        0
-      }
-    }).sum
+    val correct = ForestCoverDataset.load(100).rows
+      .grouped(4).flatMap(_.toParArray
+          .map(testValue ⇒ testValue → query(testValue.asClassificationTreeItem))
+          .toList)
+      .map(t⇒{
+        val (testValue, queryResult) = t
+        println(queryResult)
+        val counts = queryResult.getAsJsonObject("counts").entrySet().asScala
+          .map(e => e.getKey → e.getValue.getAsInt).toList
+          .sortBy(_._2).reverse
+        val leafId = queryResult.getAsJsonObject("path").getAsJsonPrimitive("treeId").getAsString
+        val countStr = counts.map(x => x._1.toString + "→" + x._2.toString).mkString(",")
+        val predictedClass = if (counts.isEmpty) "null" else counts.maxBy(_._2)._1
+        val actualClass = testValue.label
+        if (actualClass == predictedClass) {
+          println(s"Correct: $actualClass correctly predicted in leaf $leafId with label counts ($countStr)")
+          1
+        } else {
+          println(s"Incorrect: $actualClass was not the most common in leaf $leafId with label counts ($countStr)")
+          0
+        }
+      }).sum
     println(s"Correct responses: $correct")
   }
 

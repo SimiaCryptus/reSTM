@@ -22,7 +22,7 @@ package stm.clustering
 import java.nio.ByteBuffer
 
 import com.google.common.primitives.Longs
-import stm.clustering.Page.{BaseColumn, DoubleColumn, RefColumn, ValueColumn}
+import stm.clustering.Page.{RefColumn, ValueColumn}
 
 import scala.collection.immutable.{ListMap, Seq}
 
@@ -34,8 +34,12 @@ object Page {
     apply(List(data:_*))
   }
 
-  def fromRows(data : List[Page#PageRow]) : Page = {
-    val keys: Set[BaseColumn[_]] = data.flatMap(_.keys.values).distinct.toSet
+  def union(data : Page*) : Page = {
+    fromRows(data.flatMap(_.rows))
+  }
+
+  def fromRows(data : scala.collection.Seq[Page#PageRow]) : Page = {
+    val keys: List[BaseColumn[_]] = data.flatMap(_.keys.values).distinct.toSet.toList.sortBy[String](_.name)
     require(keys.groupBy(_.name).forall(_._2.map(_.getClass).toSet.size==1), "Incompatible Schema")
     val (scalarCols, refCols) = (
       keys.filter(_.isInstanceOf[ValueColumn[_]]).map(_.asInstanceOf[ValueColumn[_]]),
@@ -43,18 +47,17 @@ object Page {
     )
     require(scalarCols.groupBy(_.name).forall(_._2.map(_.length).toSet.size==1), "Incompatible Schema")
 
-    val newScalaCols: List[ValueColumn[_]] = scalarCols.scanLeft(None:Option[ValueColumn[_]])((l, x)⇒{
-      require(x.isInstanceOf[DoubleColumn])
-      Option(new DoubleColumn(x.name, l.map(x⇒x.start+x.length).getOrElse(0)))
+    val newScalaCols: List[ValueColumn[_]] = scalarCols.scanLeft(None:Option[ValueColumn[_]])((prevCol, fromCol)⇒{
+      require(fromCol.isInstanceOf[DoubleColumn])
+      Option(new DoubleColumn(fromCol.name, prevCol.map(prevCol⇒prevCol.start+prevCol.length).getOrElse(0)))
     }).flatten.toList
 
     val refVals: Array[AnyRef] = data
       .flatMap(data ⇒ refCols.map(_.asInstanceOf[RefColumn[AnyRef]].get(data).asInstanceOf[AnyRef]))
       .toArray[AnyRef]
 
-
-    val buffer = ByteBuffer.allocate(500*1024*1024)
-    val longBuffer = buffer.asLongBuffer()
+    val scalarVals = ByteBuffer.allocate(newScalaCols.map(_.length).sum * data.length)
+    val longBuffer = scalarVals.asLongBuffer()
     for(row ← data) {
       for(col ← newScalaCols) {
         val value: Double = try {
@@ -65,9 +68,6 @@ object Page {
         longBuffer.put(java.lang.Double.doubleToLongBits(value))
       }
     }
-    val bytes: Array[Byte] = java.util.Arrays.copyOfRange(buffer.array(), 0, longBuffer.position() * 8)
-
-
     val labels: Array[String] = data.map(data⇒data.label).toArray
     val labelNames = labels.distinct.sorted
     new Page(
@@ -75,7 +75,7 @@ object Page {
       labelNames = labelNames,
       labels = labels.map(labelNames.indexOf(_)),
       refs = refVals,
-      values = bytes
+      values = scalarVals.array()
     )
   }
 
@@ -126,6 +126,20 @@ object Page {
 
   abstract sealed class BaseColumn[T](val name:String) {
     def get(row : Page#PageRow):T
+
+    def canEqual(other: Any): Boolean = getClass == other.getClass
+
+    override def equals(other: Any): Boolean = other match {
+      case that: BaseColumn[_] ⇒
+        (that canEqual this) &&
+          name == that.name
+      case _ ⇒ false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq(name)
+      state.map(_.hashCode()).foldLeft(0)((a, b) ⇒ 31 * a + b)
+    }
   }
   abstract class RefColumn[T <: AnyRef](name:String, val index: Int) extends BaseColumn[T](name) {
     def get(row : Page#PageRow):T = row.ref(index).asInstanceOf[T]
@@ -169,65 +183,8 @@ class Page(val schema: ListMap[String,Page.BaseColumn[_]],
   require(labels.forall(i⇒i>=0&&i<labelNames.length))
 
   def +(left:Page) : Page = {
-    val rawkeys: Set[BaseColumn[_]] = (this.schema.values ++ left.schema.values).toSet
-    require(rawkeys.groupBy(_.name).forall(_._2.map(_.getClass).toSet.size==1), "Incompatible Schema")
-    val keys = rawkeys.groupBy(_.name).map(_._2.head)
-    val (scalarCols, refCols) = (
-      keys.filter(_.isInstanceOf[ValueColumn[_]]).map(_.asInstanceOf[ValueColumn[_]]),
-      keys.filter(_.isInstanceOf[RefColumn[_]]).map(_.asInstanceOf[RefColumn[_]])
-    )
-
-    val newScalarCols: List[ValueColumn[AnyVal]] = scalarCols.scanLeft(None:Option[ValueColumn[AnyVal]])((l, x)⇒{
-      require(x.isInstanceOf[DoubleColumn])
-      Option(new DoubleColumn(x.name, l.map(x⇒x.start+x.length).getOrElse(0)).asInstanceOf[ValueColumn[AnyVal]])
-    }).flatten.toList
-
-    val allRows: Seq[Page#PageRow] = rows ++ left.rows
-    val refVals: Array[AnyRef] = allRows
-      .flatMap(data ⇒ refCols.map(_.asInstanceOf[RefColumn[AnyRef]].get(data).asInstanceOf[AnyRef]))
-      .toArray[AnyRef]
-
-    val buffer = ByteBuffer.allocate(500*1024*1024)
-    val longBuffer = buffer.asLongBuffer()
-    val thisColTuples = newScalarCols.map(col⇒this.schema.get(col.name))
-    for(row ← rows) {
-      for(thisCol ← thisColTuples) {
-        val value: Double = try {
-          thisCol.map(_.get(row).asInstanceOf[Number].doubleValue()).getOrElse(Double.NaN)
-        } catch {
-          case e : IllegalArgumentException ⇒ Double.NaN
-        }
-        longBuffer.put(java.lang.Double.doubleToLongBits(value))
-      }
-    }
-    val leftColTuples = newScalarCols.map(col⇒left.schema.get(col.name))
-    for(row ← left.rows) {
-      for(leftCol ← leftColTuples) {
-        val value: Double = try {
-          leftCol.map(_.get(row).asInstanceOf[Number].doubleValue()).getOrElse(Double.NaN)
-        } catch {
-          case e : IllegalArgumentException ⇒ Double.NaN
-        }
-        longBuffer.put(java.lang.Double.doubleToLongBits(value))
-      }
-    }
-
-    val bytes: Array[Byte] = java.util.Arrays.copyOfRange(buffer.array(), 0, longBuffer.position() * 8)
-    val labels: Array[String] = allRows.map(data⇒data.label).toArray
-    val labelNames = labels.distinct.sorted
-    val map: List[(String, ValueColumn[AnyVal])] = newScalarCols.map((x: ValueColumn[AnyVal]) ⇒ (x.name,x))
-    val result = new Page(
-      schema = ListMap(map: _*),
-      labelNames = labelNames,
-      labels = labels.map(labelNames.indexOf(_)),
-      refs = refVals,
-      values = bytes
-    )
-    //println(s"$this + $left => $result")
-    result
+    Page.union(this,left)
   }
-
-
 
   def getAll(rows: List[this.PageRow]) = {
     val indexes = rows.map(_.row).distinct.sorted.toArray

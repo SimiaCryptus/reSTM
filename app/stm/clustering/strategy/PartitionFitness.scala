@@ -19,28 +19,17 @@
 
 package stm.clustering.strategy
 
-import java.util.concurrent.Executors
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder
-import stm.STMTxnCtx
-import stm.clustering.{KeyValue, Page, PageTree}
-
-import scala.concurrent.ExecutionContext
-
-case class RuleData(fn : (KeyValue[String,Any]) => Boolean, name : String = "???")
-
-object ClassificationStrategy {
-  val workerPool: ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8,
-    new ThreadFactoryBuilder().setNameFormat("rule-pool-%d").build()))
-
+object PartitionFitness {
+  val NegativeInfinity = new PartitionFitness(Double.NegativeInfinity)
 }
 
-trait ClassificationStrategy {
+case class PartitionFitness(fitness:Double, msg:String) extends Ordered[PartitionFitness] {
+  def this(fitness:Double) = this(fitness,fitness.toString)
 
-  def getRule(values: Stream[Page], depth: Int): RuleData
+  override def compare(that: PartitionFitness): Int = {
+    java.lang.Double.compare(fitness, that.fitness)
+  }
 
-  def split(buffer: PageTree)(implicit ctx: STMTxnCtx): Boolean
-
+  override def toString: String = msg
 }
-
-
