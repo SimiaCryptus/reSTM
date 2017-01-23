@@ -33,7 +33,7 @@ class DefaultClassificationStrategy(
 
   override def mix(self_entropy: Double, cross_entropy_1: Double, cross_entropy_2: Double, marginal_entropy: Double): Double = {
     require(factor_0 != 0.0 || factor_1 != 0.0 || factor_2 != 0.0 )
-    if(marginal_entropy > -0.1) {
+    if(marginal_entropy > -0.2) {
       // Hard lopsidedness threshold - Don't "shave" the data
       Double.NegativeInfinity
     } else if(Math.abs(marginal_entropy - self_entropy) < 0.00001) {

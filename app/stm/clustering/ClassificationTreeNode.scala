@@ -531,7 +531,7 @@ object ClassificationTreeNode {
                 val node = currentData
                 try {
                   //println(s"Routing items")
-                  val pageStream: Stream[Page] = pageTree.atomic().pageStream()
+                  val pageStream: Stream[Page] = Stream.continually(pageTree.atomic().sync.get()).takeWhile(_.isDefined).map(_.get)
                   val pageAccumulator = pageStream.scanLeft((List.empty[Page],List.empty[Page]))((prev: (List[Page], List[Page]), page: Page)⇒{
                     if(prev._2.map(_.size).sum < pageSize) {
                       (List.empty[Page], prev._2 ++ List(page))
@@ -567,7 +567,7 @@ object ClassificationTreeNode {
                     try {
                       //println(s"Splitting (sync) on $self")
                       val pages: Stream[Page] = node.itemBuffer.map(pageTree⇒{
-                        val pageStream: Stream[Page] = pageTree.atomic().pageStream()
+                        val pageStream: Stream[Page] = Stream.continually(pageTree.sync.get()).takeWhile(_.isDefined).map(_.get)
                         val pageAccumulator = pageStream.scanLeft((List.empty[Page],List.empty[Page]))((prev: (List[Page], List[Page]), page: Page)⇒{
                           if(prev._2.map(_.size).sum < pageSize) {
                             (List.empty[Page], prev._2 ++ List(page))
@@ -605,18 +605,23 @@ object ClassificationTreeNode {
             })
           }
         })
-      }).getOrElse(Future.successful(0)).map(result⇒{
+      }).getOrElse(Future.successful(0)).flatMap(result⇒{
         val node = self.atomic.sync.read
         if(node.rule.isDefined) {
           require(!node.itemBuffer.isDefined)
           require(node.pass.get.atomic.sync.read.itemBuffer.get.atomic().sync.size() > 0)
           require(node.fail.get.atomic.sync.read.itemBuffer.get.atomic().sync.size() > 0)
+          Future.successful(result)
         } else {
           require(node.itemBuffer.isDefined)
-          val size = node.itemBuffer.get.atomic().sync.size()
-          require(size > 0)
+          node.splitBuffer.map(splitBuffer⇒{
+            Future.sequence(splitBuffer.atomic().pageStream().map(page⇒node.itemBuffer.get.atomic().add(page)))
+          }).getOrElse(Future.successful(Stream.empty)).map(_⇒{
+            val size = node.itemBuffer.get.atomic().sync.size()
+            require(size > 0)
+            result
+          })
         }
-        result
       })
       )
     })
