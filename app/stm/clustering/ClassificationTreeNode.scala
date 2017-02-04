@@ -458,6 +458,8 @@ object ClassificationTreeNode {
            (implicit cluster: Restm): Future[Int] = {
     def currentData = self.atomic.sync.read
     val pageSize = 128
+    //new RuntimeException().printStackTrace()
+    //println(s"Spliting $self")
 
     val depth: Future[Int] = new STMTxn[Int] {
       override def txnLogic()(implicit ctx: STMTxnCtx): Future[Int] = {

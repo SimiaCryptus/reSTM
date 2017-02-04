@@ -67,6 +67,7 @@ object DTTestUtil {
     implicit val restm = new RestmHttpClient(baseUrl)
     StmExecutionQueue.init()
     new DTTestUtil(baseUrl, items=itemLimit).test()
+    System.exit(0)
   }
 
 }
@@ -128,7 +129,7 @@ class DTTestUtil(baseUrl: String, timeout : Duration = 90.seconds, items:Int = I
 
 
   private def verifyModel()(implicit executionContext: ExecutionContextExecutor) = {
-    val correct = ForestCoverDataset.load(100).rows
+    val correct = ForestCoverDataset.dataSet.rows.slice(items,items+100)
       .grouped(4).flatMap(_.toParArray
           .map(testValue ⇒ testValue → query(testValue.asClassificationTreeItem))
           .toList)

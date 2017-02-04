@@ -45,13 +45,8 @@ object MetricClassificationStrategyBase {
 
 }
 
-abstract case class MetricClassificationStrategyBase(
-                                                      val branchThreshold: Int,
-                                                      val smoothingFactor: Double,
-                                                      val minEntropy : Double,
-                                                      val forceDepth : Int,
-                                                      val maxDepth : Int
-                                        ) extends ClassificationStrategy {
+abstract case class MetricClassificationStrategyBase(val branchThreshold: Int, val minEntropy: Double, val forceDepth: Int, val maxDepth: Int) extends ClassificationStrategy {
+  val singleClass = false
 
 
   private implicit def _executionContext = ClassificationStrategy.workerPool
@@ -65,37 +60,47 @@ abstract case class MetricClassificationStrategyBase(
     })
     val rules: Set[(RuleData, PartitionFitness)] = Await.result(Future.sequence(fieldResults), 5.minutes).flatten
       .filterNot(_._2.fitness.isNaN).filterNot(_._2.fitness.isInfinite)
-    val rule = rules.maxBy(_._2)
-    if (maxDepth > depth && (forceDepth > depth || rules.filter(_._2.fitness > minEntropy).nonEmpty)) {
-      println(s"Rule created: ${rule._1.name} at depth $depth with fitness ${rule._2}")
-      rule._1
-    } else {
-      println(s"Rule supressed: ${rule._1.name} at depth $depth with fitness ${rule._2}")
+    if(rules.isEmpty) {
+      println(s"No Rule produced at depth $depth")
       null
+    } else {
+      val rule = rules.maxBy(_._2)
+      if (maxDepth > depth && (forceDepth > depth || rules.filter(_._2.fitness > minEntropy).nonEmpty)) {
+        println(s"Rule created: ${rule._1.name} at depth $depth with fitness ${rule._2}")
+        rule._1
+      } else {
+        println(s"Rule supressed: ${rule._1.name} at depth $depth with fitness ${rule._2}")
+        null
+      }
     }
   }
 
-  private def metricRules(field: String, values: List[Page#PageRow], filter: (KeyValue[String,Any]) => Boolean, metric: (KeyValue[String,Any]) => Double, depth: Int) = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
+  private def metricRules(field: String, values: List[Page#PageRow], filter: (KeyValue[String,Any]) => Boolean, metric: (KeyValue[String,Any]) => Double, depth: Int): Seq[(RuleData, PartitionFitness)] = Util.monitorBlock("DefaultClassificationStrategy.metricRules") {
     val exceptionCounts: Map[String, Int] = values.filterNot(filter).groupBy(_.label).mapValues(_.size)
     val valueSortMap: Seq[(String, Double)] = values.filter(filter)
       .map((item: Page#PageRow) => item.label -> metric(item))
     val labelCounts: Map[String, Int] = valueSortMap.groupBy(_._1).mapValues(_.size)
-    val valueCounters = new mutable.HashMap[String, AtomicInteger]()
-    valueSortMap.groupBy(_._2).mapValues(_.groupBy(_._1).mapValues(_.size)).toList.sortBy(_._1).map(item => {
-      val (threshold: Double, label: Map[String, Int]) = item
-      label.foreach(t⇒{
-        val (label,count) = t
-        valueCounters.getOrElseUpdate(label, new AtomicInteger(0)).addAndGet(count)
+    if(labelCounts.size <= 1 && !singleClass) {
+      //println(s"Single class node: ${labelCounts}")
+      List.empty
+    } else {
+      val valueCounters = new mutable.HashMap[String, AtomicInteger]()
+      valueSortMap.groupBy(_._2).mapValues(_.groupBy(_._1).mapValues(_.size)).toList.sortBy(_._1).map(item => {
+        val (threshold: Double, label: Map[String, Int]) = item
+        label.foreach(t⇒{
+          val (label,count) = t
+          valueCounters.getOrElseUpdate(label, new AtomicInteger(0)).addAndGet(count)
+        })
+        val compliment: Map[String, Int] = labelCounts.keys.map(key⇒{
+          val leftItems = valueCounters.get(key).map(_.get()).getOrElse(0)
+          val doubleToInt: Int = labelCounts(key) - leftItems
+          key -> doubleToInt
+        }).toMap
+        val ruleFn: (KeyValue[String,Any]) => Boolean = MetricClassificationStrategyBase.ruleFn(metric, threshold)
+        val ruleName = s"$field > $threshold"
+        new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get()).toMap, compliment, exceptionCounts, ruleName, depth)
       })
-      val compliment: Map[String, Int] = labelCounts.keys.map(key⇒{
-        val leftItems = valueCounters.get(key).map(_.get()).getOrElse(0)
-        val doubleToInt: Int = labelCounts(key) - leftItems
-        key -> doubleToInt
-      }).toMap
-      val ruleFn: (KeyValue[String,Any]) => Boolean = MetricClassificationStrategyBase.ruleFn(metric, threshold)
-      val ruleName = s"$field > $threshold"
-      new RuleData(ruleFn, ruleName) -> fitness(valueCounters.mapValues(_.get()).toMap, compliment, exceptionCounts, ruleName, depth)
-    })
+    }
   }
 
   def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String, depth: Int): PartitionFitness

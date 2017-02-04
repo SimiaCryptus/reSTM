@@ -19,17 +19,13 @@
 
 package stm.clustering.strategy
 
-
-
-
-
-abstract class EntropyClassificationStrategyBase(
+abstract class MeasurementEntropyClassificationStrategyBase(
                                         branchThreshold: Int,
                                         smoothingFactor: Double,
                                         minEntropy : Double,
                                         forceDepth : Int,
                                         maxDepth : Int
-                                      ) extends MetricClassificationStrategyBase(branchThreshold, smoothingFactor, minEntropy, forceDepth, maxDepth) {
+                                      ) extends MetricClassificationStrategyBase(branchThreshold, minEntropy, forceDepth, maxDepth) {
 
   def fitness(left: Map[String, Int], right: Map[String, Int], exceptions: Map[String, Int], ruleName: String, depth: Int): PartitionFitness = {
     val labelCounts: Map[String, Int] = (left.toList++right.toList++exceptions.toList).groupBy(_._1).mapValues(_.map(_._2).sum)
@@ -108,4 +104,22 @@ abstract class EntropyClassificationStrategyBase(
   }
 
   def mix(self_entropy: Double, cross_entropy_1: Double, cross_entropy_2: Double, marginal_entropy: Double): Double
+}
+
+
+class LinearEntropyClassificationStrategy(branchThreshold: Int = 20,
+                                          smoothingFactor: Double = 1,
+                                          val factor_0 : Double = -0.1,
+                                          val factor_1 : Double = 1,
+                                          val factor_2 : Double = -1,
+                                          minEntropy : Double = Double.NegativeInfinity,
+                                          forceDepth : Int = 0,
+                                          maxDepth : Int
+                                         ) extends MeasurementEntropyClassificationStrategyBase(branchThreshold,smoothingFactor, minEntropy, forceDepth, maxDepth) {
+
+  def mix(self_entropy: Double, cross_entropy_1: Double, cross_entropy_2: Double, marginal_entropy: Double): Double = {
+    require(factor_0 != 0.0 || factor_1 != 0.0 || factor_2 != 0.0 )
+    (factor_2 * cross_entropy_2 + factor_1 * cross_entropy_1 + factor_0 * self_entropy)
+  }
+
 }

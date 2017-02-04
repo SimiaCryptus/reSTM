@@ -67,7 +67,6 @@ object StmExecutionQueue {
 
 class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
 
-
   var verbose = false
 
   def atomic(implicit cluster: Restm) = new AtomicApi
@@ -135,9 +134,12 @@ class StmExecutionQueue(val workQueue: TaskQueue[Task[_]]) {
         if (verbose) println(s"Starting task ${task.id} at ${new Date()}")
         val result = monitorFuture("StmExecutionQueue.runTask") {
           def attempt(retries: Int): Future[TaskResult[_]] = Future {
+            if (verbose) println(s"Starting attempt for task ${task.id} at ${new Date()}")
             function(cluster, StmExecutionQueue.executionContext)
           }(StmExecutionQueue.taskExecutionContext).recoverWith({
-            case _: Throwable if retries > 0 => attempt(retries - 1)
+            case e: Throwable if retries > 0 =>
+              if (verbose) e.printStackTrace()
+              attempt(retries - 1)
           })(StmExecutionQueue.taskExecutionContext)
           try {
             attempt(3)

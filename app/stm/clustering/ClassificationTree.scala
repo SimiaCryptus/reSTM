@@ -286,6 +286,10 @@ class ClassificationTree(val dataPtr: STMPtr[ClassificationTree.ClassificationTr
         AtomicApi.this.stream()
       }
 
+      def getRoot(): STMPtr[ClassificationTreeNode] = sync {
+        AtomicApi.this.getRoot()
+      }
+
       def add(label: String, value: ClassificationTreeItem): Unit = sync {
         AtomicApi.this.add(label, value)
       }

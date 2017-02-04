@@ -73,7 +73,7 @@ object ForestCoverDataset {
 
     val inputStream = new GZIPInputStream(new FileInputStream("covtype.data.gz"))
     //println("Reading covtype")
-    val lines = Random.shuffle(IOUtils.readLines(inputStream, "UTF8").asScala.map(_.trim).filterNot(_.isEmpty)).take(max).toArray
+    val lines = IOUtils.readLines(inputStream, "UTF8").asScala.map(_.trim).filterNot(_.isEmpty).take(max).toArray
     //println(s"Read ${lines.size} lines")
     val items: ListMap[String, Array[Array[Byte]]] = ListMap(lines.map((line: String) ⇒ {
       line.split(",").map(Integer.parseInt(_).toDouble)
@@ -84,22 +84,19 @@ object ForestCoverDataset {
     //println(s"Parsed ${items.size} types")
     val labelNames: Array[String] = items.map(_._1).toArray
     val labels: Array[Int] = items.flatMap(t ⇒ {
-      val (key: String, block) = t;
+      val (key: String, block) = t
       val i = labelNames.indexOf(key)
       (0 until block.length).map(_ ⇒ i)
     }).toArray
     val schema = (0 until fields.length - 1).map(i ⇒ new DoubleColumn(fields(i), i * 8)).toArray[BaseColumn[_]]
     val buffer = ByteBuffer.allocate(500 * 1024 * 1024)
-    for (item ← items) {
-      for (row ← item._2) {
-        buffer.put(row)
-      }
-    }
+    val (shuffledBuffer, shuffledLabels) = Random.shuffle(items.flatMap(_._2).zip(labels)).unzip
+    shuffledBuffer.toList.foreach(buffer.put)
     val data: Array[Byte] = java.util.Arrays.copyOfRange(buffer.array(), 0, buffer.position())
     val page = new Page(
       schema = ListMap(schema.map(x ⇒ x.name → x).sortBy(_._1): _*),
       labelNames = labelNames,
-      labels = labels,
+      labels = shuffledLabels.toArray,
       refs = Array.empty,
       values = data
     )
