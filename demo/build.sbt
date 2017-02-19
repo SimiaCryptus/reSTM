@@ -12,9 +12,9 @@ libraryDependencies ++= Seq(
   ws,
   "org.scalatestplus.play" %% "scalatestplus-play" % "1.5.1" % Test,
   "ch.qos.logback" % "logback-classic" % "1.1.7",
-  "com.simiacryptus" %% "restm-core" % "1.0",
-  "com.simiacryptus" %% "restm-api" % "1.0",
-  "com.simiacryptus" %% "restm-ml" % "1.0"
+  "com.simiacryptus" %% "restm-core" % "1.0.1-SNAPSHOT",
+  "com.simiacryptus" %% "restm-api" % "1.0.1-SNAPSHOT",
+  "com.simiacryptus" %% "restm-ml" % "1.0.1-SNAPSHOT"
 )
 
 
