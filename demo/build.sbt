@@ -17,6 +17,6 @@ libraryDependencies ++= Seq(
   "com.simiacryptus" %% "restm-ml" % "1.0.1-SNAPSHOT"
 )
 
-
+resolvers += Resolver.mavenLocal
 
 fork in run := true
