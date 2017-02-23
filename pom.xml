@@ -4,15 +4,26 @@
                              http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.simiacryptus</groupId>
+	<parent>
+	    <groupId>com.simiacryptus</groupId>
+	    <artifactId>scala-parent</artifactId>
+	    <version>1.0</version>
+	    <relativePath></relativePath>
+	</parent>
+	
     <artifactId>restm-modules</artifactId>
     <packaging>pom</packaging>
     <version>1.0.1-SNAPSHOT</version>
-    <name>reSTM Modules</name>
+
+    <properties>
+        <github.project>reSTM</github.project>
+		<github.path></github.path>
+    </properties>
 
     <modules>
-        <module>core</module>
-        <module>api</module>
-        <module>ml</module>
+        <module>restm-core</module>
+        <module>restm-api</module>
+        <module>restm-ml</module>
     </modules>
+
 </project>
