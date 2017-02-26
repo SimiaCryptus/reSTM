@@ -26,6 +26,14 @@
             <div class="container"><div class="nav-collapse">
             <ul class="nav">
         <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Modules <b class="caret"></b></a>
+        <ul class="dropdown-menu">
+            <li><a href="restm-core/index.html" title="restm-core_2.11">restm-core_2.11</a></li>
+            <li><a href="restm-api/index.html" title="restm-api_2.11">restm-api_2.11</a></li>
+            <li><a href="restm-ml/index.html" title="restm-ml_2.11">restm-ml_2.11</a></li>
+        </ul>
+      </li>
+        <li class="dropdown">
         <a href="#" class="dropdown-toggle" data-toggle="dropdown">ScalaDocs <b class="caret"></b></a>
         <ul class="dropdown-menu">
             <li><a href="restm-core_2.11/scaladocs/index.html" title="Core">Core</a></li>
@@ -33,12 +41,16 @@
             <li><a href="restm-ml_2.11/scaladocs/index.html" title="Machine Learning">Machine Learning</a></li>
         </ul>
       </li>
+        <li class="dropdown">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Simia Cryptus <b class="caret"></b></a>
+        <ul class="dropdown-menu">
+            <li><a href="http://simiacryptus.com" title="Blog">Blog</a></li>
+            <li><a href="https://github.com/SimiaCryptus/" title="GitHub">GitHub</a></li>
+            <li><a href="../../../utilities/all" title="Modules">Modules</a></li>
+            <li><a href="https://mvnrepository.com/artifact/com.simiacryptus" title="Maven">Maven</a></li>
+        </ul>
+      </li>
               </ul>
-<form id="search-form" action="https://www.google.com/search" method="get"  class="navbar-search pull-right" >
-      <input value="https://simiacryptus.github.io/" name="sitesearch" type="hidden"/>
-  <input class="search-query" name="q" id="query" type="text" />
-</form>
-<script type="text/javascript">asyncJs( 'https://cse.google.com/brand?form=search-form' )</script>
                     </div>
         </div>
       </div>
@@ -89,16 +101,24 @@
 <td>2.7</td></tr>
 <tr class="a">
 <td>org.apache.maven.plugins</td>
-<td><a class="externalLink" href="http://maven.apache.org/plugins/maven-install-plugin/">maven-install-plugin</a></td>
-<td>2.5.2</td></tr>
+<td><a class="externalLink" href="http://maven.apache.org/plugins/maven-gpg-plugin/">maven-gpg-plugin</a></td>
+<td>1.5</td></tr>
 <tr class="b">
 <td>org.apache.maven.plugins</td>
-<td><a class="externalLink" href="http://maven.apache.org/plugins/maven-javadoc-plugin/">maven-javadoc-plugin</a></td>
-<td>2.10.4</td></tr>
+<td><a class="externalLink" href="http://maven.apache.org/plugins/maven-install-plugin/">maven-install-plugin</a></td>
+<td>2.5.2</td></tr>
 <tr class="a">
+<td>org.apache.maven.plugins</td>
+<td><a class="externalLink" href="http://maven.apache.org/plugins/maven-javadoc-plugin/">maven-javadoc-plugin</a></td>
+<td>2.9.1</td></tr>
+<tr class="b">
 <td>org.apache.maven.plugins</td>
 <td><a class="externalLink" href="https://maven.apache.org/plugins/maven-site-plugin/">maven-site-plugin</a></td>
 <td>3.6</td></tr>
+<tr class="a">
+<td>org.apache.maven.plugins</td>
+<td><a class="externalLink" href="http://maven.apache.org/plugins/maven-source-plugin/">maven-source-plugin</a></td>
+<td>2.2.1</td></tr>
 <tr class="b">
 <td>org.apache.maven.plugins</td>
 <td><a class="externalLink" href="http://maven.apache.org/surefire/maven-surefire-plugin">maven-surefire-plugin</a></td>
@@ -120,9 +140,19 @@
     <footer>
       <div class="container">
         <div class="row">
-            <p>Copyright &copy;2017
-<a href="https://simiacryptus.com">SimiaCryptus Software</a>.
-All rights reserved.</p>
+<p>Search <a href="http://simiacryptus.com">SimiaCryptus Software</a>:</p>
+    	<script>
+  (function() {
+    var cx = '002356377723513062632:sj7pd32nzsk';
+    var gcse = document.createElement('script');
+    gcse.type = 'text/javascript';
+    gcse.async = true;
+    gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+    var s = document.getElementsByTagName('script')[0];
+    s.parentNode.insertBefore(gcse, s);
+  })();
+</script>
+<gcse:search></gcse:search>
         </div>
         <p id="poweredBy" class="pull-right">  <a href="http://maven.apache.org/" title="Built by Maven" class="poweredBy"><img class="builtBy" alt="Built by Maven" src="./images/logos/maven-feather.png" /></a>
   </p>
