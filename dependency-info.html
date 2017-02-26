@@ -36,9 +36,9 @@
         <li class="dropdown">
         <a href="#" class="dropdown-toggle" data-toggle="dropdown">ScalaDocs <b class="caret"></b></a>
         <ul class="dropdown-menu">
-            <li><a href="restm-core_2.11/scaladocs/index.html" title="Core">Core</a></li>
-            <li><a href="restm-api_2.11/scaladocs/index.html" title="API">API</a></li>
-            <li><a href="restm-ml_2.11/scaladocs/index.html" title="Machine Learning">Machine Learning</a></li>
+            <li><a href="restm-core/scaladocs/index.html" title="Core">Core</a></li>
+            <li><a href="restm-api/scaladocs/index.html" title="API">API</a></li>
+            <li><a href="restm-ml/scaladocs/index.html" title="Machine Learning">Machine Learning</a></li>
         </ul>
       </li>
         <li class="dropdown">
@@ -57,7 +57,7 @@
     </div>
     <div class="container">
       <div id="banner">
-        <div class="pull-left"><div id="bannerLeft"><h2>restm-modules</h2>
+        <div class="pull-left"><div id="bannerLeft"><h2>restm-parent</h2>
 </div>
 </div>
         <div class="pull-right"></div>
@@ -78,32 +78,32 @@
 <h3><a name="Apache_Maven"></a>Apache Maven</h3><a name="Apache_Maven"></a>
 <div class="source"><pre class="prettyprint linenums">&lt;dependency&gt;
   &lt;groupId&gt;com.simiacryptus&lt;/groupId&gt;
-  &lt;artifactId&gt;restm-modules&lt;/artifactId&gt;
+  &lt;artifactId&gt;restm-parent&lt;/artifactId&gt;
   &lt;version&gt;1.0.1-SNAPSHOT&lt;/version&gt;
   &lt;type&gt;pom&lt;/type&gt;
 &lt;/dependency&gt;</pre></div></div>
 <div class="section">
 <h3><a name="Apache_Buildr"></a>Apache Buildr</h3><a name="Apache_Buildr"></a>
-<div class="source"><pre class="prettyprint linenums">'com.simiacryptus:restm-modules:pom:1.0.1-SNAPSHOT'</pre></div></div>
+<div class="source"><pre class="prettyprint linenums">'com.simiacryptus:restm-parent:pom:1.0.1-SNAPSHOT'</pre></div></div>
 <div class="section">
 <h3><a name="Apache_Ivy"></a>Apache Ivy</h3><a name="Apache_Ivy"></a>
-<div class="source"><pre class="prettyprint linenums">&lt;dependency org=&quot;com.simiacryptus&quot; name=&quot;restm-modules&quot; rev=&quot;1.0.1-SNAPSHOT&quot;&gt;
-  &lt;artifact name=&quot;restm-modules&quot; type=&quot;pom&quot; /&gt;
+<div class="source"><pre class="prettyprint linenums">&lt;dependency org=&quot;com.simiacryptus&quot; name=&quot;restm-parent&quot; rev=&quot;1.0.1-SNAPSHOT&quot;&gt;
+  &lt;artifact name=&quot;restm-parent&quot; type=&quot;pom&quot; /&gt;
 &lt;/dependency&gt;</pre></div></div>
 <div class="section">
 <h3><a name="Groovy_Grape"></a>Groovy Grape</h3><a name="Groovy_Grape"></a>
 <div class="source"><pre class="prettyprint linenums">@Grapes(
-@Grab(group='com.simiacryptus', module='restm-modules', version='1.0.1-SNAPSHOT')
+@Grab(group='com.simiacryptus', module='restm-parent', version='1.0.1-SNAPSHOT')
 )</pre></div></div>
 <div class="section">
 <h3><a name="GradleGrails"></a>Gradle/Grails</h3><a name="GradleGrails"></a>
-<div class="source"><pre class="prettyprint linenums">compile 'com.simiacryptus:restm-modules:1.0.1-SNAPSHOT'</pre></div></div>
+<div class="source"><pre class="prettyprint linenums">compile 'com.simiacryptus:restm-parent:1.0.1-SNAPSHOT'</pre></div></div>
 <div class="section">
 <h3><a name="Scala_SBT"></a>Scala SBT</h3><a name="Scala_SBT"></a>
-<div class="source"><pre class="prettyprint linenums">libraryDependencies += &quot;com.simiacryptus&quot; % &quot;restm-modules&quot; % &quot;1.0.1-SNAPSHOT&quot;</pre></div></div>
+<div class="source"><pre class="prettyprint linenums">libraryDependencies += &quot;com.simiacryptus&quot; % &quot;restm-parent&quot; % &quot;1.0.1-SNAPSHOT&quot;</pre></div></div>
 <div class="section">
 <h3><a name="Leiningen"></a>Leiningen</h3><a name="Leiningen"></a>
-<div class="source"><pre class="prettyprint linenums">[com.simiacryptus/restm-modules &quot;1.0.1-SNAPSHOT&quot;]</pre></div></div></div>
+<div class="source"><pre class="prettyprint linenums">[com.simiacryptus/restm-parent &quot;1.0.1-SNAPSHOT&quot;]</pre></div></div></div>
         </div>
     </div>
     <hr/>
