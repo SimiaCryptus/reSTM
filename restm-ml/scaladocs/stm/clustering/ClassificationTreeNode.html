@@ -1,0 +1,957 @@
+<!DOCTYPE html >
+<html>
+        <head>
+          <title>ClassificationTreeNode - restm-ml_2.11 1.0.1-SNAPSHOT API - stm.clustering.ClassificationTreeNode</title>
+          <meta name="description" content="ClassificationTreeNode - restm - ml 2.11 1.0.1 - SNAPSHOT API - stm.clustering.ClassificationTreeNode" />
+          <meta name="keywords" content="ClassificationTreeNode restm ml 2.11 1.0.1 SNAPSHOT API stm.clustering.ClassificationTreeNode" />
+          <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+          
+      <link href="../../lib/template.css" media="screen" type="text/css" rel="stylesheet" />
+      <link href="../../lib/diagrams.css" media="screen" type="text/css" rel="stylesheet" id="diagrams-css" />
+      <script type="text/javascript" src="../../lib/jquery.js" id="jquery-js"></script>
+      <script type="text/javascript" src="../../lib/jquery-ui.js"></script>
+      <script type="text/javascript" src="../../lib/template.js"></script>
+      <script type="text/javascript" src="../../lib/tools.tooltip.js"></script>
+      
+      <script type="text/javascript">
+         if(top === self) {
+            var url = '../../index.html';
+            var hash = 'stm.clustering.ClassificationTreeNode';
+            var anchor = window.location.hash;
+            var anchor_opt = '';
+            if (anchor.length >= 1)
+              anchor_opt = '@' + anchor.substring(1);
+            window.location.href = url + '#' + hash + anchor_opt;
+         }
+   	  </script>
+    
+        </head>
+        <body class="type">
+      <div id="definition">
+        <a href="ClassificationTreeNode$.html" title="See companion object"><img alt="Class/Object" src="../../lib/class_to_object_big.png" /></a>
+        <p id="owner"><a href="../package.html" class="extype" name="stm">stm</a>.<a href="package.html" class="extype" name="stm.clustering">clustering</a></p>
+        <h1><a href="ClassificationTreeNode$.html" title="See companion object">ClassificationTreeNode</a></h1><h3><span class="morelinks"><div>
+            Related Docs:
+            <a href="ClassificationTreeNode$.html" title="See companion object">object ClassificationTreeNode</a>
+            | <a href="package.html" class="extype" name="stm.clustering">package clustering</a>
+          </div></span></h3><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      </div>
+
+      <h4 id="signature" class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">case class</span>
+      </span>
+      <span class="symbol">
+        <span class="name">ClassificationTreeNode</span><span class="params">(<span name="parent">parent: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>, <span name="pass">pass: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]] = <span class="symbol">None</span></span>, <span name="fail">fail: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]] = <span class="symbol">None</span></span>, <span name="exception">exception: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]] = <span class="symbol">None</span></span>, <span name="itemBuffer">itemBuffer: <span class="extype" name="scala.Option">Option</span>[<a href="PageTree.html" class="extype" name="stm.clustering.PageTree">PageTree</a>]</span>, <span name="splitBuffer">splitBuffer: <span class="extype" name="scala.Option">Option</span>[<a href="PageTree.html" class="extype" name="stm.clustering.PageTree">PageTree</a>] = <span class="symbol">None</span></span>, <span name="splitTask">splitTask: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.task.Task">Task</span>[<span class="extype" name="scala.Predef.String">String</span>]] = <span class="symbol">None</span></span>, <span name="rule">rule: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="storage.types.KryoValue">KryoValue</span>[<a href="strategy/RuleData.html" class="extype" name="stm.clustering.strategy.RuleData">RuleData</a>]] = <span class="symbol">None</span></span>)</span><span class="result"> extends <span class="extype" name="scala.Product">Product</span> with <span class="extype" name="scala.Serializable">Serializable</span></span>
+      </span>
+      </h4>
+      
+          <div id="comment" class="fullcommenttop"><div class="toggleContainer block">
+          <span class="toggle">Linear Supertypes</span>
+          <div class="superTypes hiddenContent"><span class="extype" name="scala.Serializable">Serializable</span>, <span class="extype" name="java.io.Serializable">Serializable</span>, <span class="extype" name="scala.Product">Product</span>, <span class="extype" name="scala.Equals">Equals</span>, <span class="extype" name="scala.AnyRef">AnyRef</span>, <span class="extype" name="scala.Any">Any</span></div>
+        </div></div>
+        
+
+      <div id="mbrsel">
+        <div id="textfilter"><span class="pre"></span><span class="input"><input id="mbrsel-input" type="text" accesskey="/" /></span><span class="post"></span></div>
+        <div id="order">
+              <span class="filtertype">Ordering</span>
+              <ol>
+                
+                <li class="alpha in"><span>Alphabetic</span></li>
+                <li class="inherit out"><span>By Inheritance</span></li>
+              </ol>
+            </div>
+        <div id="ancestors">
+                <span class="filtertype">Inherited<br />
+                </span>
+                <ol id="linearization">
+                  <li class="in" name="stm.clustering.ClassificationTreeNode"><span>ClassificationTreeNode</span></li><li class="in" name="scala.Serializable"><span>Serializable</span></li><li class="in" name="java.io.Serializable"><span>Serializable</span></li><li class="in" name="scala.Product"><span>Product</span></li><li class="in" name="scala.Equals"><span>Equals</span></li><li class="in" name="scala.AnyRef"><span>AnyRef</span></li><li class="in" name="scala.Any"><span>Any</span></li>
+                </ol>
+              </div><div id="ancestors">
+            <span class="filtertype"></span>
+            <ol>
+              <li class="hideall out"><span>Hide All</span></li>
+              <li class="showall in"><span>Show All</span></li>
+            </ol>
+          </div>
+        <div id="visbl">
+            <span class="filtertype">Visibility</span>
+            <ol><li class="public in"><span>Public</span></li><li class="all out"><span>All</span></li></ol>
+          </div>
+      </div>
+
+      <div id="template">
+        <div id="allMembers">
+        <div id="constructors" class="members">
+              <h3>Instance Constructors</h3>
+              <ol><li name="stm.clustering.ClassificationTreeNode#&lt;init&gt;" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="&lt;init&gt;(parent:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],pass:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],fail:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],exception:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],itemBuffer:Option[stm.clustering.PageTree],splitBuffer:Option[stm.clustering.PageTree],splitTask:Option[stm.task.Task[String]],rule:Option[storage.types.KryoValue[stm.clustering.strategy.RuleData]]):stm.clustering.ClassificationTreeNode"></a>
+      <a id="&lt;init&gt;:ClassificationTreeNode"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">new</span>
+      </span>
+      <span class="symbol">
+        <span class="name">ClassificationTreeNode</span><span class="params">(<span name="parent">parent: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>, <span name="pass">pass: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]] = <span class="symbol">None</span></span>, <span name="fail">fail: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]] = <span class="symbol">None</span></span>, <span name="exception">exception: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]] = <span class="symbol">None</span></span>, <span name="itemBuffer">itemBuffer: <span class="extype" name="scala.Option">Option</span>[<a href="PageTree.html" class="extype" name="stm.clustering.PageTree">PageTree</a>]</span>, <span name="splitBuffer">splitBuffer: <span class="extype" name="scala.Option">Option</span>[<a href="PageTree.html" class="extype" name="stm.clustering.PageTree">PageTree</a>] = <span class="symbol">None</span></span>, <span name="splitTask">splitTask: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.task.Task">Task</span>[<span class="extype" name="scala.Predef.String">String</span>]] = <span class="symbol">None</span></span>, <span name="rule">rule: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="storage.types.KryoValue">KryoValue</span>[<a href="strategy/RuleData.html" class="extype" name="stm.clustering.strategy.RuleData">RuleData</a>]] = <span class="symbol">None</span></span>)</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@&lt;init&gt;(parent:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],pass:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],fail:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],exception:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]],itemBuffer:Option[stm.clustering.PageTree],splitBuffer:Option[stm.clustering.PageTree],splitTask:Option[stm.task.Task[String]],rule:Option[storage.types.KryoValue[stm.clustering.strategy.RuleData]]):stm.clustering.ClassificationTreeNode" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li></ol>
+            </div>
+
+        <div id="types" class="types members">
+              <h3>Type Members</h3>
+              <ol><li name="stm.clustering.ClassificationTreeNode.NodeAtomicApi" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="NodeAtomicApiextendsAtomicApiBase"></a>
+      <a id="NodeAtomicApi:NodeAtomicApi"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="ClassificationTreeNode$NodeAtomicApi.html"><span class="name">NodeAtomicApi</span></a><span class="result"> extends <span class="extype" name="stm.AtomicApiBase">AtomicApiBase</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@NodeAtomicApiextendsAtomicApiBase" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode.SyncApi" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="SyncApiextendsSyncApiBase"></a>
+      <a id="SyncApi:SyncApi"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">class</span>
+      </span>
+      <span class="symbol">
+        <a href="ClassificationTreeNode$SyncApi.html"><span class="name">SyncApi</span></a><span class="result"> extends <span class="extype" name="stm.SyncApiBase">SyncApiBase</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@SyncApiextendsSyncApiBase" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li></ol>
+            </div>
+
+        
+
+        <div id="values" class="values members">
+              <h3>Value Members</h3>
+              <ol><li name="scala.AnyRef#!=" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="!=(x$1:Any):Boolean"></a>
+      <a id="!=(Any):Boolean"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span title="gt4s: $bang$eq" class="name">!=</span><span class="params">(<span name="arg0">arg0: <span class="extype" name="scala.Any">Any</span></span>)</span><span class="result">: <span class="extype" name="scala.Boolean">Boolean</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@!=(x$1:Any):Boolean" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef → Any</dd></dl></div>
+    </li><li name="scala.AnyRef###" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="##():Int"></a>
+      <a id="##():Int"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span title="gt4s: $hash$hash" class="name">##</span><span class="params">()</span><span class="result">: <span class="extype" name="scala.Int">Int</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@##():Int" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef → Any</dd></dl></div>
+    </li><li name="scala.AnyRef#==" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="==(x$1:Any):Boolean"></a>
+      <a id="==(Any):Boolean"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span title="gt4s: $eq$eq" class="name">==</span><span class="params">(<span name="arg0">arg0: <span class="extype" name="scala.Any">Any</span></span>)</span><span class="result">: <span class="extype" name="scala.Boolean">Boolean</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@==(x$1:Any):Boolean" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef → Any</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#add" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="add(value:stm.clustering.Page,self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode],strategy:stm.clustering.strategy.ClassificationStrategy,maxSplitDepth:Int)(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]"></a>
+      <a id="add(Page,STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode],ClassificationStrategy,Int)(STMTxnCtx):Future[Int]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">add</span><span class="params">(<span name="value">value: <a href="Page.html" class="extype" name="stm.clustering.Page">Page</a></span>, <span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="strategy">strategy: <a href="strategy/ClassificationStrategy.html" class="extype" name="stm.clustering.strategy.ClassificationStrategy">ClassificationStrategy</a></span>, <span name="maxSplitDepth">maxSplitDepth: <span class="extype" name="scala.Int">Int</span> = <span class="symbol">1</span></span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Int">Int</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@add(value:stm.clustering.Page,self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode],strategy:stm.clustering.strategy.ClassificationStrategy,maxSplitDepth:Int)(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.Any#asInstanceOf" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="asInstanceOf[T0]:T0"></a>
+      <a id="asInstanceOf[T0]:T0"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">asInstanceOf</span><span class="tparams">[<span name="T0">T0</span>]</span><span class="result">: <span class="extype" name="scala.Any.asInstanceOf.T0">T0</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@asInstanceOf[T0]:T0" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>Any</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#atomic" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="atomic(priority:scala.concurrent.duration.Duration,maxRetries:Int)(implicitcluster:storage.Restm):ClassificationTreeNode.this.NodeAtomicApi"></a>
+      <a id="atomic(Duration,Int)(Restm):NodeAtomicApi"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">atomic</span><span class="params">(<span name="priority">priority: <span class="extype" name="scala.concurrent.duration.Duration">Duration</span> = <span class="symbol">0.seconds</span></span>, <span name="maxRetries">maxRetries: <span class="extype" name="scala.Int">Int</span> = <span class="symbol">20</span></span>)</span><span class="params">(<span class="implicit">implicit </span><span name="cluster">cluster: <span class="extype" name="storage.Restm">Restm</span></span>)</span><span class="result">: <a href="ClassificationTreeNode$NodeAtomicApi.html" class="extype" name="stm.clustering.ClassificationTreeNode.NodeAtomicApi">NodeAtomicApi</a></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@atomic(priority:scala.concurrent.duration.Duration,maxRetries:Int)(implicitcluster:storage.Restm):ClassificationTreeNode.this.NodeAtomicApi" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.AnyRef#clone" visbl="prt" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="clone():Object"></a>
+      <a id="clone():AnyRef"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">clone</span><span class="params">()</span><span class="result">: <span class="extype" name="scala.AnyRef">AnyRef</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@clone():Object" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Attributes</dt><dd>protected[<a href="../../java$lang.html" class="extype" name="java.lang">java.lang</a>] </dd><dt>Definition Classes</dt><dd>AnyRef</dd><dt>Annotations</dt><dd>
+                <span class="name">@throws</span><span class="args">(<span>
+      
+      <span class="defval" name="classOf[java.lang.CloneNotSupportedException]">...</span>
+    </span>)</span>
+              
+        </dd></dl></div>
+    </li><li name="scala.AnyRef#eq" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="eq(x$1:AnyRef):Boolean"></a>
+      <a id="eq(AnyRef):Boolean"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">eq</span><span class="params">(<span name="arg0">arg0: <span class="extype" name="scala.AnyRef">AnyRef</span></span>)</span><span class="result">: <span class="extype" name="scala.Boolean">Boolean</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@eq(x$1:AnyRef):Boolean" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#exception" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="exception:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="exception:Option[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">exception</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@exception:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#fail" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="fail:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="fail:Option[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">fail</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@fail:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.AnyRef#finalize" visbl="prt" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="finalize():Unit"></a>
+      <a id="finalize():Unit"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">finalize</span><span class="params">()</span><span class="result">: <span class="extype" name="scala.Unit">Unit</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@finalize():Unit" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Attributes</dt><dd>protected[<a href="../../java$lang.html" class="extype" name="java.lang">java.lang</a>] </dd><dt>Definition Classes</dt><dd>AnyRef</dd><dt>Annotations</dt><dd>
+                <span class="name">@throws</span><span class="args">(<span>
+      
+      <span class="symbol">classOf[java.lang.Throwable]</span>
+    </span>)</span>
+              
+        </dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#find" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="find(value:stm.clustering.ClassificationTreeItem)(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]]"></a>
+      <a id="find(ClassificationTreeItem)(STMTxnCtx):Future[Option[STMPtr[ClassificationTreeNode]]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">find</span><span class="params">(<span name="value">value: <a href="ClassificationTreeItem.html" class="extype" name="stm.clustering.ClassificationTreeItem">ClassificationTreeItem</a></span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@find(value:stm.clustering.ClassificationTreeItem)(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#firstNode" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="firstNode(self:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="firstNode(STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">firstNode</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@firstNode(self:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#getByTreeId" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="getByTreeId(cursor:BigInt,self:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="getByTreeId(BigInt,STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">getByTreeId</span><span class="params">(<span name="cursor">cursor: <span class="extype" name="scala.BigInt">BigInt</span></span>, <span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@getByTreeId(cursor:BigInt,self:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.AnyRef#getClass" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="getClass():Class[_]"></a>
+      <a id="getClass():Class[_]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">getClass</span><span class="params">()</span><span class="result">: <span class="extype" name="java.lang.Class">Class</span>[_]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@getClass():Class[_]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef → Any</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#getInfo" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="getInfo(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.clustering.ClassificationTree.NodeInfo]"></a>
+      <a id="getInfo(STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[NodeInfo]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">getInfo</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<a href="ClassificationTree$$NodeInfo.html" class="extype" name="stm.clustering.ClassificationTree.NodeInfo">NodeInfo</a>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@getInfo(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.clustering.ClassificationTree.NodeInfo]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#getTreeDepth" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="getTreeDepth(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]"></a>
+      <a id="getTreeDepth(STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[Int]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">getTreeDepth</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Int">Int</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@getTreeDepth(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#getTreeId" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="getTreeId(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[BigInt]"></a>
+      <a id="getTreeId(STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[BigInt]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">getTreeId</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.BigInt">BigInt</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@getTreeId(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[BigInt]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#getTreeId_Minus1" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="getTreeId_Minus1(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[BigInt]"></a>
+      <a id="getTreeId_Minus1(STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[BigInt]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">getTreeId_Minus1</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.BigInt">BigInt</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@getTreeId_Minus1(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[BigInt]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#insert" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="insert(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode],strategy:stm.clustering.strategy.ClassificationStrategy,maxSplitDepth:Int,results:Map[Int,stm.clustering.Page])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]"></a>
+      <a id="insert(STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode],ClassificationStrategy,Int,Map[Int,Page])(STMTxnCtx):Future[Int]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">insert</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="strategy">strategy: <a href="strategy/ClassificationStrategy.html" class="extype" name="stm.clustering.strategy.ClassificationStrategy">ClassificationStrategy</a></span>, <span name="maxSplitDepth">maxSplitDepth: <span class="extype" name="scala.Int">Int</span></span>, <span name="results">results: <span class="extype" name="scala.Predef.Map">Map</span>[<span class="extype" name="scala.Int">Int</span>, <a href="Page.html" class="extype" name="stm.clustering.Page">Page</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Int">Int</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@insert(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode],strategy:stm.clustering.strategy.ClassificationStrategy,maxSplitDepth:Int,results:Map[Int,stm.clustering.Page])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.Any#isInstanceOf" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="isInstanceOf[T0]:Boolean"></a>
+      <a id="isInstanceOf[T0]:Boolean"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">isInstanceOf</span><span class="tparams">[<span name="T0">T0</span>]</span><span class="result">: <span class="extype" name="scala.Boolean">Boolean</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@isInstanceOf[T0]:Boolean" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>Any</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#itemBuffer" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="itemBuffer:Option[stm.clustering.PageTree]"></a>
+      <a id="itemBuffer:Option[PageTree]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">itemBuffer</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<a href="PageTree.html" class="extype" name="stm.clustering.PageTree">PageTree</a>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@itemBuffer:Option[stm.clustering.PageTree]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.AnyRef#ne" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="ne(x$1:AnyRef):Boolean"></a>
+      <a id="ne(AnyRef):Boolean"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">ne</span><span class="params">(<span name="arg0">arg0: <span class="extype" name="scala.AnyRef">AnyRef</span></span>)</span><span class="result">: <span class="extype" name="scala.Boolean">Boolean</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@ne(x$1:AnyRef):Boolean" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#nextBlock" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="nextBlock(cursor:BigInt,self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[(BigInt,Stream[stm.clustering.Page])]"></a>
+      <a id="nextBlock(BigInt,STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[(BigInt,Stream[Page])]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">nextBlock</span><span class="params">(<span name="cursor">cursor: <span class="extype" name="scala.BigInt">BigInt</span></span>, <span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[(<span class="extype" name="scala.BigInt">BigInt</span>, <span class="extype" name="scala.Stream">Stream</span>[<a href="Page.html" class="extype" name="stm.clustering.Page">Page</a>])]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@nextBlock(cursor:BigInt,self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[(BigInt,Stream[stm.clustering.Page])]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#nextNode" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="nextNode(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]]"></a>
+      <a id="nextNode(STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode])(STMTxnCtx):Future[Option[STMPtr[ClassificationTreeNode]]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">nextNode</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@nextNode(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.AnyRef#notify" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="notify():Unit"></a>
+      <a id="notify():Unit"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">notify</span><span class="params">()</span><span class="result">: <span class="extype" name="scala.Unit">Unit</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@notify():Unit" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd></dl></div>
+    </li><li name="scala.AnyRef#notifyAll" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="notifyAll():Unit"></a>
+      <a id="notifyAll():Unit"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">notifyAll</span><span class="params">()</span><span class="result">: <span class="extype" name="scala.Unit">Unit</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@notifyAll():Unit" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd></dl></div>
+    </li><li name="stm.clustering.ClassificationTreeNode#pageStream" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="pageStream(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],duration:scala.concurrent.duration.Duration)(implicitctx:stm.STMTxnCtx):Stream[stm.clustering.Page]"></a>
+      <a id="pageStream(STMPtr[ClassificationTreeNode],Duration)(STMTxnCtx):Stream[Page]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">pageStream</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="duration">duration: <span class="extype" name="scala.concurrent.duration.Duration">Duration</span> = <span class="symbol">30.seconds</span></span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.Stream">Stream</span>[<a href="Page.html" class="extype" name="stm.clustering.Page">Page</a>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@pageStream(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],duration:scala.concurrent.duration.Duration)(implicitctx:stm.STMTxnCtx):Stream[stm.clustering.Page]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#parent" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="parent:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="parent:Option[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">parent</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@parent:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#pass" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="pass:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="pass:Option[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">pass</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@pass:Option[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#recursePath" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="recursePath(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],path:List[Int])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.STMPtr[stm.clustering.ClassificationTreeNode]]"></a>
+      <a id="recursePath(STMPtr[ClassificationTreeNode],List[Int])(STMTxnCtx):Future[STMPtr[ClassificationTreeNode]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">recursePath</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="path">path: <span class="extype" name="scala.List">List</span>[<span class="extype" name="scala.Int">Int</span>]</span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@recursePath(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],path:List[Int])(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[stm.STMPtr[stm.clustering.ClassificationTreeNode]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#route" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="route(value:stm.clustering.Page,self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode],strategy:stm.clustering.strategy.ClassificationStrategy,maxSplitDepth:Int)(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]"></a>
+      <a id="route(Page,STMPtr[ClassificationTreeNode],STMPtr[ClassificationTreeNode],ClassificationStrategy,Int)(STMTxnCtx):Future[Int]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">route</span><span class="params">(<span name="value">value: <a href="Page.html" class="extype" name="stm.clustering.Page">Page</a></span>, <span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="root">root: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="strategy">strategy: <a href="strategy/ClassificationStrategy.html" class="extype" name="stm.clustering.strategy.ClassificationStrategy">ClassificationStrategy</a></span>, <span name="maxSplitDepth">maxSplitDepth: <span class="extype" name="scala.Int">Int</span></span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.concurrent.Future">Future</span>[<span class="extype" name="scala.Int">Int</span>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@route(value:stm.clustering.Page,self:stm.STMPtr[stm.clustering.ClassificationTreeNode],root:stm.STMPtr[stm.clustering.ClassificationTreeNode],strategy:stm.clustering.strategy.ClassificationStrategy,maxSplitDepth:Int)(implicitctx:stm.STMTxnCtx):scala.concurrent.Future[Int]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#rule" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="rule:Option[storage.types.KryoValue[stm.clustering.strategy.RuleData]]"></a>
+      <a id="rule:Option[KryoValue[RuleData]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">rule</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="storage.types.KryoValue">KryoValue</span>[<a href="strategy/RuleData.html" class="extype" name="stm.clustering.strategy.RuleData">RuleData</a>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@rule:Option[storage.types.KryoValue[stm.clustering.strategy.RuleData]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#split" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="split(value:stm.clustering.Page,deserializedRule:stm.clustering.KeyValue[String,Any]=&gt;Boolean):Map[Int,stm.clustering.Page]"></a>
+      <a id="split(Page,(KeyValue[String,Any])⇒Boolean):Map[Int,Page]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">split</span><span class="params">(<span name="value">value: <a href="Page.html" class="extype" name="stm.clustering.Page">Page</a></span>, <span name="deserializedRule">deserializedRule: (<a href="KeyValue.html" class="extype" name="stm.clustering.KeyValue">KeyValue</a>[<span class="extype" name="scala.Predef.String">String</span>, <span class="extype" name="scala.Any">Any</span>]) ⇒ <span class="extype" name="scala.Boolean">Boolean</span> = <span class="symbol">getRule</span></span>)</span><span class="result">: <span class="extype" name="scala.Predef.Map">Map</span>[<span class="extype" name="scala.Int">Int</span>, <a href="Page.html" class="extype" name="stm.clustering.Page">Page</a>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@split(value:stm.clustering.Page,deserializedRule:stm.clustering.KeyValue[String,Any]=&gt;Boolean):Map[Int,stm.clustering.Page]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#splitBuffer" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="splitBuffer:Option[stm.clustering.PageTree]"></a>
+      <a id="splitBuffer:Option[PageTree]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">splitBuffer</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<a href="PageTree.html" class="extype" name="stm.clustering.PageTree">PageTree</a>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@splitBuffer:Option[stm.clustering.PageTree]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#splitTask" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="splitTask:Option[stm.task.Task[String]]"></a>
+      <a id="splitTask:Option[Task[String]]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">val</span>
+      </span>
+      <span class="symbol">
+        <span class="name">splitTask</span><span class="result">: <span class="extype" name="scala.Option">Option</span>[<span class="extype" name="stm.task.Task">Task</span>[<span class="extype" name="scala.Predef.String">String</span>]]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@splitTask:Option[stm.task.Task[String]]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#stream" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="stream(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],duration:scala.concurrent.duration.Duration)(implicitctx:stm.STMTxnCtx):Stream[stm.clustering.Page#PageRow]"></a>
+      <a id="stream(STMPtr[ClassificationTreeNode],Duration)(STMTxnCtx):Stream[PageRow]"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">stream</span><span class="params">(<span name="self">self: <span class="extype" name="stm.STMPtr">STMPtr</span>[<a href="" class="extype" name="stm.clustering.ClassificationTreeNode">ClassificationTreeNode</a>]</span>, <span name="duration">duration: <span class="extype" name="scala.concurrent.duration.Duration">Duration</span> = <span class="symbol">30.seconds</span></span>)</span><span class="params">(<span class="implicit">implicit </span><span name="ctx">ctx: <span class="extype" name="stm.STMTxnCtx">STMTxnCtx</span></span>)</span><span class="result">: <span class="extype" name="scala.Stream">Stream</span>[<a href="Page$PageRow.html" class="extype" name="stm.clustering.Page.PageRow">PageRow</a>]</span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@stream(self:stm.STMPtr[stm.clustering.ClassificationTreeNode],duration:scala.concurrent.duration.Duration)(implicitctx:stm.STMTxnCtx):Stream[stm.clustering.Page#PageRow]" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#sync" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="sync:ClassificationTreeNode.this.SyncApi"></a>
+      <a id="sync:SyncApi"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">sync</span><span class="result">: <a href="ClassificationTreeNode$SyncApi.html" class="extype" name="stm.clustering.ClassificationTreeNode.SyncApi">SyncApi</a></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@sync:ClassificationTreeNode.this.SyncApi" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="stm.clustering.ClassificationTreeNode#sync" visbl="pub" data-isabs="false" fullComment="no" group="Ungrouped">
+      <a id="sync(duration:scala.concurrent.duration.Duration):ClassificationTreeNode.this.SyncApi"></a>
+      <a id="sync(Duration):SyncApi"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier"></span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">sync</span><span class="params">(<span name="duration">duration: <span class="extype" name="scala.concurrent.duration.Duration">Duration</span></span>)</span><span class="result">: <a href="ClassificationTreeNode$SyncApi.html" class="extype" name="stm.clustering.ClassificationTreeNode.SyncApi">SyncApi</a></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@sync(duration:scala.concurrent.duration.Duration):ClassificationTreeNode.this.SyncApi" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      
+    </li><li name="scala.AnyRef#synchronized" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="synchronized[T0](x$1:=&gt;T0):T0"></a>
+      <a id="synchronized[T0](⇒T0):T0"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">synchronized</span><span class="tparams">[<span name="T0">T0</span>]</span><span class="params">(<span name="arg0">arg0: ⇒ <span class="extype" name="java.lang.AnyRef.synchronized.T0">T0</span></span>)</span><span class="result">: <span class="extype" name="java.lang.AnyRef.synchronized.T0">T0</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@synchronized[T0](x$1:=&gt;T0):T0" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd></dl></div>
+    </li><li name="scala.AnyRef#wait" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="wait():Unit"></a>
+      <a id="wait():Unit"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">wait</span><span class="params">()</span><span class="result">: <span class="extype" name="scala.Unit">Unit</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@wait():Unit" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd><dt>Annotations</dt><dd>
+                <span class="name">@throws</span><span class="args">(<span>
+      
+      <span class="defval" name="classOf[java.lang.InterruptedException]">...</span>
+    </span>)</span>
+              
+        </dd></dl></div>
+    </li><li name="scala.AnyRef#wait" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="wait(x$1:Long,x$2:Int):Unit"></a>
+      <a id="wait(Long,Int):Unit"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">wait</span><span class="params">(<span name="arg0">arg0: <span class="extype" name="scala.Long">Long</span></span>, <span name="arg1">arg1: <span class="extype" name="scala.Int">Int</span></span>)</span><span class="result">: <span class="extype" name="scala.Unit">Unit</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@wait(x$1:Long,x$2:Int):Unit" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd><dt>Annotations</dt><dd>
+                <span class="name">@throws</span><span class="args">(<span>
+      
+      <span class="defval" name="classOf[java.lang.InterruptedException]">...</span>
+    </span>)</span>
+              
+        </dd></dl></div>
+    </li><li name="scala.AnyRef#wait" visbl="pub" data-isabs="false" fullComment="yes" group="Ungrouped">
+      <a id="wait(x$1:Long):Unit"></a>
+      <a id="wait(Long):Unit"></a>
+      <h4 class="signature">
+      <span class="modifier_kind">
+        <span class="modifier">final </span>
+        <span class="kind">def</span>
+      </span>
+      <span class="symbol">
+        <span class="name">wait</span><span class="params">(<span name="arg0">arg0: <span class="extype" name="scala.Long">Long</span></span>)</span><span class="result">: <span class="extype" name="scala.Unit">Unit</span></span>
+      </span>
+      </h4><span class="permalink">
+      <a href="../../index.html#stm.clustering.ClassificationTreeNode@wait(x$1:Long):Unit" title="Permalink" target="_top">
+        <img src="../../lib/permalink.png" alt="Permalink" />
+      </a>
+    </span>
+      <div class="fullcomment"><dl class="attributes block"> <dt>Definition Classes</dt><dd>AnyRef</dd><dt>Annotations</dt><dd>
+                <span class="name">@throws</span><span class="args">(<span>
+      
+      <span class="defval" name="classOf[java.lang.InterruptedException]">...</span>
+    </span>)</span>
+              
+        </dd></dl></div>
+    </li></ol>
+            </div>
+
+        
+
+        
+        </div>
+
+        <div id="inheritedMembers">
+        <div class="parent" name="scala.Serializable">
+              <h3>Inherited from <span class="extype" name="scala.Serializable">Serializable</span></h3>
+            </div><div class="parent" name="java.io.Serializable">
+              <h3>Inherited from <span class="extype" name="java.io.Serializable">Serializable</span></h3>
+            </div><div class="parent" name="scala.Product">
+              <h3>Inherited from <span class="extype" name="scala.Product">Product</span></h3>
+            </div><div class="parent" name="scala.Equals">
+              <h3>Inherited from <span class="extype" name="scala.Equals">Equals</span></h3>
+            </div><div class="parent" name="scala.AnyRef">
+              <h3>Inherited from <span class="extype" name="scala.AnyRef">AnyRef</span></h3>
+            </div><div class="parent" name="scala.Any">
+              <h3>Inherited from <span class="extype" name="scala.Any">Any</span></h3>
+            </div>
+        
+        </div>
+
+        <div id="groupedMembers">
+        <div class="group" name="Ungrouped">
+              <h3>Ungrouped</h3>
+              
+            </div>
+        </div>
+
+      </div>
+
+      <div id="tooltip"></div>
+
+      <div id="footer">  </div>
+
+
+    </body>
+      </html>
