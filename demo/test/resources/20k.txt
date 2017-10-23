@@ -3502,7 +3502,7 @@ ds
 discounts
 sterling
 sessions
-kernel
+filter
 boobs
 stocks
 buyers
@@ -5155,7 +5155,7 @@ egg
 mhz
 signals
 caps
-orientation
+orientations
 pill
 theft
 childhood
