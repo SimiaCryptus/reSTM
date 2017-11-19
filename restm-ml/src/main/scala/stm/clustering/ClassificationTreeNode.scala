@@ -449,7 +449,7 @@ object ClassificationTreeNode {
         //println(s"Completed split task for $self - $result")
         result
       } catch {
-        case e ⇒ e.printStackTrace();throw e
+        case e : Throwable ⇒ e.printStackTrace();throw e
       }
     }
 
@@ -548,7 +548,7 @@ object ClassificationTreeNode {
                   }
                   Future.sequence(pages.map(routePage).toList).map(_.sum)
                 } catch {
-                  case e ⇒ e.printStackTrace(); throw e
+                  case e : Throwable ⇒ e.printStackTrace(); throw e
                 }
               })
 
@@ -589,7 +589,7 @@ object ClassificationTreeNode {
                         self.write(node.copy(itemBuffer = None, splitBuffer = None)).map(_ => rowsTransfered + phase2Transfered)
                       })
                     } catch {
-                      case e ⇒ e.printStackTrace(); throw e
+                      case e : Throwable ⇒ e.printStackTrace(); throw e
                     }
                   })
                 }
